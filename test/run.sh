@@ -1,0 +1,1 @@
+clang -L../target/debug -lsurrealdb_c test.c && ./a.out

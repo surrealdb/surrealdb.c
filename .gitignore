@@ -26,3 +26,8 @@ Temporary Items
 # -----------------------------------
 
 *.db
+
+
+# Added by cargo
+
+/target
