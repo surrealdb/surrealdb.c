@@ -7,10 +7,7 @@ edition = "2021"
 crate-type = ["lib", "staticlib", "cdylib"]
 
 [dependencies]
-surrealdb = { git = "https://github.com/surrealdb/surrealdb.git", tag = "v2.0.0-alpha.3", features = [
-    "kv-surrealkv",
-    "kv-mem",
-] }
+surrealdb = { git = "https://github.com/surrealdb/surrealdb.git", tag = "v2.0.0-alpha.3", features = ["kv-surrealkv", "kv-mem"] }
 surrealdb-core = { git = "https://github.com/surrealdb/surrealdb.git", tag = "v2.0.0-alpha.3" }
 tokio = { version = "1.38.0", features = ["full"] }
 surrealdb_c_macro = { path = "./surrealdb_c_macro" }

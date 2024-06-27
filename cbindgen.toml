@@ -1,1 +1,5 @@
 language = "C"
+
+[export.rename]
+"Duration" = "duration_t"
+"Number" = "number_t"

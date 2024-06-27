@@ -1,7 +1,11 @@
-use std::ffi::CString;
+use std::ffi::{c_char, CString};
 
 use surrealdb_core::sql;
 use surrealdb_core::sql::Value as sdbValue;
+
+use crate::Number;
+
+use super::duration::Duration;
 
 #[repr(C)]
 #[derive(Default)]
@@ -11,8 +15,8 @@ pub enum Value {
     Null,
     Bool(bool),
     Number(Number),
-    Strand(CString),
-    // Duration(Duration),
+    Strand(*mut c_char),
+    Duration(Duration),
     // Datetime(Datetime),
     // Uuid(Uuid),
     // Array(Array),
@@ -51,7 +55,7 @@ impl From<sdbValue> for Value {
                 _ => todo!(),
             },
             sdbValue::Strand(_) => todo!(),
-            sdbValue::Duration(_) => todo!(),
+            sdbValue::Duration(d) => Value::Duration(d.into()),
             sdbValue::Datetime(_) => todo!(),
             sdbValue::Uuid(_) => todo!(),
             sdbValue::Array(_) => todo!(),
@@ -78,10 +82,4 @@ impl From<sdbValue> for Value {
             _ => todo!(),
         }
     }
-}
-
-#[repr(C)]
-pub enum Number {
-    Int(i64),
-    Float(f64),
 }

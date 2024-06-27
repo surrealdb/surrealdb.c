@@ -31,3 +31,5 @@ Temporary Items
 # Added by cargo
 
 /target
+*.skv
+./test/a.out

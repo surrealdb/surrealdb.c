@@ -36,3 +36,23 @@ pub fn with_surreal(code: TokenStream) -> TokenStream {
 
     todo!()
 }
+
+#[proc_macro]
+pub fn def_result(name: TokenStream) -> TokenStream {
+    let path = syn::parse_macro_input!(name as syn::Path);
+    let last_name = &path.segments.last().unwrap().ident;
+    let path_str = stringify!(path.clone());
+
+    let name = format!("{last_name}Result");
+    format!(
+        r#"
+#[repr(C)]
+pub struct {name} {{
+    ok: *mut {path_str},
+    err: *mut c_char,
+}}
+"#
+    )
+    .parse()
+    .unwrap()
+}
