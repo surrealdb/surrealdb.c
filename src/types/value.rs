@@ -3,12 +3,12 @@ use std::ffi::{c_char, CString};
 use surrealdb_core::sql;
 use surrealdb_core::sql::Value as sdbValue;
 
-use crate::Number;
+pub use crate::{array::Array, object::Object, Number};
 
 use super::duration::Duration;
 
 #[repr(C)]
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub enum Value {
     #[default]
     None,
@@ -19,8 +19,8 @@ pub enum Value {
     Duration(Duration),
     // Datetime(Datetime),
     // Uuid(Uuid),
-    // Array(Array),
-    // Object(Object),
+    Array(Array),
+    Object(Object),
     // Geometry(Geometry),
     // Bytes(Bytes),
     // Thing(Thing),
@@ -54,12 +54,12 @@ impl From<sdbValue> for Value {
                 sql::Number::Decimal(_) => todo!(),
                 _ => todo!(),
             },
-            sdbValue::Strand(_) => todo!(),
+            sdbValue::Strand(s) => Value::Strand(CString::new(s.0).unwrap().into_raw()),
             sdbValue::Duration(d) => Value::Duration(d.into()),
             sdbValue::Datetime(_) => todo!(),
             sdbValue::Uuid(_) => todo!(),
-            sdbValue::Array(_) => todo!(),
-            sdbValue::Object(_) => todo!(),
+            sdbValue::Array(a) => Value::Array(a.into()),
+            sdbValue::Object(o) => Value::Object(o.into()),
             sdbValue::Geometry(_) => todo!(),
             sdbValue::Bytes(_) => todo!(),
             sdbValue::Thing(_) => todo!(),
@@ -81,5 +81,12 @@ impl From<sdbValue> for Value {
             sdbValue::Model(_) => todo!(),
             _ => todo!(),
         }
+    }
+}
+
+impl Value {
+    #[no_mangle]
+    pub extern "C" fn print_value(val: &Value) {
+        println!("{val:?}");
     }
 }

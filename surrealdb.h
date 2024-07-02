@@ -3,6 +3,8 @@
 #include <stdint.h>
 #include <stdlib.h>
 
+typedef struct BTreeMap_String__Value BTreeMap_String__Value;
+
 typedef struct Surreal Surreal;
 
 /**
@@ -18,11 +20,6 @@ typedef struct SurrealResult {
   struct Surreal *ok;
   struct SurrealError err;
 } SurrealResult;
-
-typedef struct StringResult {
-  char *ok;
-  struct SurrealError err;
-} StringResult;
 
 typedef enum number_t_Tag {
   Int,
@@ -46,6 +43,10 @@ typedef struct duration_t {
   uint32_t nanos;
 } duration_t;
 
+typedef struct object_t {
+  struct BTreeMap_String__Value *_0;
+} object_t;
+
 typedef enum Value_Tag {
   None,
   Null,
@@ -53,6 +54,8 @@ typedef enum Value_Tag {
   Number,
   Strand,
   Duration,
+  Array,
+  Object,
 } Value_Tag;
 
 typedef struct Value {
@@ -70,16 +73,22 @@ typedef struct Value {
     struct {
       struct duration_t duration;
     };
+    struct {
+      struct array_t array;
+    };
+    struct {
+      struct object_t object;
+    };
   };
 } Value;
 
-typedef struct Array {
+typedef struct array_t {
   struct Value *arr;
   uintptr_t len;
-} Array;
+} array_t;
 
 typedef struct ArrayResult {
-  struct Array ok;
+  struct array_t ok;
   struct SurrealError err;
 } ArrayResult;
 
@@ -88,11 +97,21 @@ typedef struct ArrayResultArray {
   uintptr_t len;
 } ArrayResultArray;
 
+typedef struct ArrayResultArrayResult {
+  struct ArrayResultArray ok;
+  struct SurrealError err;
+} ArrayResultArrayResult;
+
+typedef struct StringResult {
+  char *ok;
+  struct SurrealError err;
+} StringResult;
+
 struct SurrealResult connect(const char *endpoint);
 
-struct StringResult query(struct Surreal *db, const char *query);
+struct ArrayResultArrayResult query(struct Surreal *db, const char *query);
 
-char *select(struct Surreal *db, const char *resource);
+struct ArrayResult select(struct Surreal *db, const char *resource);
 
 void use_db(struct Surreal *db, const char *query);
 
@@ -104,6 +123,12 @@ void free_arr_res(struct ArrayResult res);
 
 void free_arr_res_arr(struct ArrayResultArray arr);
 
+void free_arr_res_arr_res(struct ArrayResultArrayResult res);
+
 void free_string(char *string);
 
-void free_arr(struct Array arr);
+void free_arr(struct array_t arr);
+
+const struct Value *get(const struct object_t *obj, const char *key);
+
+void print_value(const struct Value *val);

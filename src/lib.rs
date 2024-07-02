@@ -2,23 +2,21 @@ pub mod result;
 pub mod types;
 use std::{
     collections::BTreeMap,
-    ffi::{self, c_char, c_int, CStr, CString},
-    fmt::format,
+    ffi::{c_char, CStr, CString},
     future::IntoFuture,
-    mem::ManuallyDrop,
-    ptr,
 };
 
-use result::{StringResult, SurrealResult};
+use result::{ArrayResult, ArrayResultArray, ArrayResultArrayResult, StringResult, SurrealResult};
 use surrealdb::{
     engine::any::{self, Any},
-    method::Select,
+    opt::Resource,
     sql, Surreal as sdbSurreal,
 };
-use surrealdb_c_macro::def_result;
 use tokio::runtime::Runtime;
 
+use array::Array;
 pub use types::*;
+use value::Value;
 
 pub struct Surreal {
     db: sdbSurreal<Any>,
@@ -68,7 +66,7 @@ impl Surreal {
     // patch.rs
     // query.rs
     #[no_mangle]
-    pub extern "C" fn query(db: *mut Surreal, query: *const c_char) -> StringResult {
+    pub extern "C" fn query(db: *mut Surreal, query: *const c_char) -> ArrayResultArrayResult {
         with_surreal(db, |surreal| {
             let query = unsafe { CStr::from_ptr(query) }
                 .to_str()
@@ -76,28 +74,56 @@ impl Surreal {
 
             let fut = surreal.db.query(query);
 
-            let res = match surreal.rt.block_on(fut.into_future()) {
+            let mut res = match surreal.rt.block_on(fut.into_future()) {
                 Ok(r) => r,
-                Err(e) => return StringResult::err(e),
+                Err(e) => return ArrayResultArrayResult::err(e),
             };
+            let res_len = res.num_statements();
+
+            let mut acc = Vec::with_capacity(res_len);
+            for index in 0..res_len {
+                let arr_res = match res.take::<Vec<sql::Value>>(index) {
+                    Ok(val_vec) => {
+                        let val_vec: Vec<Value> = val_vec.into_iter().map(Into::into).collect();
+                        let arr: Array = val_vec.into();
+                        ArrayResult::ok(arr)
+                    }
+                    Err(e) => ArrayResult::err(e),
+                };
+                acc.push(arr_res);
+            }
+            let arr_res_arr: ArrayResultArray = acc.into();
+            ArrayResultArrayResult::ok(arr_res_arr)
 
             // CString::new(format!("{res:?}")).unwrap().into_raw()
-            StringResult::ok(format!("{res:?}"))
+            // StringResult::ok(format!("{res:?}"))
         })
     }
 
     // select.rs
     #[no_mangle]
-    pub extern "C" fn select(db: *mut Surreal, resource: *const c_char) -> *mut c_char {
+    pub extern "C" fn select(db: *mut Surreal, resource: *const c_char) -> ArrayResult {
         with_surreal(db, |surreal| {
             let resource = unsafe { CStr::from_ptr(resource) }.to_str().unwrap();
 
-            let fut = surreal.db.select(resource);
+            // let fut = surreal.db.select(resource);
 
-            let res: Vec<BTreeMap<String, sql::Value>> =
-                surreal.rt.block_on(fut.into_future()).unwrap();
+            // let res: Vec<BTreeMap<String, sql::Value>> =
+            //     surreal.rt.block_on(fut.into_future()).unwrap();
 
-            CString::new(format!("{res:?}")).unwrap().into_raw()
+            let fut = surreal.db.select(Resource::from(resource));
+
+            let res = match surreal.rt.block_on(fut.into_future()) {
+                Ok(sql::Value::Array(a)) => ArrayResult::ok(Array::from(a)),
+                Ok(v) => {
+                    // let foo: Array = v;
+                    ArrayResult::ok(Array::from(vec![v.into()]))
+                }
+                Err(e) => ArrayResult::err(e),
+            };
+
+            // CString::new(format!("{res:?}")).unwrap().into_raw()
+            res
         })
     }
     // set.rs

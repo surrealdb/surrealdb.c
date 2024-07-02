@@ -104,12 +104,55 @@ impl From<Vec<ArrayResult>> for ArrayResultArray {
 }
 
 impl ArrayResultArray {
+    fn empty() -> Self {
+        Self {
+            arr: ptr::null_mut(),
+            len: 0,
+        }
+    }
+}
+
+impl ArrayResultArray {
     #[no_mangle]
     pub extern "C" fn free_arr_res_arr(arr: ArrayResultArray) {
         let slice = slice_from_raw_parts_mut(arr.arr, arr.len);
         let boxed = unsafe { Box::from_raw(slice) };
         let owned = boxed.into_vec();
-        for arr_res in owned {}
+        for arr_res in owned {
+            ArrayResult::free_arr_res(arr_res)
+        }
+    }
+}
+
+#[repr(C)]
+pub struct ArrayResultArrayResult {
+    pub ok: ArrayResultArray,
+    pub err: SurrealError,
+}
+
+impl ArrayResultArrayResult {
+    pub fn err(msg: impl Display) -> Self {
+        Self {
+            ok: ArrayResultArray::empty(),
+            err: SurrealError::from_msg(msg),
+        }
+    }
+    pub fn ok(ok: ArrayResultArray) -> Self {
+        Self {
+            ok,
+            err: SurrealError::empty(),
+        }
+    }
+}
+
+impl ArrayResultArrayResult {
+    #[no_mangle]
+    pub extern "C" fn free_arr_res_arr_res(res: ArrayResultArrayResult) {
+        if res.err.code != 0 {
+            free_string(res.err.msg);
+        } else {
+            ArrayResultArray::free_arr_res_arr(res.ok)
+        }
     }
 }
 
