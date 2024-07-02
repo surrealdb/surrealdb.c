@@ -4,6 +4,7 @@ use surrealdb_core::sql;
 use surrealdb_core::sql::Value as sdbValue;
 
 pub use crate::{array::Array, object::Object, Number};
+use crate::{thing::Thing, uuid::Uuid};
 
 use super::duration::Duration;
 
@@ -18,12 +19,12 @@ pub enum Value {
     Strand(*mut c_char),
     Duration(Duration),
     // Datetime(Datetime),
-    // Uuid(Uuid),
-    Array(Array),
+    Uuid(Uuid),
+    Array(Box<Array>),
     Object(Object),
     // Geometry(Geometry),
     // Bytes(Bytes),
-    // Thing(Thing),
+    Thing(Thing),
     // Param(Param),
     // Idiom(Idiom),
     // Table(Table),
@@ -57,12 +58,13 @@ impl From<sdbValue> for Value {
             sdbValue::Strand(s) => Value::Strand(CString::new(s.0).unwrap().into_raw()),
             sdbValue::Duration(d) => Value::Duration(d.into()),
             sdbValue::Datetime(_) => todo!(),
-            sdbValue::Uuid(_) => todo!(),
-            sdbValue::Array(a) => Value::Array(a.into()),
+            sdbValue::Uuid(u) => Value::Uuid(u.into()),
+            // unecssary box see: https://github.com/mozilla/cbindgen/issues/981
+            sdbValue::Array(a) => Value::Array(Box::new(a.into())),
             sdbValue::Object(o) => Value::Object(o.into()),
             sdbValue::Geometry(_) => todo!(),
             sdbValue::Bytes(_) => todo!(),
-            sdbValue::Thing(_) => todo!(),
+            sdbValue::Thing(t) => Value::Thing(t.into()),
             sdbValue::Param(_) => todo!(),
             sdbValue::Idiom(_) => todo!(),
             sdbValue::Table(_) => todo!(),

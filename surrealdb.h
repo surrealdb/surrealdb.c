@@ -43,23 +43,59 @@ typedef struct duration_t {
   uint32_t nanos;
 } duration_t;
 
+typedef struct uuid_t {
+  uint8_t _0[16];
+} uuid_t;
+
 typedef struct object_t {
   struct BTreeMap_String__Value *_0;
 } object_t;
 
-typedef enum Value_Tag {
+typedef enum Id_Tag {
+  IdNumber,
+  IdString,
+  IdArray,
+  IdObject,
+} Id_Tag;
+
+typedef struct Id {
+  Id_Tag tag;
+  union {
+    struct {
+      int64_t id_number;
+    };
+    struct {
+      char *id_string;
+    };
+    struct {
+      struct array_t *id_array;
+    };
+    struct {
+      struct object_t id_object;
+    };
+  };
+} Id;
+
+typedef struct thing_t {
+  char *table;
+  struct Id id;
+} thing_t;
+
+typedef enum value_t_Tag {
   None,
   Null,
   Bool,
   Number,
   Strand,
   Duration,
+  Uuid,
   Array,
   Object,
-} Value_Tag;
+  Thing,
+} value_t_Tag;
 
-typedef struct Value {
-  Value_Tag tag;
+typedef struct value_t {
+  value_t_Tag tag;
   union {
     struct {
       bool bool_;
@@ -74,16 +110,22 @@ typedef struct Value {
       struct duration_t duration;
     };
     struct {
-      struct array_t array;
+      struct uuid_t uuid;
+    };
+    struct {
+      struct array_t *array;
     };
     struct {
       struct object_t object;
     };
+    struct {
+      struct thing_t thing;
+    };
   };
-} Value;
+} value_t;
 
 typedef struct array_t {
-  struct Value *arr;
+  struct value_t *arr;
   uintptr_t len;
 } array_t;
 
@@ -129,6 +171,6 @@ void free_string(char *string);
 
 void free_arr(struct array_t arr);
 
-const struct Value *get(const struct object_t *obj, const char *key);
+const struct value_t *get(const struct object_t *obj, const char *key);
 
-void print_value(const struct Value *val);
+void print_value(const struct value_t *val);

@@ -1,6 +1,9 @@
 #include <stdio.h>
 #include "../surrealdb.h"
 
+void test_query(Surreal *db);
+void test_select(Surreal *db);
+
 int main()
 {
     SurrealResult connect_res = connect("memory");
@@ -26,23 +29,38 @@ int main()
 
     query(db, "create foo");
 
+    test_select(db);
+    test_query(db);
+
+    // printf("%s\n", sel_res);
+
+    // char *res2 = query(db, "select * from foo");
+    // printf("%s\n", res2);
+
+    // char *res3 = select(db, "foo");
+    // printf("%s\n\n", res3);
+}
+void test_select(Surreal *db)
+{
     ArrayResult sel_res = select(db, "foo");
     if (sel_res.err.code != 0)
     {
         printf("%s", sel_res.err.msg);
-        return 1;
+        return;
     }
     else
     {
         print_value(&sel_res.ok.arr[0]);
     }
-    // printf("%s\n", sel_res);
+}
 
+void test_query(Surreal *db)
+{
     ArrayResultArrayResult res = query(db, "create foo; create bar");
     if (res.err.code != 0)
     {
         printf("%s", res.err.msg);
-        return 1;
+        return;
     }
     else
     {
@@ -51,16 +69,10 @@ int main()
             if (res.ok.arr[i].err.code != 0)
             {
                 printf("error: %s", res.err.msg);
-                return 1;
+                return;
             }
         }
 
         // printf("%s\n\n", res.ok);
     }
-
-    // char *res2 = query(db, "select * from foo");
-    // printf("%s\n", res2);
-
-    // char *res3 = select(db, "foo");
-    // printf("%s\n\n", res3);
 }

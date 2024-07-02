@@ -6,6 +6,8 @@ use value::Value;
 pub mod array;
 pub mod duration;
 pub mod object;
+pub mod thing;
+pub mod uuid;
 pub mod value;
 
 #[derive(Debug)]
