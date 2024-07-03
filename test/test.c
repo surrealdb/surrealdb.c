@@ -1,8 +1,10 @@
 #include <stdio.h>
+#include <pthread.h>
 #include "../surrealdb.h"
 
 void test_query(Surreal *db);
 void test_select(Surreal *db);
+void *print_stream(void *vargp);
 
 int main()
 {
@@ -29,8 +31,16 @@ int main()
 
     query(db, "create foo");
 
-    test_select(db);
-    test_query(db);
+    Stream *stream = select_live(db, "foo").ok;
+
+    query(db, "create foo");
+    // printf("notification: ");
+    print_notification(next(stream));
+
+    kill(stream);
+
+    // test_select(db);
+    // test_query(db);
 
     // printf("%s\n", sel_res);
 
@@ -67,7 +77,7 @@ void test_query(Surreal *db)
     {
         if (res.ok.arr[i].err.code != 0)
         {
-            printf("error for %d: %s\n", (int)i, res.err.msg);
+            printf("error for %d: %s\n", (int)i, res.ok.arr[i].err.msg);
             continue;
         }
         array_t arr = res.ok.arr[i].ok;
@@ -80,3 +90,9 @@ void test_query(Surreal *db)
 
     // printf("%s\n\n", res.ok);
 }
+
+// void *print_stream(void *vargp)
+// {
+//     Stream *stream = vargp;
+//     Notification *next = stream->next();
+// }

@@ -5,7 +5,9 @@ use std::{
     future::IntoFuture,
 };
 
+use futures::StreamExt;
 use result::{ArrayResult, ArrayResultArray, ArrayResultArrayResult, StringResult, SurrealResult};
+use stream::{Stream, StreamResult};
 use surrealdb::{
     engine::any::{self, Any},
     opt::Resource,
@@ -67,21 +69,20 @@ impl Surreal {
 
     // live.rs
     #[no_mangle]
-    pub extern "C" fn select_live(
-        db: *mut Surreal,
-        resource: *const c_char,
-    ) -> ArrayResultArrayResult {
+    pub extern "C" fn select_live(db: *mut Surreal, resource: *const c_char) -> StreamResult {
         use surrealdb::method::Stream as sdbStream;
         with_surreal(db, |surreal| {
             let resource = unsafe { CStr::from_ptr(resource) }.to_str().unwrap();
             let fut = surreal.db.select(Resource::from(resource)).live();
 
-            let stream: sdbStream<Any, sql::Value> = surreal
-                .rt
-                .block_on(fut.into_future())
-                .expect("TODO: REMOVE");
+            let stream: sdbStream<Any, sql::Value> = match surreal.rt.block_on(fut.into_future()) {
+                Ok(s) => s,
+                Err(e) => return StreamResult::err(e),
+            };
 
-            todo!()
+            let out = Box::new(Stream::new(stream, surreal.rt.handle().clone()));
+
+            StreamResult::ok(Box::leak(out))
         })
     }
 
@@ -121,18 +122,12 @@ impl Surreal {
                         let arr: Array = vec![val.into()].into();
                         ArrayResult::ok(arr)
                     }
-                    Err(e) => {
-                        // eprintln!("err at index {index}: {e}\n");
-                        ArrayResult::err(e.to_string())
-                    }
+                    Err(e) => ArrayResult::err(e.to_string()),
                 };
                 acc.push(arr_res);
             }
             let arr_res_arr: ArrayResultArray = acc.into();
             ArrayResultArrayResult::ok(arr_res_arr)
-
-            // CString::new(format!("{res:?}")).unwrap().into_raw()
-            // StringResult::ok(format!("{res:?}"))
         })
     }
 
@@ -163,10 +158,15 @@ impl Surreal {
         })
     }
     // set.rs
+
     // signin.rs
+
     // signup.rs
+
     // unset.rs
+
     // update.rs
+
     // upsert.rs
 
     // use_db.rs
@@ -193,18 +193,6 @@ impl Surreal {
     }
 
     // version.rs
-    // #[no_mangle]
-    // pub extern "C" fn version(db: *mut Surreal) -> *mut c_char {
-    //     let surreal = unsafe { Box::from_raw(db) };
-
-    //     let fut = surreal.db.version();
-
-    //     let res = surreal.rt.block_on(fut.into_future()).unwrap();
-    //     let ver_str = CString::new(res.to_string()).unwrap().into_raw();
-
-    //     Box::leak(surreal);
-    //     return ver_str;
-    // }
 
     #[no_mangle]
     pub extern "C" fn version(db: *mut Surreal) -> StringResult {

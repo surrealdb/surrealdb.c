@@ -1,1 +1,1 @@
-clang -L../target/debug -lsurrealdb_c test.c && ./a.out
+clang -L../target/debug -lsurrealdb_c -lpthread test.c && ./a.out

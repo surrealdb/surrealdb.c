@@ -3,7 +3,15 @@
 #include <stdint.h>
 #include <stdlib.h>
 
+typedef enum Action {
+  Create,
+  Update,
+  Delete,
+} Action;
+
 typedef struct BTreeMap_String__Value BTreeMap_String__Value;
+
+typedef struct Stream Stream;
 
 typedef struct Surreal Surreal;
 
@@ -20,6 +28,11 @@ typedef struct SurrealResult {
   struct Surreal *ok;
   struct SurrealError err;
 } SurrealResult;
+
+typedef struct StreamResult {
+  struct Stream *ok;
+  struct SurrealError err;
+} StreamResult;
 
 typedef enum number_t_Tag {
   Int,
@@ -149,9 +162,15 @@ typedef struct StringResult {
   struct SurrealError err;
 } StringResult;
 
+typedef struct Notification {
+  struct uuid_t query_id;
+  enum Action action;
+  struct value_t data;
+} Notification;
+
 struct SurrealResult connect(const char *endpoint);
 
-struct ArrayResultArrayResult select_live(struct Surreal *db, const char *resource);
+struct StreamResult select_live(struct Surreal *db, const char *resource);
 
 struct ArrayResultArrayResult query(struct Surreal *db, const char *query);
 
@@ -173,6 +192,12 @@ void free_string(char *string);
 
 void free_arr(struct array_t arr);
 
+void print_notification(const struct Notification *notification);
+
 const struct value_t *get(const struct object_t *obj, const char *key);
+
+struct Notification *next(struct Stream *self);
+
+void kill(struct Stream *stream);
 
 void print_value(const struct value_t *val);

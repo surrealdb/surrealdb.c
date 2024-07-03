@@ -8,7 +8,9 @@ use value::Value;
 
 pub mod array;
 pub mod duration;
+pub mod notification;
 pub mod object;
+pub mod stream;
 pub mod thing;
 pub mod uuid;
 pub mod value;

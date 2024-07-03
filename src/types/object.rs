@@ -1,6 +1,6 @@
 use std::{
     collections::BTreeMap,
-    ffi::{c_char, c_void, CStr},
+    ffi::{c_char, CStr},
 };
 
 use surrealdb::sql;

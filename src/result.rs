@@ -4,7 +4,6 @@ use std::{
     ptr::{self, slice_from_raw_parts_mut},
 };
 
-use crate::types;
 use crate::{Array, Surreal};
 
 /// when code = 0 there is no error
@@ -16,18 +15,19 @@ pub struct SurrealError {
 }
 
 impl SurrealError {
-    fn empty() -> Self {
+    pub fn empty() -> Self {
         Self {
             code: 0,
             msg: ptr::null_mut(),
         }
     }
 
-    fn from_msg(msg: impl Display) -> Self {
-        Self {
+    pub fn from_msg(msg: impl Display) -> Self {
+        let out = Self {
             code: 1,
             msg: CString::new(msg.to_string()).unwrap().into_raw(),
-        }
+        };
+        out
     }
 }
 
