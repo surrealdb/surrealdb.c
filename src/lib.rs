@@ -1,8 +1,7 @@
 pub mod result;
 pub mod types;
 use std::{
-    collections::BTreeMap,
-    ffi::{c_char, CStr, CString},
+    ffi::{c_char, CStr},
     future::IntoFuture,
 };
 
@@ -55,15 +54,43 @@ impl Surreal {
     // create.rs
 
     // delete.rs
+
     // export.rs
+
     // health.rs
+
     // import.rs
+
     // insert.rs
+
     // invalidate.rs
+
     // live.rs
+    #[no_mangle]
+    pub extern "C" fn select_live(
+        db: *mut Surreal,
+        resource: *const c_char,
+    ) -> ArrayResultArrayResult {
+        use surrealdb::method::Stream as sdbStream;
+        with_surreal(db, |surreal| {
+            let resource = unsafe { CStr::from_ptr(resource) }.to_str().unwrap();
+            let fut = surreal.db.select(Resource::from(resource)).live();
+
+            let stream: sdbStream<Any, sql::Value> = surreal
+                .rt
+                .block_on(fut.into_future())
+                .expect("TODO: REMOVE");
+
+            todo!()
+        })
+    }
+
     // merge.rs
+
     // mod.rs
+
     // patch.rs
+
     // query.rs
     #[no_mangle]
     pub extern "C" fn query(db: *mut Surreal, query: *const c_char) -> ArrayResultArrayResult {
@@ -76,19 +103,28 @@ impl Surreal {
 
             let mut res = match surreal.rt.block_on(fut.into_future()) {
                 Ok(r) => r,
-                Err(e) => return ArrayResultArrayResult::err(e),
+                Err(e) => {
+                    eprintln!("{e}");
+                    return ArrayResultArrayResult::err(e);
+                }
             };
             let res_len = res.num_statements();
 
             let mut acc = Vec::with_capacity(res_len);
             for index in 0..res_len {
-                let arr_res = match res.take::<Vec<sql::Value>>(index) {
-                    Ok(val_vec) => {
-                        let val_vec: Vec<Value> = val_vec.into_iter().map(Into::into).collect();
-                        let arr: Array = val_vec.into();
+                let arr_res = match res.take::<sql::Value>(index) {
+                    Ok(sql::Value::Array(arr)) => {
+                        let a = arr.into();
+                        ArrayResult::ok(a)
+                    }
+                    Ok(val) => {
+                        let arr: Array = vec![val.into()].into();
                         ArrayResult::ok(arr)
                     }
-                    Err(e) => ArrayResult::err(e),
+                    Err(e) => {
+                        // eprintln!("err at index {index}: {e}\n");
+                        ArrayResult::err(e.to_string())
+                    }
                 };
                 acc.push(arr_res);
             }

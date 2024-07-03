@@ -1,18 +1,28 @@
-use std::ffi::{c_char, CString};
+use std::{
+    ffi::{c_char, CString},
+    fmt::Debug,
+};
 
 use surrealdb::sql;
 
-use crate::{array::Array, object::Object};
+use crate::{array::Array, object::Object, ptr_to_str};
 
 #[repr(C)]
-#[derive(Debug)]
 pub struct Thing {
     table: *mut c_char,
     id: Id,
 }
 
+impl Debug for Thing {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Thing")
+            .field("table", &ptr_to_str(self.table))
+            .field("id", &self.id)
+            .finish()
+    }
+}
+
 #[repr(C)]
-#[derive(Debug)]
 pub enum Id {
     IdNumber(i64),
     IdString(*mut c_char),
@@ -20,6 +30,17 @@ pub enum Id {
     IdArray(Box<Array>),
     IdObject(Object),
     // Generate(Gen),
+}
+
+impl Debug for Id {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::IdNumber(arg0) => f.debug_tuple("IdNumber").field(arg0).finish(),
+            Self::IdString(arg0) => f.debug_tuple("IdString").field(&ptr_to_str(*arg0)).finish(),
+            Self::IdArray(arg0) => f.debug_tuple("IdArray").field(arg0).finish(),
+            Self::IdObject(arg0) => f.debug_tuple("IdObject").field(arg0).finish(),
+        }
+    }
 }
 
 impl From<sql::Thing> for Thing {

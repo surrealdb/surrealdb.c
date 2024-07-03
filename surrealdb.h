@@ -151,6 +151,8 @@ typedef struct StringResult {
 
 struct SurrealResult connect(const char *endpoint);
 
+struct ArrayResultArrayResult select_live(struct Surreal *db, const char *resource);
+
 struct ArrayResultArrayResult query(struct Surreal *db, const char *query);
 
 struct ArrayResult select(struct Surreal *db, const char *resource);

@@ -56,23 +56,27 @@ void test_select(Surreal *db)
 
 void test_query(Surreal *db)
 {
-    ArrayResultArrayResult res = query(db, "create foo; create bar");
+    ArrayResultArrayResult res = query(db, "create foo; select * from foo;");
     if (res.err.code != 0)
     {
         printf("%s", res.err.msg);
         return;
     }
-    else
+    ArrayResultArray arr_res_arr = res.ok;
+    for (size_t i = 0; i < res.ok.len; i++)
     {
-        for (size_t i = 0; i < res.ok.len; i++)
+        if (res.ok.arr[i].err.code != 0)
         {
-            if (res.ok.arr[i].err.code != 0)
-            {
-                printf("error: %s", res.err.msg);
-                return;
-            }
+            printf("error for %d: %s\n", (int)i, res.err.msg);
+            continue;
         }
-
-        // printf("%s\n\n", res.ok);
+        array_t arr = res.ok.arr[i].ok;
+        for (size_t j = 0; j < arr.len; j++)
+        {
+            value_t v = arr.arr[j];
+            print_value(&v);
+        }
     }
+
+    // printf("%s\n\n", res.ok);
 }
