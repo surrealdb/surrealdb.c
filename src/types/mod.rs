@@ -7,6 +7,7 @@ use surrealdb::sql;
 use value::Value;
 
 pub mod array;
+pub mod bytes;
 pub mod duration;
 pub mod notification;
 pub mod object;

@@ -4,7 +4,7 @@ use surrealdb_core::sql;
 use surrealdb_core::sql::Value as sdbValue;
 
 pub use crate::{array::Array, object::Object, Number};
-use crate::{thing::Thing, uuid::Uuid};
+use crate::{bytes::Bytes, thing::Thing, uuid::Uuid};
 
 use super::duration::Duration;
 
@@ -23,24 +23,8 @@ pub enum Value {
     Array(Box<Array>),
     Object(Object),
     // Geometry(Geometry),
-    // Bytes(Bytes),
+    Bytes(Bytes),
     Thing(Thing),
-    // Param(Param),
-    // Idiom(Idiom),
-    // Table(Table),
-    // Mock(Mock),
-    // Regex(Regex),
-    // Cast(Box<Cast>),
-    // Block(Box<Block>),
-    // Range(Box<Range>),
-    // Edges(Box<Edges>),
-    // Future(Box<Future>),
-    // Constant(Constant),
-    // Function(Box<Function>),
-    // Subquery(Box<Subquery>),
-    // Expression(Box<Expression>),
-    // Query(Query),
-    // Model(Box<Model>),
 }
 
 impl From<sdbValue> for Value {
@@ -63,25 +47,9 @@ impl From<sdbValue> for Value {
             sdbValue::Array(a) => Value::Array(Box::new(a.into())),
             sdbValue::Object(o) => Value::Object(o.into()),
             sdbValue::Geometry(_) => todo!(),
-            sdbValue::Bytes(_) => todo!(),
+            sdbValue::Bytes(b) => Value::Bytes(b.into()),
             sdbValue::Thing(t) => Value::Thing(t.into()),
-            sdbValue::Param(_) => todo!(),
-            sdbValue::Idiom(_) => todo!(),
-            sdbValue::Table(_) => todo!(),
-            sdbValue::Mock(_) => todo!(),
-            sdbValue::Regex(_) => todo!(),
-            sdbValue::Cast(_) => todo!(),
-            sdbValue::Block(_) => todo!(),
-            sdbValue::Range(_) => todo!(),
-            sdbValue::Edges(_) => todo!(),
-            sdbValue::Future(_) => todo!(),
-            sdbValue::Constant(_) => todo!(),
-            sdbValue::Function(_) => todo!(),
-            sdbValue::Subquery(_) => todo!(),
-            sdbValue::Expression(_) => todo!(),
-            sdbValue::Query(_) => todo!(),
-            sdbValue::Model(_) => todo!(),
-            _ => todo!(),
+            _ => unimplemented!("other variants shouldn't be returned"),
         }
     }
 }
