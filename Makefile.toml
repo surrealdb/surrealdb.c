@@ -16,3 +16,10 @@ script = [
     "cc -L./target/debug -lsurrealdb_c -lpthread -otest/a.out test/test.c",
     "test/a.out",
 ]
+
+[tasks.test-doc]
+dependencies = ["build"]
+script = [
+    "cc -L./target/debug -lsurrealdb_c -lpthread -otest/doc.out test/doc.c",
+    "test/doc.out",
+]

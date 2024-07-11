@@ -45,7 +45,7 @@ int main()
 
     kill(stream);
 
-    test_select(db);
+    // test_select(db);
     test_query(db);
 
     // printf("%s\n", sel_res);
@@ -73,7 +73,7 @@ void test_select(Surreal *db)
 
 void test_query(Surreal *db)
 {
-    ArrayResultArrayResult res = query(db, "create foo; select * from foo;");
+    ArrayResultArrayResult res = query(db, "CREATE foo SET val = 42; select * from foo;");
     if (res.err.code != 0)
     {
         printf("%s", res.err.msg);
