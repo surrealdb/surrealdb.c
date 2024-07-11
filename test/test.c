@@ -41,9 +41,10 @@ int main()
 
     query(db, "create foo");
     // printf("notification: ");
-    print_notification(next(stream));
+    // print_notification(next(stream));
+    Notification not = next(stream);
 
-    kill(stream);
+    // kill(stream);
 
     // test_select(db);
     // test_query(db);
@@ -56,6 +57,7 @@ int main()
     // char *res3 = select(db, "foo");
     // printf("%s\n\n", res3);
 }
+
 void test_select(Surreal *db)
 {
     ArrayResult sel_res = select(db, "foo");

@@ -1,10 +1,8 @@
-use std::ffi::{c_char, CString};
-
 use surrealdb_core::sql;
 use surrealdb_core::sql::Value as sdbValue;
 
 pub use crate::{array::Array, object::Object, Number};
-use crate::{bytes::Bytes, thing::Thing, uuid::Uuid};
+use crate::{bytes::Bytes, string::string_t, thing::Thing, utils::CStringExt2, uuid::Uuid};
 
 use super::duration::Duration;
 
@@ -16,9 +14,9 @@ pub enum Value {
     Null,
     Bool(bool),
     Number(Number),
-    Strand(*mut c_char),
+    Strand(string_t),
     Duration(Duration),
-    // Datetime(Datetime),
+    Datetime(string_t),
     Uuid(Uuid),
     Array(Box<Array>),
     Object(Object),
@@ -39,9 +37,9 @@ impl From<sdbValue> for Value {
                 sql::Number::Decimal(_) => todo!(),
                 _ => todo!(),
             },
-            sdbValue::Strand(s) => Value::Strand(CString::new(s.0).unwrap().into_raw()),
+            sdbValue::Strand(s) => Value::Strand(s.0.to_string_t()),
             sdbValue::Duration(d) => Value::Duration(d.into()),
-            sdbValue::Datetime(_) => todo!(),
+            sdbValue::Datetime(dt) => Value::Datetime(dt.to_rfc3339().to_string_t()),
             sdbValue::Uuid(u) => Value::Uuid(u.into()),
             // unecssary box see: https://github.com/mozilla/cbindgen/issues/981
             sdbValue::Array(a) => Value::Array(Box::new(a.into())),

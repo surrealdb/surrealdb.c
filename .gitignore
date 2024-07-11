@@ -33,3 +33,5 @@ Temporary Items
 /target
 *.skv
 ./test/a.out
+
+./libsurrealdb_c.*

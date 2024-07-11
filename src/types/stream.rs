@@ -1,10 +1,10 @@
 use std::{fmt::Display, ptr};
 
 use futures::StreamExt;
-use surrealdb::{engine::any::Any, method::Stream as sdbStream, sql};
+use surrealdb::{method::Stream as sdbStream, sql};
 use tokio::runtime::Handle;
 
-use crate::{notification::Notification, result::SurrealError, Surreal};
+use crate::{notification::Notification, result::SurrealError};
 
 pub struct Stream {
     inner: sdbStream<sql::Value>,
@@ -19,14 +19,12 @@ impl Stream {
 
 impl Stream {
     #[no_mangle]
-    pub extern "C" fn next(&mut self) -> *mut Notification {
-        match self.rt.block_on(self.inner.next()) {
-            Some(n) => {
-                let mut n = n.into();
-                &mut n
-            }
-            None => ptr::null_mut(),
-        }
+    pub extern "C" fn next(&mut self) -> Notification {
+        // match self.rt.block_on(self.inner.next()) {
+        //     Some(n) => n.into(),
+        //     None => ptr::null_mut(),
+        // }
+        self.rt.block_on(self.inner.next()).into()
     }
 
     #[no_mangle]

@@ -15,13 +15,15 @@ typedef struct Stream Stream;
 
 typedef struct Surreal Surreal;
 
+typedef char *string_t;
+
 /**
  * when code = 0 there is no error
  *
  */
 typedef struct SurrealError {
   int code;
-  char *msg;
+  string_t msg;
 } SurrealError;
 
 typedef struct SurrealResult {
@@ -83,7 +85,7 @@ typedef struct Id {
       int64_t id_number;
     };
     struct {
-      char *id_string;
+      string_t id_string;
     };
     struct {
       struct array_t *id_array;
@@ -95,7 +97,7 @@ typedef struct Id {
 } Id;
 
 typedef struct thing_t {
-  char *table;
+  string_t table;
   struct Id id;
 } thing_t;
 
@@ -106,6 +108,7 @@ typedef enum value_t_Tag {
   Number,
   Strand,
   Duration,
+  Datetime,
   Uuid,
   Array,
   Object,
@@ -123,10 +126,13 @@ typedef struct value_t {
       struct number_t number;
     };
     struct {
-      char *strand;
+      string_t strand;
     };
     struct {
       struct duration_t duration;
+    };
+    struct {
+      string_t datetime;
     };
     struct {
       struct uuid_t uuid;
@@ -167,11 +173,12 @@ typedef struct ArrayResultArrayResult {
 } ArrayResultArrayResult;
 
 typedef struct StringResult {
-  char *ok;
+  string_t ok;
   struct SurrealError err;
 } StringResult;
 
 typedef struct Notification {
+  bool some;
   struct uuid_t query_id;
   enum Action action;
   struct value_t data;
@@ -193,22 +200,22 @@ void use_ns(struct Surreal *db, const char *query);
 
 struct StringResult version(struct Surreal *db);
 
-void free_arr_res(struct ArrayResult res);
-
-void free_arr_res_arr(struct ArrayResultArray arr);
-
-void free_arr_res_arr_res(struct ArrayResultArrayResult res);
-
-void free_string(char *string);
-
 void free_arr(struct array_t arr);
 
 void print_notification(const struct Notification *notification);
 
 const struct value_t *get(const struct object_t *obj, const char *key);
 
-struct Notification *next(struct Stream *self);
+void free_arr_res(struct ArrayResult res);
+
+void free_arr_res_arr(struct ArrayResultArray arr);
+
+void free_arr_res_arr_res(struct ArrayResultArrayResult res);
+
+struct Notification next(struct Stream *self);
 
 void kill(struct Stream *stream);
+
+void free_string(string_t string);
 
 void print_value(const struct value_t *val);

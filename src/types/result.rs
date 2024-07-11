@@ -1,31 +1,32 @@
 use std::{
-    ffi::{c_char, c_int, CString},
+    ffi::c_int,
     fmt::Display,
     ptr::{self, slice_from_raw_parts_mut},
 };
 
-use crate::{Array, Surreal};
+use crate::{string::free_string, utils::CStringExt2};
+use crate::{string::string_t, Array, Surreal};
 
 /// when code = 0 there is no error
 ///
 #[repr(C)]
 pub struct SurrealError {
     code: c_int,
-    msg: *mut c_char,
+    msg: string_t,
 }
 
 impl SurrealError {
     pub fn empty() -> Self {
         Self {
             code: 0,
-            msg: ptr::null_mut(),
+            msg: string_t::null(),
         }
     }
 
     pub fn from_msg(msg: impl Display) -> Self {
         let out = Self {
             code: 1,
-            msg: CString::new(msg.to_string()).unwrap().into_raw(),
+            msg: msg.to_string().to_string_t(),
         };
         out
     }
@@ -158,28 +159,21 @@ impl ArrayResultArrayResult {
 
 #[repr(C)]
 pub struct StringResult {
-    pub ok: *mut c_char,
+    pub ok: string_t,
     pub err: SurrealError,
 }
 
 impl StringResult {
     pub fn err(msg: impl Display) -> Self {
         Self {
-            ok: ptr::null_mut(),
+            ok: string_t::null(),
             err: SurrealError::from_msg(msg),
         }
     }
     pub fn ok(ok: impl Into<String>) -> Self {
         Self {
-            ok: CString::new(ok.into()).unwrap().into_raw(),
+            ok: ok.into().to_string_t(),
             err: SurrealError::empty(),
         }
-    }
-}
-
-#[no_mangle]
-pub extern "C" fn free_string(string: *mut c_char) {
-    if !string.is_null() {
-        let _ = unsafe { CString::from_raw(string) };
     }
 }

@@ -1,12 +1,11 @@
-pub mod result;
 pub mod types;
+pub mod utils;
+
 use std::{
     ffi::{c_char, CStr},
     future::IntoFuture,
 };
 
-use futures::StreamExt;
-use result::{ArrayResult, ArrayResultArray, ArrayResultArrayResult, StringResult, SurrealResult};
 use stream::{Stream, StreamResult};
 use surrealdb::{
     engine::any::{self, Any},
@@ -14,6 +13,9 @@ use surrealdb::{
     sql, Surreal as sdbSurreal,
 };
 use tokio::runtime::Runtime;
+use types::result::{
+    ArrayResult, ArrayResultArray, ArrayResultArrayResult, StringResult, SurrealResult,
+};
 
 use array::Array;
 pub use types::*;

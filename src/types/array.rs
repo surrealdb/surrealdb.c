@@ -39,10 +39,16 @@ impl Array {
     }
 }
 
+impl Drop for Array {
+    fn drop(&mut self) {
+        let slice = slice_from_raw_parts_mut(self.arr, self.len);
+        let _boxed = unsafe { Box::from_raw(slice) };
+    }
+}
+
 impl Array {
     #[no_mangle]
     pub extern "C" fn free_arr(arr: Array) {
-        let slice = slice_from_raw_parts_mut(arr.arr, arr.len);
-        let _boxed = unsafe { Box::from_raw(slice) };
+        drop(arr)
     }
 }
