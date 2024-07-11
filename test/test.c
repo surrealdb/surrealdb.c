@@ -1,10 +1,16 @@
 #include <stdio.h>
 #include <pthread.h>
+#include <time.h>
 #include "../surrealdb.h"
 
 void test_query(Surreal *db);
 void test_select(Surreal *db);
 void *print_stream(void *vargp);
+
+Surreal *surreal_cast(void *opaque)
+{
+    return (Surreal *)opaque;
+}
 
 int main()
 {

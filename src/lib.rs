@@ -17,7 +17,6 @@ use tokio::runtime::Runtime;
 
 use array::Array;
 pub use types::*;
-use value::Value;
 
 pub struct Surreal {
     db: sdbSurreal<Any>,
@@ -41,6 +40,11 @@ impl Surreal {
         let boxed = Box::new(Surreal { db, rt });
 
         return SurrealResult::ok(Box::leak(boxed));
+    }
+
+    #[no_mangle]
+    pub extern "C" fn disconnect(db: *mut Surreal) {
+        let _ = unsafe { Box::from_raw(db) };
     }
 
     // authenticate.rs

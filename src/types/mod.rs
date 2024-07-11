@@ -8,6 +8,7 @@ use value::Value;
 
 pub mod array;
 pub mod bytes;
+pub mod datetime;
 pub mod duration;
 pub mod notification;
 pub mod object;

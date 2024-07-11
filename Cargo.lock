@@ -3383,6 +3383,7 @@ name = "surrealdb_c"
 version = "0.1.0"
 dependencies = [
  "futures",
+ "libc",
  "surrealdb",
  "surrealdb-core",
  "surrealdb_c_macro",

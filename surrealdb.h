@@ -64,6 +64,11 @@ typedef struct object_t {
   struct BTreeMap_String__Value *_0;
 } object_t;
 
+typedef struct bytes_t {
+  uint8_t *arr;
+  uintptr_t len;
+} bytes_t;
+
 typedef enum Id_Tag {
   IdNumber,
   IdString,
@@ -104,6 +109,7 @@ typedef enum value_t_Tag {
   Uuid,
   Array,
   Object,
+  Bytes,
   Thing,
 } value_t_Tag;
 
@@ -130,6 +136,9 @@ typedef struct value_t {
     };
     struct {
       struct object_t object;
+    };
+    struct {
+      struct bytes_t bytes;
     };
     struct {
       struct thing_t thing;
@@ -169,6 +178,8 @@ typedef struct Notification {
 } Notification;
 
 struct SurrealResult connect(const char *endpoint);
+
+void disconnect(struct Surreal *db);
 
 struct StreamResult select_live(struct Surreal *db, const char *resource);
 
