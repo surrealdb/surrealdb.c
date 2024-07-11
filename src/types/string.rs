@@ -1,5 +1,4 @@
 use std::{
-    backtrace::Backtrace,
     ffi::{c_char, CStr, CString},
     fmt::Debug,
     ptr,

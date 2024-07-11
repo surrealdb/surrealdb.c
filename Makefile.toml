@@ -1,3 +1,7 @@
+[config]
+skip_core_tasks = true
+reduce_output = true
+
 [tasks.build]
 command = "cargo"
 args = ["build"]
@@ -8,4 +12,7 @@ args = ["build", "--release"]
 
 [tasks.test]
 dependencies = ["build"]
-script = "cd test"
+script = [
+    "cc -L./target/debug -lsurrealdb_c -lpthread -otest/a.out test/test.c",
+    "test/a.out",
+]

@@ -40,14 +40,13 @@ int main()
     Stream *stream = select_live(db, "foo").ok;
 
     query(db, "create foo");
-    // printf("notification: ");
-    // print_notification(next(stream));
-    Notification not = next(stream);
+    Notification n = next(stream);
+    print_notification(&n);
 
-    // kill(stream);
+    kill(stream);
 
-    // test_select(db);
-    // test_query(db);
+    test_select(db);
+    test_query(db);
 
     // printf("%s\n", sel_res);
 
