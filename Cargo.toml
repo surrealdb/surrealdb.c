@@ -2,19 +2,24 @@
 name = "surrealdb_c"
 version = "0.1.0"
 edition = "2021"
+authors = ["Tobie Morgan Hitchcock <tobie@surrealdb.com>"]
+description = "WebAssembly driver for SurrealDB"
+repository = "https://github.com/surrealdb/surrealdb.wasm"
+license = "Apache License 2.0"
 
 [lib]
 crate-type = ["lib", "staticlib", "cdylib"]
 
 [dependencies]
-surrealdb = { git = "https://github.com/surrealdb/surrealdb.git", tag = "v2.0.0-alpha.3", features = ["kv-surrealkv", "kv-mem"] }
-surrealdb-core = { git = "https://github.com/surrealdb/surrealdb.git", tag = "v2.0.0-alpha.3" }
+surrealdb = { git = "https://github.com/surrealdb/surrealdb.git", tag = "v2.0.0-alpha.5", features = [
+    "kv-surrealkv",
+    "kv-mem",
+] }
+surrealdb-core = { git = "https://github.com/surrealdb/surrealdb.git", tag = "v2.0.0-alpha.5" }
 tokio = { version = "1.38.0", features = ["full"] }
-surrealdb_c_macro = { path = "./surrealdb_c_macro" }
 uuid = "1.9.1"
 futures = "0.3.30"
 libc = "0.2.155"
 
-
-[workspace]
-members = ["surrealdb_c_macro"]
+[build-dependencies]
+cbindgen = "0.26.0"

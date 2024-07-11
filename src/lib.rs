@@ -79,7 +79,7 @@ impl Surreal {
             let resource = unsafe { CStr::from_ptr(resource) }.to_str().unwrap();
             let fut = surreal.db.select(Resource::from(resource)).live();
 
-            let stream: sdbStream<Any, sql::Value> = match surreal.rt.block_on(fut.into_future()) {
+            let stream: sdbStream<sql::Value> = match surreal.rt.block_on(fut.into_future()) {
                 Ok(s) => s,
                 Err(e) => return StreamResult::err(e),
             };

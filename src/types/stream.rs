@@ -7,20 +7,14 @@ use tokio::runtime::Handle;
 use crate::{notification::Notification, result::SurrealError, Surreal};
 
 pub struct Stream {
-    inner: sdbStream<'static, Any, sql::Value>,
+    inner: sdbStream<sql::Value>,
     rt: Handle,
 }
 
 impl Stream {
-    pub fn new(inner: sdbStream<Any, sql::Value>, rt: Handle) -> Stream {
-        //TODO: remove lifetime so hack unnecessary
-        let inner = lifetime_hack(inner);
+    pub fn new(inner: sdbStream<sql::Value>, rt: Handle) -> Stream {
         Stream { inner, rt }
     }
-}
-
-fn lifetime_hack(src: sdbStream<'_, Any, sql::Value>) -> sdbStream<'static, Any, sql::Value> {
-    unsafe { std::mem::transmute(src) }
 }
 
 impl Stream {

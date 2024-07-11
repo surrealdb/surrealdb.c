@@ -1,0 +1,11 @@
+[tasks.build]
+command = "cargo"
+args = ["build"]
+
+[tasks.build-release]
+command = "cargo"
+args = ["build", "--release"]
+
+[tasks.test]
+dependencies = ["build"]
+script = "cd test"
