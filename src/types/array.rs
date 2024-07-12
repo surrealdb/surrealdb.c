@@ -51,7 +51,5 @@ impl Drop for Array {
 
 impl Array {
     #[no_mangle]
-    pub extern "C" fn free_arr(arr: Array) {
-        drop(arr)
-    }
+    pub extern "C" fn free_arr(_arr: Array) {}
 }

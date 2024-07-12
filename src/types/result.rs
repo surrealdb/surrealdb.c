@@ -107,16 +107,19 @@ impl ArrayResultArray {
     }
 }
 
+impl Drop for ArrayResultArray {
+    fn drop(&mut self) {
+        if self.arr.is_null() {
+            return;
+        }
+        let slice = slice_from_raw_parts_mut(self.arr, self.len);
+        let _boxed = unsafe { Box::from_raw(slice) };
+    }
+}
+
 impl ArrayResultArray {
     #[no_mangle]
-    pub extern "C" fn free_arr_res_arr(arr: ArrayResultArray) {
-        let slice = slice_from_raw_parts_mut(arr.arr, arr.len);
-        let _boxed = unsafe { Box::from_raw(slice) };
-        // let owned = boxed.into_vec();
-        // for arr_res in owned {
-        //     ArrayResult::free_arr_res(arr_res)
-        // }
-    }
+    pub extern "C" fn free_arr_res_arr(_arr: ArrayResultArray) {}
 }
 
 #[repr(C)]
@@ -142,13 +145,7 @@ impl ArrayResultArrayResult {
 
 impl ArrayResultArrayResult {
     #[no_mangle]
-    pub extern "C" fn free_arr_res_arr_res(res: ArrayResultArrayResult) {
-        if res.err.code != 0 {
-            free_string(res.err.msg);
-        } else {
-            ArrayResultArray::free_arr_res_arr(res.ok)
-        }
-    }
+    pub extern "C" fn free_arr_res_arr_res(_res: ArrayResultArrayResult) {}
 }
 
 #[repr(C)]

@@ -200,7 +200,7 @@ void use_ns(struct Surreal *db, const char *query);
 
 struct StringResult version(struct Surreal *db);
 
-void free_arr(struct array_t arr);
+void free_arr(struct array_t _arr);
 
 void print_notification(const struct Notification *notification);
 
@@ -208,9 +208,9 @@ const struct value_t *get(const struct object_t *obj, const char *key);
 
 void free_arr_res(struct ArrayResult _res);
 
-void free_arr_res_arr(struct ArrayResultArray arr);
+void free_arr_res_arr(struct ArrayResultArray _arr);
 
-void free_arr_res_arr_res(struct ArrayResultArrayResult res);
+void free_arr_res_arr_res(struct ArrayResultArrayResult _res);
 
 struct Notification next(struct Stream *self);
 
