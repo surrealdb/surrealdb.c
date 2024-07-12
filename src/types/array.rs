@@ -41,6 +41,9 @@ impl Array {
 
 impl Drop for Array {
     fn drop(&mut self) {
+        if self.arr.is_null() {
+            return;
+        }
         let slice = slice_from_raw_parts_mut(self.arr, self.len);
         let _boxed = unsafe { Box::from_raw(slice) };
     }

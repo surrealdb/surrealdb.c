@@ -53,10 +53,11 @@ use_db(db, "test");
 ### Using query
 
 ```c
-    ArrayResultArrayResult res = query(db, "CREATE foo:1 SET val = 42; CREATE foo:1 SET val = 48; SELECT * FROM foo;");
+       ArrayResultArrayResult res = query(db, "CREATE foo:1 SET val = 42; CREATE foo:1 SET val = 48; SELECT * FROM foo;");
     if (res.err.code != 0)
     {
         printf("%s", res.err.msg);
+        free_string(res.err.msg);
         return 1;
     }
     ArrayResultArray arr_res_arr = res.ok;
@@ -64,6 +65,7 @@ use_db(db, "test");
     assert(arr_res_arr.arr[0].err.code == 0);
     assert(arr_res_arr.arr[1].err.code != 0);
     printf("error: %s\n", arr_res_arr.arr[1].err.msg); // error: Database record `foo:1` already exists
+    free_string(arr_res_arr.arr[1].err.msg);
     assert(arr_res_arr.arr[2].err.code == 0);
 
     array_t foos = arr_res_arr.arr[2].ok;
@@ -94,5 +96,5 @@ use_db(db, "test");
         }
     }
     printf("total of foo vals: %f\n", sum);
-
+    free_arr_res_arr(arr_res_arr);
 ```

@@ -206,7 +206,7 @@ void print_notification(const struct Notification *notification);
 
 const struct value_t *get(const struct object_t *obj, const char *key);
 
-void free_arr_res(struct ArrayResult res);
+void free_arr_res(struct ArrayResult _res);
 
 void free_arr_res_arr(struct ArrayResultArray arr);
 

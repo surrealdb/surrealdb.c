@@ -76,13 +76,7 @@ impl ArrayResult {
 
 impl ArrayResult {
     #[no_mangle]
-    pub extern "C" fn free_arr_res(res: ArrayResult) {
-        if res.err.code != 0 {
-            free_string(res.err.msg);
-        } else {
-            Array::free_arr(res.ok)
-        }
-    }
+    pub extern "C" fn free_arr_res(_res: ArrayResult) {}
 }
 
 #[repr(C)]
@@ -117,11 +111,11 @@ impl ArrayResultArray {
     #[no_mangle]
     pub extern "C" fn free_arr_res_arr(arr: ArrayResultArray) {
         let slice = slice_from_raw_parts_mut(arr.arr, arr.len);
-        let boxed = unsafe { Box::from_raw(slice) };
-        let owned = boxed.into_vec();
-        for arr_res in owned {
-            ArrayResult::free_arr_res(arr_res)
-        }
+        let _boxed = unsafe { Box::from_raw(slice) };
+        // let owned = boxed.into_vec();
+        // for arr_res in owned {
+        //     ArrayResult::free_arr_res(arr_res)
+        // }
     }
 }
 

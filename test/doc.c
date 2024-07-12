@@ -40,6 +40,7 @@ int main()
     if (res.err.code != 0)
     {
         printf("%s", res.err.msg);
+        free_string(res.err.msg);
         return 1;
     }
     ArrayResultArray arr_res_arr = res.ok;
@@ -47,6 +48,7 @@ int main()
     assert(arr_res_arr.arr[0].err.code == 0);
     assert(arr_res_arr.arr[1].err.code != 0);
     printf("error: %s\n", arr_res_arr.arr[1].err.msg); // error: Database record `foo:1` already exists
+    free_string(arr_res_arr.arr[1].err.msg);
     assert(arr_res_arr.arr[2].err.code == 0);
 
     array_t foos = arr_res_arr.arr[2].ok;
@@ -77,4 +79,5 @@ int main()
         }
     }
     printf("total of foo vals: %f\n", sum);
+    free_arr_res_arr(arr_res_arr);
 }
