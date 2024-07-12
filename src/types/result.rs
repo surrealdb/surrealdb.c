@@ -4,7 +4,7 @@ use std::{
     ptr::{self, slice_from_raw_parts_mut},
 };
 
-use crate::{string::free_string, utils::CStringExt2};
+use crate::utils::CStringExt2;
 use crate::{string::string_t, Array, Surreal};
 
 /// when code = 0 there is no error
