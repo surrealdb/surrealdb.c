@@ -3,47 +3,51 @@
 #include <time.h>
 #include "../surrealdb.h"
 
-void test_query(Surreal *db);
-void test_select(Surreal *db);
+void test_query(sr_surreal_t *db);
+void test_select(sr_surreal_t *db);
 void *print_stream(void *vargp);
 
-Surreal *surreal_cast(void *opaque)
-{
-    return (Surreal *)opaque;
-}
+// sr_surreal_t *surreal_cast(void *opaque)
+// {
+//     return (Surreal *)opaque;
+// }
 
 int main()
 {
-    SurrealResult connect_res = connect("memory");
+    sr_surreal_res_t connect_res = sr_connect("memory");
     if (connect_res.err.code != 0)
     {
         printf("%s", connect_res.err.msg);
         return 1;
     }
-    Surreal *db = connect_res.ok;
+    sr_surreal_t *db = &connect_res.ok;
 
-    StringResult ver_res = version(db);
-    if (ver_res.err.code != 0)
+    sr_string_t ver = sr_version(db);
+    if (db->err != 0)
     {
-        printf("%s", connect_res.err.msg);
+        printf("%s", db->err);
         return 1;
     }
-    char *ver_str = ver_res.ok;
 
-    printf("%s\n", ver_str);
+    printf("%s\n", ver);
 
-    use_ns(db, "test");
-    use_db(db, "test");
+    sr_use_ns(db, "test");
+    sr_use_db(db, "test");
 
-    query(db, "create foo");
+    sr_query(db, "create foo");
 
-    Stream *stream = select_live(db, "foo").ok;
+    sr_stream_t *stream = sr_select_live(db, "foo");
+    if (db->err != 0)
+    {
+        printf("%s", db->err);
+        return 1;
+    }
 
-    query(db, "create foo");
-    Notification n = next(stream);
-    print_notification(&n);
+    sr_query(db, "create foo");
+    sr_notification_t n = sr_stream_next(stream);
+    sr_print_notification(&n);
 
-    kill(stream);
+    sr_stream_kill(stream);
 
     // test_select(db);
     test_query(db);
@@ -57,41 +61,41 @@ int main()
     // printf("%s\n\n", res3);
 }
 
-void test_select(Surreal *db)
+void test_select(sr_surreal_t *db)
 {
-    ArrayResult sel_res = select(db, "foo");
-    if (sel_res.err.code != 0)
+    sr_array_t foos = sr_select(db, "foo");
+    if (db->err != 0)
     {
-        printf("%s", sel_res.err.msg);
+        printf("%s", db->err);
         return;
     }
     else
     {
-        print_value(&sel_res.ok.arr[0]);
+        sr_value_print(&foos.arr[0]);
     }
 }
 
-void test_query(Surreal *db)
+void test_query(sr_surreal_t *db)
 {
-    ArrayResultArrayResult res = query(db, "CREATE foo SET val = 42; select * from foo;");
-    if (res.err.code != 0)
+    sr_arr_res_arr_t arr_res = sr_query(db, "CREATE foo SET val = 42; select * from foo;");
+    if (db->err != 0)
     {
-        printf("%s", res.err.msg);
+        printf("%s", db->err);
         return;
     }
-    ArrayResultArray arr_res_arr = res.ok;
-    for (size_t i = 0; i < res.ok.len; i++)
+    // ArrayResultArray arr_res_arr = res.ok;
+    for (size_t i = 0; i < arr_res.len; i++)
     {
-        if (res.ok.arr[i].err.code != 0)
+        if (arr_res.arr[i].err.code != 0)
         {
-            printf("error for %d: %s\n", (int)i, res.ok.arr[i].err.msg);
+            printf("error for %d: %s\n", (int)i, arr_res.arr[i].err.msg);
             continue;
         }
-        array_t arr = res.ok.arr[i].ok;
+        sr_array_t arr = arr_res.arr[i].ok;
         for (size_t j = 0; j < arr.len; j++)
         {
-            value_t v = arr.arr[j];
-            print_value(&v);
+            sr_value_t v = arr.arr[j];
+            sr_value_print(&v);
         }
     }
 

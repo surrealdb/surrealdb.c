@@ -1,8 +1,10 @@
 use std::{
     ffi::{c_char, CStr, CString},
-    fmt::Debug,
+    fmt::{Debug, Display},
     ptr,
 };
+
+use crate::utils::CStringExt2;
 
 #[repr(transparent)]
 #[allow(non_camel_case_types)]
@@ -11,6 +13,10 @@ pub struct string_t(pub *mut c_char);
 impl string_t {
     pub fn null() -> string_t {
         string_t(ptr::null_mut())
+    }
+
+    pub fn from_error(s: impl std::error::Error) -> string_t {
+        s.to_string().to_string_t()
     }
 }
 
@@ -27,6 +33,18 @@ impl Drop for string_t {
         if !ptr.is_null() {
             let _ = unsafe { CString::from_raw(ptr) };
         }
+    }
+}
+
+impl<D: Display> From<D> for string_t {
+    fn from(value: D) -> Self {
+        value.to_string().to_string_t()
+    }
+}
+
+impl Default for string_t {
+    fn default() -> Self {
+        Self(ptr::null_mut())
     }
 }
 

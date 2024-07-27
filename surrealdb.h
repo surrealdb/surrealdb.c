@@ -13,9 +13,19 @@ typedef struct sr_opaque_object_internal_t sr_opaque_object_internal_t;
 
 typedef struct sr_stream_t sr_stream_t;
 
-typedef struct sr_surreal_t sr_surreal_t;
+typedef struct sr_surreal_inner_t sr_surreal_inner_t;
 
 typedef char *sr_string_t;
+
+/**
+ * a type representing a shared SurrealDB connection and local errors
+ * pointers can be shared across threads,
+ * but copy must be called before any other functions are used to prevent race conditions
+ */
+typedef struct sr_surreal_t {
+  const struct sr_surreal_inner_t *inner;
+  sr_string_t err;
+} sr_surreal_t;
 
 /**
  * when code = 0 there is no error
@@ -26,15 +36,10 @@ typedef struct sr_SurrealError {
   sr_string_t msg;
 } sr_SurrealError;
 
-typedef struct sr_SurrealResult {
-  struct sr_surreal_t *ok;
+typedef struct sr_surreal_res_t {
+  struct sr_surreal_t ok;
   struct sr_SurrealError err;
-} sr_SurrealResult;
-
-typedef struct sr_StreamResult {
-  struct sr_stream_t *ok;
-  struct sr_SurrealError err;
-} sr_StreamResult;
+} sr_surreal_res_t;
 
 typedef enum sr_number_t_Tag {
   SR_NUMBER_INT,
@@ -167,16 +172,6 @@ typedef struct sr_arr_res_arr_t {
   uintptr_t len;
 } sr_arr_res_arr_t;
 
-typedef struct sr_arr_res_arr_res_t {
-  struct sr_arr_res_arr_t ok;
-  struct sr_SurrealError err;
-} sr_arr_res_arr_res_t;
-
-typedef struct sr_string_res_t {
-  sr_string_t ok;
-  struct sr_SurrealError err;
-} sr_string_res_t;
-
 typedef struct sr_notification_t {
   bool some;
   struct sr_uuid_t query_id;
@@ -184,21 +179,32 @@ typedef struct sr_notification_t {
   struct sr_value_t data;
 } sr_notification_t;
 
-struct sr_SurrealResult sr_connect(const char *endpoint);
+struct sr_surreal_res_t sr_connect(const char *endpoint);
 
-void sr_disconnect(struct sr_surreal_t *db);
+/**
+ * shallow copies surrealdb connection that can be passed between threads and has seperate error handling
+ */
+struct sr_surreal_t sr_surreal_copy(const struct sr_surreal_t *surreal);
 
-struct sr_StreamResult sr_select_live(struct sr_surreal_t *db, const char *resource);
+void sr_surreal_disconnect(struct sr_surreal_t db);
 
-struct sr_arr_res_arr_res_t sr_query(struct sr_surreal_t *db, const char *query);
+/**
+ * takes error from a Sureal connection, leaving it blank
+ * useful when errors are expected or recoverable
+ */
+sr_string_t sr_err(struct sr_surreal_t *db);
 
-struct sr_arr_res_t sr_select(struct sr_surreal_t *db, const char *resource);
+struct sr_stream_t *sr_select_live(struct sr_surreal_t *db, const char *resource);
+
+struct sr_arr_res_arr_t sr_query(struct sr_surreal_t *db, const char *query);
+
+struct sr_array_t sr_select(struct sr_surreal_t *db, const char *resource);
 
 void sr_use_db(struct sr_surreal_t *db, const char *query);
 
 void sr_use_ns(struct sr_surreal_t *db, const char *query);
 
-struct sr_string_res_t sr_version(struct sr_surreal_t *db);
+sr_string_t sr_version(struct sr_surreal_t *db);
 
 void sr_free_arr(struct sr_array_t arr);
 
@@ -209,8 +215,6 @@ const struct sr_value_t *sr_object_get(const struct sr_object_t *obj, const char
 void sr_free_arr_res(struct sr_arr_res_t res);
 
 void sr_free_arr_res_arr(struct sr_arr_res_arr_t arr);
-
-void sr_free_arr_res_arr_res(struct sr_arr_res_arr_res_t _res);
 
 struct sr_notification_t sr_stream_next(struct sr_stream_t *self);
 

@@ -34,18 +34,18 @@ impl SurrealError {
 
 #[repr(C)]
 pub struct SurrealResult {
-    pub ok: *mut Surreal,
+    pub ok: Surreal,
     pub err: SurrealError,
 }
 
 impl SurrealResult {
     pub fn err(msg: impl Display) -> Self {
         Self {
-            ok: ptr::null_mut(),
+            ok: Surreal::null(),
             err: SurrealError::from_msg(msg),
         }
     }
-    pub fn ok(ok: &mut Surreal) -> Self {
+    pub fn ok(ok: Surreal) -> Self {
         Self {
             ok,
             err: SurrealError::empty(),
@@ -101,7 +101,7 @@ impl From<Vec<ArrayResult>> for ArrayResultArray {
 }
 
 impl ArrayResultArray {
-    fn empty() -> Self {
+    pub fn empty() -> Self {
         Self {
             arr: ptr::null_mut(),
             len: 0,
@@ -126,49 +126,23 @@ impl ArrayResultArray {
     }
 }
 
-#[repr(C)]
-pub struct ArrayResultArrayResult {
-    pub ok: ArrayResultArray,
-    pub err: SurrealError,
-}
+// #[repr(C)]
+// pub struct StringResult {
+//     pub ok: string_t,
+//     pub err: SurrealError,
+// }
 
-impl ArrayResultArrayResult {
-    pub fn err(msg: impl Display) -> Self {
-        Self {
-            ok: ArrayResultArray::empty(),
-            err: SurrealError::from_msg(msg),
-        }
-    }
-    pub fn ok(ok: ArrayResultArray) -> Self {
-        Self {
-            ok,
-            err: SurrealError::empty(),
-        }
-    }
-}
-
-impl ArrayResultArrayResult {
-    #[export_name = "sr_free_arr_res_arr_res"]
-    pub extern "C" fn free_arr_res_arr_res(_res: ArrayResultArrayResult) {}
-}
-
-#[repr(C)]
-pub struct StringResult {
-    pub ok: string_t,
-    pub err: SurrealError,
-}
-
-impl StringResult {
-    pub fn err(msg: impl Display) -> Self {
-        Self {
-            ok: string_t::null(),
-            err: SurrealError::from_msg(msg),
-        }
-    }
-    pub fn ok(ok: impl Into<String>) -> Self {
-        Self {
-            ok: ok.into().to_string_t(),
-            err: SurrealError::empty(),
-        }
-    }
-}
+// impl StringResult {
+//     pub fn err(msg: impl Display) -> Self {
+//         Self {
+//             ok: string_t::null(),
+//             err: SurrealError::from_msg(msg),
+//         }
+//     }
+//     pub fn ok(ok: impl Into<String>) -> Self {
+//         Self {
+//             ok: ok.into().to_string_t(),
+//             err: SurrealError::empty(),
+//         }
+//     }
+// }
