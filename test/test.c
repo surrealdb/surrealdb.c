@@ -7,11 +7,6 @@ void test_query(sr_surreal_t *db);
 void test_select(sr_surreal_t *db);
 void *print_stream(void *vargp);
 
-// sr_surreal_t *surreal_cast(void *opaque)
-// {
-//     return (Surreal *)opaque;
-// }
-
 int main()
 {
     sr_surreal_res_t connect_res = sr_connect("memory");

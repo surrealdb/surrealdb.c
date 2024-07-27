@@ -29,7 +29,6 @@ typedef struct sr_surreal_t {
 
 /**
  * when code = 0 there is no error
- *
  */
 typedef struct sr_SurrealError {
   int code;

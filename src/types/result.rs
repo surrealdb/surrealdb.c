@@ -8,7 +8,6 @@ use crate::utils::CStringExt2;
 use crate::{string::string_t, Array, Surreal};
 
 /// when code = 0 there is no error
-///
 #[repr(C)]
 pub struct SurrealError {
     code: c_int,
@@ -125,24 +124,3 @@ impl ArrayResultArray {
         let _ = arr;
     }
 }
-
-// #[repr(C)]
-// pub struct StringResult {
-//     pub ok: string_t,
-//     pub err: SurrealError,
-// }
-
-// impl StringResult {
-//     pub fn err(msg: impl Display) -> Self {
-//         Self {
-//             ok: string_t::null(),
-//             err: SurrealError::from_msg(msg),
-//         }
-//     }
-//     pub fn ok(ok: impl Into<String>) -> Self {
-//         Self {
-//             ok: ok.into().to_string_t(),
-//             err: SurrealError::empty(),
-//         }
-//     }
-// }

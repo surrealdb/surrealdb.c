@@ -203,22 +203,11 @@ impl Surreal {
         with_surreal(db, |surreal| {
             let resource = unsafe { CStr::from_ptr(resource) }.to_str().unwrap();
 
-            // let fut = surreal.db.select(resource);
-
-            // let res: Vec<BTreeMap<String, sql::Value>> =
-            //     surreal.rt.block_on(fut.into_future()).unwrap();
-
             let fut = surreal.db.select(Resource::from(resource));
 
-            let res = match surreal.rt.block_on(fut.into_future()) {
-                Ok(sql::Value::Array(a)) => Array::from(a),
-                Ok(v) => {
-                    // let foo: Array = v;
-                    Array::from(vec![v.into()])
-                }
-                Err(e) => {
-                    return Err(e.into());
-                }
+            let res = match surreal.rt.block_on(fut.into_future())? {
+                sql::Value::Array(a) => Array::from(a),
+                v => Array::from(vec![v.into()]),
             };
 
             Ok(res)
@@ -268,10 +257,6 @@ impl Surreal {
         with_surreal(db, |surreal| {
             let fut = surreal.db.version();
 
-            // let res = match surreal.rt.block_on(fut.into_future()) {
-            //     Ok(r) => r,
-            //     Err(e) => return StringResult::err(e),
-            // };
             let res = surreal.rt.block_on(fut.into_future())?;
 
             return Ok(res.into());
@@ -283,7 +268,6 @@ fn with_surreal<C, O>(db: &mut Surreal, fun: C) -> O
 where
     C: Fn(&SurrealInner) -> Result<O, string_t>,
     O: Empty,
-    // E: std::error::Error,
 {
     let inner_arc = unsafe { Arc::from_raw(db.inner) };
     let inner = inner_arc.as_ref();
@@ -300,20 +284,6 @@ where
         }
     }
 }
-
-// fn with_surreal_err<C, O>(db: &mut Surreal, fun: C) -> O
-// where
-//     C: Fn(&SurrealInner, &mut string_t) -> O,
-// {
-//     let inner_arc = unsafe { Arc::from_raw(db.inner) };
-//     let inner = inner_arc.as_ref();
-
-//     let res = fun(&inner, &mut db.err);
-
-//     let _ = Arc::into_raw(inner_arc);
-
-//     res
-// }
 
 impl Drop for Surreal {
     fn drop(&mut self) {

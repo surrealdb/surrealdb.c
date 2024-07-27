@@ -35,7 +35,7 @@ impl CStringExt for &str {
     }
 }
 
-// TODO Default could be used instead
+// must be seperate from Default because implementation for *mut T
 pub trait Empty {
     fn empty() -> Self;
 }
