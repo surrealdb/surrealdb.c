@@ -18,7 +18,7 @@ impl Stream {
 }
 
 impl Stream {
-    #[no_mangle]
+    #[export_name = "sr_stream_next"]
     pub extern "C" fn next(&mut self) -> Notification {
         // match self.rt.block_on(self.inner.next()) {
         //     Some(n) => n.into(),
@@ -27,7 +27,7 @@ impl Stream {
         self.rt.block_on(self.inner.next()).into()
     }
 
-    #[no_mangle]
+    #[export_name = "sr_stream_kill"]
     pub extern "C" fn kill(stream: *mut Stream) {
         let boxed = unsafe { Box::from_raw(stream) };
         let handle = boxed.rt.clone();

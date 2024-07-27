@@ -35,7 +35,7 @@ pub fn ptr_to_str(ptr: *const c_char) -> &'static str {
     cstr.to_str().unwrap()
 }
 
-#[no_mangle]
+#[export_name = "sr_free_string"]
 pub extern "C" fn free_string(string: string_t) {
     drop(string)
 }

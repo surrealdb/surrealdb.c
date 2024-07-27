@@ -26,7 +26,7 @@ pub struct Surreal {
 }
 
 impl Surreal {
-    #[no_mangle]
+    #[export_name = "sr_connect"]
     pub extern "C" fn connect(endpoint: *const c_char) -> SurrealResult {
         let endpoint = unsafe { CStr::from_ptr(endpoint).to_str().unwrap() };
 
@@ -44,7 +44,7 @@ impl Surreal {
         return SurrealResult::ok(Box::leak(boxed));
     }
 
-    #[no_mangle]
+    #[export_name = "sr_disconnect"]
     pub extern "C" fn disconnect(db: *mut Surreal) {
         let _ = unsafe { Box::from_raw(db) };
     }
@@ -74,7 +74,7 @@ impl Surreal {
     // invalidate.rs
 
     // live.rs
-    #[no_mangle]
+    #[export_name = "sr_select_live"]
     pub extern "C" fn select_live(db: *mut Surreal, resource: *const c_char) -> StreamResult {
         use surrealdb::method::Stream as sdbStream;
         with_surreal(db, |surreal| {
@@ -99,7 +99,7 @@ impl Surreal {
     // patch.rs
 
     // query.rs
-    #[no_mangle]
+    #[export_name = "sr_query"]
     pub extern "C" fn query(db: *mut Surreal, query: *const c_char) -> ArrayResultArrayResult {
         with_surreal(db, |surreal| {
             let query = unsafe { CStr::from_ptr(query) }
@@ -138,7 +138,7 @@ impl Surreal {
     }
 
     // select.rs
-    #[no_mangle]
+    #[export_name = "sr_select"]
     pub extern "C" fn select(db: *mut Surreal, resource: *const c_char) -> ArrayResult {
         with_surreal(db, |surreal| {
             let resource = unsafe { CStr::from_ptr(resource) }.to_str().unwrap();
@@ -176,7 +176,7 @@ impl Surreal {
     // upsert.rs
 
     // use_db.rs
-    #[no_mangle]
+    #[export_name = "sr_use_db"]
     pub extern "C" fn use_db(db: *mut Surreal, query: *const c_char) {
         with_surreal(db, |surreal| {
             let db = unsafe { CStr::from_ptr(query) }.to_str().unwrap();
@@ -187,7 +187,7 @@ impl Surreal {
         })
     }
     // use_ns.rs
-    #[no_mangle]
+    #[export_name = "sr_use_ns"]
     pub extern "C" fn use_ns(db: *mut Surreal, query: *const c_char) {
         with_surreal(db, |surreal| {
             let ns = unsafe { CStr::from_ptr(query) }.to_str().unwrap();
@@ -200,7 +200,7 @@ impl Surreal {
 
     // version.rs
 
-    #[no_mangle]
+    #[export_name = "sr_version"]
     pub extern "C" fn version(db: *mut Surreal) -> StringResult {
         with_surreal(db, |surreal| {
             let fut = surreal.db.version();

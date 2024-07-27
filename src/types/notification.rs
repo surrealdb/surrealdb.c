@@ -28,7 +28,7 @@ impl From<Option<sdbNotification<sql::Value>>> for Notification {
             None => Notification {
                 some: false,
                 query_id: Uuid([0; 16]),
-                action: Action::Create,
+                action: Action::SR_ACTION_CREATE,
                 data: Default::default(),
             },
         }
@@ -36,26 +36,27 @@ impl From<Option<sdbNotification<sql::Value>>> for Notification {
 }
 
 impl Notification {
-    #[no_mangle]
+    #[export_name = "sr_print_notification"]
     pub extern "C" fn print_notification(notification: &Notification) {
         println!("{notification:?}");
     }
 }
 
+#[allow(non_camel_case_types)]
 #[repr(C)]
 #[derive(Debug)]
 pub enum Action {
-    Create,
-    Update,
-    Delete,
+    SR_ACTION_CREATE,
+    SR_ACTION_UPDATE,
+    SR_ACTION_DELETE,
 }
 
 impl From<surrealdb::Action> for Action {
     fn from(value: surrealdb::Action) -> Self {
         match value {
-            surrealdb::Action::Create => Action::Create,
-            surrealdb::Action::Update => Action::Update,
-            surrealdb::Action::Delete => Action::Delete,
+            surrealdb::Action::Create => Action::SR_ACTION_CREATE,
+            surrealdb::Action::Update => Action::SR_ACTION_UPDATE,
+            surrealdb::Action::Delete => Action::SR_ACTION_DELETE,
             _ => todo!(),
         }
     }

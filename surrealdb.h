@@ -3,219 +3,219 @@
 #include <stdint.h>
 #include <stdlib.h>
 
-typedef enum Action {
-  Create,
-  Update,
-  Delete,
-} Action;
+typedef enum sr_action {
+  SR_ACTION_CREATE,
+  SR_ACTION_UPDATE,
+  SR_ACTION_DELETE,
+} sr_action;
 
-typedef struct BTreeMap_String__Value BTreeMap_String__Value;
+typedef struct sr_opaque_object_internal_t sr_opaque_object_internal_t;
 
-typedef struct Stream Stream;
+typedef struct sr_stream_t sr_stream_t;
 
-typedef struct Surreal Surreal;
+typedef struct sr_surreal_t sr_surreal_t;
 
-typedef char *string_t;
+typedef char *sr_string_t;
 
 /**
  * when code = 0 there is no error
  *
  */
-typedef struct SurrealError {
+typedef struct sr_SurrealError {
   int code;
-  string_t msg;
-} SurrealError;
+  sr_string_t msg;
+} sr_SurrealError;
 
-typedef struct SurrealResult {
-  struct Surreal *ok;
-  struct SurrealError err;
-} SurrealResult;
+typedef struct sr_SurrealResult {
+  struct sr_surreal_t *ok;
+  struct sr_SurrealError err;
+} sr_SurrealResult;
 
-typedef struct StreamResult {
-  struct Stream *ok;
-  struct SurrealError err;
-} StreamResult;
+typedef struct sr_StreamResult {
+  struct sr_stream_t *ok;
+  struct sr_SurrealError err;
+} sr_StreamResult;
 
-typedef enum number_t_Tag {
-  Int,
-  Float,
-} number_t_Tag;
+typedef enum sr_number_t_Tag {
+  SR_NUMBER_INT,
+  SR_NUMBER_FLOAT,
+} sr_number_t_Tag;
 
-typedef struct number_t {
-  number_t_Tag tag;
+typedef struct sr_number_t {
+  sr_number_t_Tag tag;
   union {
     struct {
-      int64_t int_;
+      int64_t sr_number_int;
     };
     struct {
-      double float_;
+      double sr_number_float;
     };
   };
-} number_t;
+} sr_number_t;
 
-typedef struct duration_t {
+typedef struct sr_duration_t {
   uint64_t secs;
   uint32_t nanos;
-} duration_t;
+} sr_duration_t;
 
-typedef struct uuid_t {
+typedef struct sr_uuid_t {
   uint8_t _0[16];
-} uuid_t;
+} sr_uuid_t;
 
-typedef struct object_t {
-  struct BTreeMap_String__Value *_0;
-} object_t;
+typedef struct sr_object_t {
+  struct sr_opaque_object_internal_t *_0;
+} sr_object_t;
 
-typedef struct bytes_t {
+typedef struct sr_bytes_t {
   uint8_t *arr;
   uintptr_t len;
-} bytes_t;
+} sr_bytes_t;
 
-typedef enum Id_Tag {
-  IdNumber,
-  IdString,
-  IdArray,
-  IdObject,
-} Id_Tag;
+typedef enum sr_id_t_Tag {
+  SR_ID_NUMBER,
+  SR_ID_STRING,
+  SR_ID_ARRAY,
+  SR_ID_OBJECT,
+} sr_id_t_Tag;
 
-typedef struct Id {
-  Id_Tag tag;
+typedef struct sr_id_t {
+  sr_id_t_Tag tag;
   union {
     struct {
-      int64_t id_number;
+      int64_t sr_id_number;
     };
     struct {
-      string_t id_string;
+      sr_string_t sr_id_string;
     };
     struct {
-      struct array_t *id_array;
+      struct sr_array_t *sr_id_array;
     };
     struct {
-      struct object_t id_object;
+      struct sr_object_t sr_id_object;
     };
   };
-} Id;
+} sr_id_t;
 
-typedef struct thing_t {
-  string_t table;
-  struct Id id;
-} thing_t;
+typedef struct sr_thing_t {
+  sr_string_t table;
+  struct sr_id_t id;
+} sr_thing_t;
 
-typedef enum value_t_Tag {
-  None,
-  Null,
-  Bool,
-  Number,
-  Strand,
-  Duration,
-  Datetime,
-  Uuid,
-  Array,
-  Object,
-  Bytes,
-  Thing,
-} value_t_Tag;
+typedef enum sr_value_t_Tag {
+  SR_VALUE_NONE,
+  SR_VALUE_NULL,
+  SR_VALUE_BOOL,
+  SR_VALUE_NUMBER,
+  SR_VALUE_STRAND,
+  SR_VALUE_DURATION,
+  SR_VALUE_DATETIME,
+  SR_VALUE_UUID,
+  SR_VALUE_ARRAY,
+  SR_VALUE_OBJECT,
+  SR_VALUE_BYTES,
+  SR_VALUE_THING,
+} sr_value_t_Tag;
 
-typedef struct value_t {
-  value_t_Tag tag;
+typedef struct sr_value_t {
+  sr_value_t_Tag tag;
   union {
     struct {
-      bool bool_;
+      bool sr_value_bool;
     };
     struct {
-      struct number_t number;
+      struct sr_number_t sr_value_number;
     };
     struct {
-      string_t strand;
+      sr_string_t sr_value_strand;
     };
     struct {
-      struct duration_t duration;
+      struct sr_duration_t sr_value_duration;
     };
     struct {
-      string_t datetime;
+      sr_string_t sr_value_datetime;
     };
     struct {
-      struct uuid_t uuid;
+      struct sr_uuid_t sr_value_uuid;
     };
     struct {
-      struct array_t *array;
+      struct sr_array_t *sr_value_array;
     };
     struct {
-      struct object_t object;
+      struct sr_object_t sr_value_object;
     };
     struct {
-      struct bytes_t bytes;
+      struct sr_bytes_t sr_value_bytes;
     };
     struct {
-      struct thing_t thing;
+      struct sr_thing_t sr_value_thing;
     };
   };
-} value_t;
+} sr_value_t;
 
-typedef struct array_t {
-  struct value_t *arr;
+typedef struct sr_array_t {
+  struct sr_value_t *arr;
   uintptr_t len;
-} array_t;
+} sr_array_t;
 
-typedef struct ArrayResult {
-  struct array_t ok;
-  struct SurrealError err;
-} ArrayResult;
+typedef struct sr_arr_res_t {
+  struct sr_array_t ok;
+  struct sr_SurrealError err;
+} sr_arr_res_t;
 
-typedef struct ArrayResultArray {
-  struct ArrayResult *arr;
+typedef struct sr_arr_res_arr_t {
+  struct sr_arr_res_t *arr;
   uintptr_t len;
-} ArrayResultArray;
+} sr_arr_res_arr_t;
 
-typedef struct ArrayResultArrayResult {
-  struct ArrayResultArray ok;
-  struct SurrealError err;
-} ArrayResultArrayResult;
+typedef struct sr_arr_res_arr_res_t {
+  struct sr_arr_res_arr_t ok;
+  struct sr_SurrealError err;
+} sr_arr_res_arr_res_t;
 
-typedef struct StringResult {
-  string_t ok;
-  struct SurrealError err;
-} StringResult;
+typedef struct sr_string_res_t {
+  sr_string_t ok;
+  struct sr_SurrealError err;
+} sr_string_res_t;
 
-typedef struct Notification {
+typedef struct sr_notification_t {
   bool some;
-  struct uuid_t query_id;
-  enum Action action;
-  struct value_t data;
-} Notification;
+  struct sr_uuid_t query_id;
+  enum sr_action action;
+  struct sr_value_t data;
+} sr_notification_t;
 
-struct SurrealResult connect(const char *endpoint);
+struct sr_SurrealResult sr_connect(const char *endpoint);
 
-void disconnect(struct Surreal *db);
+void sr_disconnect(struct sr_surreal_t *db);
 
-struct StreamResult select_live(struct Surreal *db, const char *resource);
+struct sr_StreamResult sr_select_live(struct sr_surreal_t *db, const char *resource);
 
-struct ArrayResultArrayResult query(struct Surreal *db, const char *query);
+struct sr_arr_res_arr_res_t sr_query(struct sr_surreal_t *db, const char *query);
 
-struct ArrayResult select(struct Surreal *db, const char *resource);
+struct sr_arr_res_t sr_select(struct sr_surreal_t *db, const char *resource);
 
-void use_db(struct Surreal *db, const char *query);
+void sr_use_db(struct sr_surreal_t *db, const char *query);
 
-void use_ns(struct Surreal *db, const char *query);
+void sr_use_ns(struct sr_surreal_t *db, const char *query);
 
-struct StringResult version(struct Surreal *db);
+struct sr_string_res_t sr_version(struct sr_surreal_t *db);
 
-void free_arr(struct array_t _arr);
+void sr_free_arr(struct sr_array_t arr);
 
-void print_notification(const struct Notification *notification);
+void sr_print_notification(const struct sr_notification_t *notification);
 
-const struct value_t *get(const struct object_t *obj, const char *key);
+const struct sr_value_t *sr_object_get(const struct sr_object_t *obj, const char *key);
 
-void free_arr_res(struct ArrayResult _res);
+void sr_free_arr_res(struct sr_arr_res_t res);
 
-void free_arr_res_arr(struct ArrayResultArray _arr);
+void sr_free_arr_res_arr(struct sr_arr_res_arr_t arr);
 
-void free_arr_res_arr_res(struct ArrayResultArrayResult _res);
+void sr_free_arr_res_arr_res(struct sr_arr_res_arr_res_t _res);
 
-struct Notification next(struct Stream *self);
+struct sr_notification_t sr_stream_next(struct sr_stream_t *self);
 
-void kill(struct Stream *stream);
+void sr_stream_kill(struct sr_stream_t *stream);
 
-void free_string(string_t string);
+void sr_free_string(sr_string_t string);
 
-void print_value(const struct value_t *val);
+void sr_value_print(const struct sr_value_t *val);

@@ -75,8 +75,10 @@ impl ArrayResult {
 }
 
 impl ArrayResult {
-    #[no_mangle]
-    pub extern "C" fn free_arr_res(_res: ArrayResult) {}
+    #[export_name = "sr_free_arr_res"]
+    pub extern "C" fn free_arr_res(res: ArrayResult) {
+        let _ = res;
+    }
 }
 
 #[repr(C)]
@@ -118,8 +120,10 @@ impl Drop for ArrayResultArray {
 }
 
 impl ArrayResultArray {
-    #[no_mangle]
-    pub extern "C" fn free_arr_res_arr(_arr: ArrayResultArray) {}
+    #[export_name = "sr_free_arr_res_arr"]
+    pub extern "C" fn free_arr_res_arr(arr: ArrayResultArray) {
+        let _ = arr;
+    }
 }
 
 #[repr(C)]
@@ -144,7 +148,7 @@ impl ArrayResultArrayResult {
 }
 
 impl ArrayResultArrayResult {
-    #[no_mangle]
+    #[export_name = "sr_free_arr_res_arr_res"]
     pub extern "C" fn free_arr_res_arr_res(_res: ArrayResultArrayResult) {}
 }
 

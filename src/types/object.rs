@@ -13,7 +13,7 @@ use crate::value::Value;
 pub struct Object(Box<BTreeMap<String, Value>>);
 
 impl Object {
-    #[no_mangle]
+    #[export_name = "sr_object_get"]
     pub extern "C" fn get(obj: &Object, key: *const c_char) -> Option<&Value> {
         let key = unsafe { CStr::from_ptr(key) }.to_str().unwrap();
         // let inner = unsafe { &*obj.0 };
