@@ -36,9 +36,13 @@ pub struct Surreal {
 impl Surreal {
     #[export_name = "sr_connect"]
     pub extern "C" fn connect(endpoint: *const c_char) -> SurrealResult {
-        let endpoint = unsafe { CStr::from_ptr(endpoint).to_str().unwrap() };
+        let Ok(endpoint) = (unsafe { CStr::from_ptr(endpoint).to_str() }) else {
+            return SurrealResult::err("invalid utf8");
+        };
 
-        let rt = Runtime::new().unwrap();
+        let Ok(rt) = Runtime::new() else {
+            return SurrealResult::err("error creating runtime");
+        };
 
         let con_fut = any::connect(endpoint);
 
@@ -96,8 +100,8 @@ impl Surreal {
         resource: *const c_char,
     ) -> c_int {
         use surrealdb::method::Stream as sdbStream;
-        with_surreal(db, err_ptr, |surreal| {
-            let resource = unsafe { CStr::from_ptr(resource) }.to_str().unwrap();
+        with_surreal_async(db, err_ptr, |surreal| async {
+            let resource = unsafe { CStr::from_ptr(resource) }.to_str()?;
             let fut = surreal.db.select(Resource::from(resource)).live();
 
             let stream_inner: sdbStream<sql::Value> = surreal.rt.block_on(fut.into_future())?;
@@ -124,19 +128,10 @@ impl Surreal {
         res_ptr: *mut *mut ArrayResult,
         query: *const c_char,
     ) -> c_int {
-        with_surreal(db, err_ptr, |surreal| {
-            let query = unsafe { CStr::from_ptr(query) }
-                .to_str()
-                .expect("Query should be valid utf-8");
+        with_surreal_async(db, err_ptr, |surreal| async {
+            let query = unsafe { CStr::from_ptr(query) }.to_str()?;
 
-            let fut = surreal.db.query(query);
-
-            let mut res = match surreal.rt.block_on(fut.into_future()) {
-                Ok(r) => r,
-                Err(e) => {
-                    return Err(e.into());
-                }
-            };
+            let mut res = surreal.db.query(query).await?;
             let res_len = res.num_statements();
 
             let mut acc = Vec::with_capacity(res_len);
@@ -170,12 +165,10 @@ impl Surreal {
         res_ptr: *mut *mut Value,
         resource: *const c_char,
     ) -> c_int {
-        with_surreal(db, err_ptr, |surreal| {
-            let resource = unsafe { CStr::from_ptr(resource) }.to_str().unwrap();
+        with_surreal_async(db, err_ptr, |surreal| async {
+            let resource = unsafe { CStr::from_ptr(resource) }.to_str()?;
 
-            let fut = surreal.db.select(Resource::from(resource));
-
-            let res = match surreal.rt.block_on(fut.into_future())? {
+            let res = match surreal.db.select(Resource::from(resource)).await? {
                 sql::Value::Array(a) => Array::from(a),
                 v => Array::from(vec![v.into()]),
             };
@@ -199,21 +192,25 @@ impl Surreal {
 
     // use_db.rs
     #[export_name = "sr_use_db"]
-    pub extern "C" fn use_db(db: &Surreal, query: *const c_char) {
-        let db_name = unsafe { CStr::from_ptr(query) }.to_str().unwrap();
+    pub extern "C" fn use_db(db: &Surreal, err_ptr: *mut string_t, query: *const c_char) -> c_int {
+        with_surreal_async(db, err_ptr, |surreal| async {
+            let db_name = unsafe { CStr::from_ptr(query) }.to_str()?;
 
-        let fut = db.db.use_db(db_name);
+            surreal.db.use_db(db_name).await?;
 
-        db.rt.block_on(fut.into_future()).unwrap();
+            Ok(0)
+        })
     }
     // use_ns.rs
     #[export_name = "sr_use_ns"]
-    pub extern "C" fn use_ns(db: &Surreal, query: *const c_char) {
-        let ns_name = unsafe { CStr::from_ptr(query) }.to_str().unwrap();
+    pub extern "C" fn use_ns(db: &Surreal, err_ptr: *mut string_t, query: *const c_char) -> c_int {
+        with_surreal_async(db, err_ptr, |surreal| async {
+            let ns_name = unsafe { CStr::from_ptr(query) }.to_str()?;
 
-        let fut = db.db.use_ns(ns_name);
+            surreal.db.use_db(ns_name).await?;
 
-        db.rt.block_on(fut.into_future()).unwrap();
+            Ok(0)
+        })
     }
 
     // version.rs
@@ -224,10 +221,11 @@ impl Surreal {
         err_ptr: *mut string_t,
         res_ptr: *mut string_t,
     ) -> c_int {
-        with_surreal(db, err_ptr, |surreal| {
-            let fut = surreal.db.version();
+        with_surreal_async(db, err_ptr, |surreal| async {
+            // let fut = surreal.db.version();
 
-            let res = surreal.rt.block_on(fut.into_future())?;
+            // let res = surreal.rt.block_on(fut.into_future())?;
+            let res = surreal.db.version().await?;
             let res_str: string_t = res.into();
 
             unsafe { res_ptr.write(res_str) }
@@ -237,15 +235,17 @@ impl Surreal {
     }
 }
 
-fn with_surreal<C>(db: &Surreal, err_ptr: *mut string_t, fun: C) -> c_int
+fn with_surreal_async<'a, 'b, C, F>(db: &'a Surreal, err_ptr: *mut string_t, fun: C) -> c_int
 where
-    C: FnOnce(&Surreal) -> Result<c_int, string_t>,
+    'a: 'b,
+    C: FnOnce(&'a Surreal) -> F + 'b,
+    F: std::future::Future<Output = Result<c_int, string_t>>,
 {
     if db.ps.load(Ordering::Acquire) {
         std::process::abort()
     }
 
-    let res = match catch_unwind(AssertUnwindSafe(|| fun(&db))) {
+    let res = match catch_unwind(AssertUnwindSafe(|| db.rt.block_on(fun(&db)))) {
         Ok(r) => r,
         Err(e) => {
             if let Some(e_str) = e.downcast_ref::<&str>() {

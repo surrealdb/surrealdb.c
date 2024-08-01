@@ -195,9 +195,9 @@ int sr_select(const struct sr_surreal_t *db,
               struct sr_value_t **res_ptr,
               const char *resource);
 
-void sr_use_db(const struct sr_surreal_t *db, const char *query);
+int sr_use_db(const struct sr_surreal_t *db, sr_string_t *err_ptr, const char *query);
 
-void sr_use_ns(const struct sr_surreal_t *db, const char *query);
+int sr_use_ns(const struct sr_surreal_t *db, sr_string_t *err_ptr, const char *query);
 
 int sr_version(const struct sr_surreal_t *db, sr_string_t *err_ptr, sr_string_t *res_ptr);
 
