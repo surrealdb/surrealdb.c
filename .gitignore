@@ -36,3 +36,4 @@ Temporary Items
 /test/*.out
 /test/*.skv
 /test/*.db
+/test/*.out.dSYM
