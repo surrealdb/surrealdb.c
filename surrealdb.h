@@ -3,6 +3,10 @@
 #include <stdint.h>
 #include <stdlib.h>
 
+#define sr_SR_ERROR -1
+
+#define sr_SR_FATAL -2
+
 typedef enum sr_action {
   SR_ACTION_CREATE,
   SR_ACTION_UPDATE,
@@ -19,22 +23,16 @@ typedef char *sr_string_t;
 
 /**
  * when code = 0 there is no error
- *
  */
 typedef struct sr_SurrealError {
   int code;
   sr_string_t msg;
 } sr_SurrealError;
 
-typedef struct sr_SurrealResult {
+typedef struct sr_surreal_res_t {
   struct sr_surreal_t *ok;
   struct sr_SurrealError err;
-} sr_SurrealResult;
-
-typedef struct sr_StreamResult {
-  struct sr_stream_t *ok;
-  struct sr_SurrealError err;
-} sr_StreamResult;
+} sr_surreal_res_t;
 
 typedef enum sr_number_t_Tag {
   SR_NUMBER_INT,
@@ -154,28 +152,13 @@ typedef struct sr_value_t {
 
 typedef struct sr_array_t {
   struct sr_value_t *arr;
-  uintptr_t len;
+  int len;
 } sr_array_t;
 
 typedef struct sr_arr_res_t {
   struct sr_array_t ok;
   struct sr_SurrealError err;
 } sr_arr_res_t;
-
-typedef struct sr_arr_res_arr_t {
-  struct sr_arr_res_t *arr;
-  uintptr_t len;
-} sr_arr_res_arr_t;
-
-typedef struct sr_arr_res_arr_res_t {
-  struct sr_arr_res_arr_t ok;
-  struct sr_SurrealError err;
-} sr_arr_res_arr_res_t;
-
-typedef struct sr_string_res_t {
-  sr_string_t ok;
-  struct sr_SurrealError err;
-} sr_string_res_t;
 
 typedef struct sr_notification_t {
   bool some;
@@ -184,23 +167,36 @@ typedef struct sr_notification_t {
   struct sr_value_t data;
 } sr_notification_t;
 
-struct sr_SurrealResult sr_connect(const char *endpoint);
+struct sr_surreal_res_t sr_connect(const char *endpoint);
 
-void sr_disconnect(struct sr_surreal_t *db);
+void sr_surreal_disconnect(struct sr_surreal_t *db);
 
-struct sr_StreamResult sr_select_live(struct sr_surreal_t *db, const char *resource);
+/**
+ * if successful sets *stream_ptr to be an exclusive reference to an opaque Stream object
+ * this pointer should not be copied and only one should be used at a time
+ */
+int sr_select_live(const struct sr_surreal_t *db,
+                   sr_string_t *err_ptr,
+                   struct sr_stream_t **stream_ptr,
+                   const char *resource);
 
-struct sr_arr_res_arr_res_t sr_query(struct sr_surreal_t *db, const char *query);
+int sr_query(const struct sr_surreal_t *db,
+             sr_string_t *err_ptr,
+             struct sr_arr_res_t **res_ptr,
+             const char *query);
 
-struct sr_arr_res_t sr_select(struct sr_surreal_t *db, const char *resource);
+int sr_select(const struct sr_surreal_t *db,
+              sr_string_t *err_ptr,
+              struct sr_value_t **res_ptr,
+              const char *resource);
 
-void sr_use_db(struct sr_surreal_t *db, const char *query);
+void sr_use_db(const struct sr_surreal_t *db, const char *query);
 
-void sr_use_ns(struct sr_surreal_t *db, const char *query);
+void sr_use_ns(const struct sr_surreal_t *db, const char *query);
 
-struct sr_string_res_t sr_version(struct sr_surreal_t *db);
+int sr_version(const struct sr_surreal_t *db, sr_string_t *err_ptr, sr_string_t *res_ptr);
 
-void sr_free_arr(struct sr_array_t arr);
+void sr_free_arr(struct sr_value_t *ptr, int len);
 
 void sr_print_notification(const struct sr_notification_t *notification);
 
@@ -208,9 +204,7 @@ const struct sr_value_t *sr_object_get(const struct sr_object_t *obj, const char
 
 void sr_free_arr_res(struct sr_arr_res_t res);
 
-void sr_free_arr_res_arr(struct sr_arr_res_arr_t arr);
-
-void sr_free_arr_res_arr_res(struct sr_arr_res_arr_res_t _res);
+void sr_free_arr_res_arr(struct sr_arr_res_t *ptr, int len);
 
 struct sr_notification_t sr_stream_next(struct sr_stream_t *self);
 

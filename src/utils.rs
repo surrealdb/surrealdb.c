@@ -34,3 +34,38 @@ impl CStringExt for &str {
         cstring.into_raw()
     }
 }
+
+// must be seperate from Default because implementation for *mut T
+// pub trait Empty {
+//     fn empty() -> Self;
+// }
+
+// impl Empty for () {
+//     fn empty() -> Self {
+//         ()
+//     }
+// }
+
+// impl<T> Empty for *mut T {
+//     fn empty() -> Self {
+//         ptr::null_mut()
+//     }
+// }
+
+// impl Empty for Array {
+//     fn empty() -> Self {
+//         Array::empty()
+//     }
+// }
+
+// impl Empty for ArrayResultArray {
+//     fn empty() -> Self {
+//         ArrayResultArray::empty()
+//     }
+// }
+
+// impl Empty for string_t {
+//     fn empty() -> Self {
+//         string_t::null()
+//     }
+// }
