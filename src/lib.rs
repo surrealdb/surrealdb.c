@@ -4,6 +4,8 @@ pub mod utils;
 use std::{
     ffi::{c_char, c_int, CStr},
     future::IntoFuture,
+    panic::{catch_unwind, AssertUnwindSafe},
+    sync::atomic::{AtomicBool, Ordering},
 };
 
 use result::SurrealResult;
@@ -12,7 +14,7 @@ use string::string_t;
 use surrealdb::{
     engine::any::{self, Any},
     opt::Resource,
-    sql, Response, Surreal as sdbSurreal,
+    sql, Surreal as sdbSurreal,
 };
 use tokio::runtime::Runtime;
 use types::result::ArrayResult;
@@ -21,9 +23,13 @@ use array::{Array, ArrayGen, MakeArray};
 pub use types::*;
 use value::Value;
 
+pub const SR_ERROR: c_int = -1;
+pub const SR_FATAL: c_int = -2;
+
 pub struct Surreal {
     db: sdbSurreal<Any>,
     rt: Runtime,
+    ps: AtomicBool,
 }
 
 impl Surreal {
@@ -40,7 +46,11 @@ impl Surreal {
             Err(e) => return SurrealResult::err(e.to_string()),
         };
 
-        let boxed = Box::new(Surreal { db, rt });
+        let boxed = Box::new(Surreal {
+            db,
+            rt,
+            ps: AtomicBool::new(false),
+        });
 
         return SurrealResult::ok(Box::leak(boxed));
     }
@@ -75,11 +85,13 @@ impl Surreal {
     // invalidate.rs
 
     // live.rs
+    /// if successful sets *stream_ptr to be an exclusive reference to an opaque Stream object
+    /// this pointer should not be copied and only one should be used at a time
     #[export_name = "sr_select_live"]
     pub extern "C" fn select_live(
-        db: &mut Surreal,
-        err_ptr: &mut string_t,
-        stream_ptr: &mut &mut Stream,
+        db: &Surreal,
+        err_ptr: *mut string_t,
+        stream_ptr: *mut &mut Stream,
         resource: *const c_char,
     ) -> c_int {
         use surrealdb::method::Stream as sdbStream;
@@ -91,7 +103,7 @@ impl Surreal {
 
             let stream_boxed = Box::new(Stream::new(stream_inner, surreal.rt.handle().clone()));
 
-            *stream_ptr = Box::leak(stream_boxed);
+            unsafe { stream_ptr.write(Box::leak(stream_boxed)) };
 
             Ok(1)
         })
@@ -106,9 +118,9 @@ impl Surreal {
     // query.rs
     #[export_name = "sr_query"]
     pub extern "C" fn query(
-        db: &mut Surreal,
-        err_ptr: &mut string_t,
-        res_ptr: &mut *mut ArrayResult,
+        db: &Surreal,
+        err_ptr: *mut string_t,
+        res_ptr: *mut *mut ArrayResult,
         query: *const c_char,
     ) -> c_int {
         with_surreal(db, err_ptr, |surreal| {
@@ -143,7 +155,7 @@ impl Surreal {
             }
 
             let ArrayGen { ptr, len } = acc.make_array();
-            *res_ptr = ptr;
+            unsafe { res_ptr.write(ptr) }
 
             Ok(len)
         })
@@ -152,9 +164,9 @@ impl Surreal {
     // select.rs
     #[export_name = "sr_select"]
     pub extern "C" fn select(
-        db: &mut Surreal,
-        err_ptr: &mut string_t,
-        res_ptr: &mut *mut Value,
+        db: &Surreal,
+        err_ptr: *mut string_t,
+        res_ptr: *mut *mut Value,
         resource: *const c_char,
     ) -> c_int {
         with_surreal(db, err_ptr, |surreal| {
@@ -167,7 +179,7 @@ impl Surreal {
                 v => Array::from(vec![v.into()]),
             };
 
-            *res_ptr = res.arr;
+            unsafe { res_ptr.write(res.arr) }
 
             Ok(res.len as c_int)
         })
@@ -186,7 +198,7 @@ impl Surreal {
 
     // use_db.rs
     #[export_name = "sr_use_db"]
-    pub extern "C" fn use_db(db: &mut Surreal, query: *const c_char) {
+    pub extern "C" fn use_db(db: &Surreal, query: *const c_char) {
         let db_name = unsafe { CStr::from_ptr(query) }.to_str().unwrap();
 
         let fut = db.db.use_db(db_name);
@@ -195,7 +207,7 @@ impl Surreal {
     }
     // use_ns.rs
     #[export_name = "sr_use_ns"]
-    pub extern "C" fn use_ns(db: &mut Surreal, query: *const c_char) {
+    pub extern "C" fn use_ns(db: &Surreal, query: *const c_char) {
         let ns_name = unsafe { CStr::from_ptr(query) }.to_str().unwrap();
 
         let fut = db.db.use_ns(ns_name);
@@ -207,8 +219,8 @@ impl Surreal {
 
     #[export_name = "sr_version"]
     pub extern "C" fn version(
-        db: &mut Surreal,
-        err_ptr: &mut string_t,
+        db: &Surreal,
+        err_ptr: *mut string_t,
         res_ptr: *mut string_t,
     ) -> c_int {
         with_surreal(db, err_ptr, |surreal| {
@@ -217,26 +229,39 @@ impl Surreal {
             let res = surreal.rt.block_on(fut.into_future())?;
             let res_str: string_t = res.into();
 
-            println!("version at: {:?}, {res_str:?}", res_str.0);
-
-            unsafe { std::ptr::write(res_ptr, res_str) }
+            unsafe { res_ptr.write(res_str) }
 
             return Ok(0);
         })
     }
 }
 
-fn with_surreal<C>(db: &Surreal, err: *mut string_t, fun: C) -> c_int
+fn with_surreal<C>(db: &Surreal, err_ptr: *mut string_t, fun: C) -> c_int
 where
     C: FnOnce(&Surreal) -> Result<c_int, string_t>,
 {
-    let res = fun(&db);
+    if db.ps.load(Ordering::Acquire) {
+        std::process::abort()
+    }
+
+    let res = match catch_unwind(AssertUnwindSafe(|| fun(&db))) {
+        Ok(r) => r,
+        Err(e) => {
+            if let Some(e_str) = e.downcast_ref::<&str>() {
+                let e_string: string_t = format!("Panicked with: {e_str}").into();
+                unsafe { err_ptr.write(e_string) }
+            } else {
+                unsafe { err_ptr.write("Panicked".into()) }
+            }
+            return SR_FATAL;
+        }
+    };
 
     match res {
         Ok(n) => n,
         Err(e) => {
-            unsafe { std::ptr::write(err, e) }
-            -1
+            unsafe { err_ptr.write(e) }
+            SR_ERROR
         }
     }
 }

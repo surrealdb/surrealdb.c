@@ -3,6 +3,10 @@
 #include <stdint.h>
 #include <stdlib.h>
 
+#define sr_SR_ERROR -1
+
+#define sr_SR_FATAL -2
+
 typedef enum sr_action {
   SR_ACTION_CREATE,
   SR_ACTION_UPDATE,
@@ -167,26 +171,30 @@ struct sr_surreal_res_t sr_connect(const char *endpoint);
 
 void sr_surreal_disconnect(struct sr_surreal_t *db);
 
-int sr_select_live(struct sr_surreal_t *db,
+/**
+ * if successful sets *stream_ptr to be an exclusive reference to an opaque Stream object
+ * this pointer should not be copied and only one should be used at a time
+ */
+int sr_select_live(const struct sr_surreal_t *db,
                    sr_string_t *err_ptr,
                    struct sr_stream_t **stream_ptr,
                    const char *resource);
 
-int sr_query(struct sr_surreal_t *db,
+int sr_query(const struct sr_surreal_t *db,
              sr_string_t *err_ptr,
              struct sr_arr_res_t **res_ptr,
              const char *query);
 
-int sr_select(struct sr_surreal_t *db,
+int sr_select(const struct sr_surreal_t *db,
               sr_string_t *err_ptr,
               struct sr_value_t **res_ptr,
               const char *resource);
 
-void sr_use_db(struct sr_surreal_t *db, const char *query);
+void sr_use_db(const struct sr_surreal_t *db, const char *query);
 
-void sr_use_ns(struct sr_surreal_t *db, const char *query);
+void sr_use_ns(const struct sr_surreal_t *db, const char *query);
 
-int sr_version(struct sr_surreal_t *db, sr_string_t *err_ptr, sr_string_t *res_ptr);
+int sr_version(const struct sr_surreal_t *db, sr_string_t *err_ptr, sr_string_t *res_ptr);
 
 void sr_free_arr(struct sr_value_t *ptr, int len);
 

@@ -18,10 +18,6 @@ impl Stream {
 impl Stream {
     #[export_name = "sr_stream_next"]
     pub extern "C" fn next(&mut self) -> Notification {
-        // match self.rt.block_on(self.inner.next()) {
-        //     Some(n) => n.into(),
-        //     None => ptr::null_mut(),
-        // }
         self.rt.block_on(self.inner.next()).into()
     }
 
