@@ -2,10 +2,8 @@ pub mod types;
 pub mod utils;
 
 use std::{
-    ffi::{c_char, CStr},
+    ffi::{c_char, c_int, CStr},
     future::IntoFuture,
-    mem, ptr,
-    sync::Arc,
 };
 
 use result::SurrealResult;
@@ -14,36 +12,18 @@ use string::string_t;
 use surrealdb::{
     engine::any::{self, Any},
     opt::Resource,
-    sql, Surreal as sdbSurreal,
+    sql, Response, Surreal as sdbSurreal,
 };
 use tokio::runtime::Runtime;
-use types::result::{ArrayResult, ArrayResultArray};
+use types::result::ArrayResult;
 
-use array::Array;
+use array::{Array, ArrayGen, MakeArray};
 pub use types::*;
-use utils::Empty;
+use value::Value;
 
-pub struct SurrealInner {
+pub struct Surreal {
     db: sdbSurreal<Any>,
     rt: Runtime,
-}
-
-/// a type representing a shared SurrealDB connection and local errors
-/// pointers can be shared across threads,
-/// but copy must be called before any other functions are used to prevent race conditions
-#[repr(C)]
-pub struct Surreal {
-    inner: *const SurrealInner,
-    err: string_t,
-}
-
-impl Surreal {
-    pub fn null() -> Surreal {
-        Surreal {
-            inner: ptr::null(),
-            err: string_t::null(),
-        }
-    }
 }
 
 impl Surreal {
@@ -60,49 +40,14 @@ impl Surreal {
             Err(e) => return SurrealResult::err(e.to_string()),
         };
 
-        let boxed = Arc::new(SurrealInner { db, rt });
-        let inner = Arc::into_raw(boxed);
+        let boxed = Box::new(Surreal { db, rt });
 
-        let out = Surreal {
-            inner,
-            err: string_t::null(),
-        };
-
-        return SurrealResult::ok(out);
-    }
-
-    /// shallow copies surrealdb connection that can be passed between threads and has seperate error handling
-    #[export_name = "sr_surreal_copy"]
-    pub extern "C" fn copy(surreal: &Surreal) -> Surreal {
-        // turn pointer into Arc to clone, then turn it back to maintain count
-        let old = surreal.inner;
-        let arced_old = unsafe { Arc::from_raw(old) };
-        #[cfg(debug_assertions)]
-        let old_count = Arc::strong_count(&arced_old);
-
-        let arced_new = arced_old.clone();
-
-        #[cfg(debug_assertions)]
-        let new_count = Arc::strong_count(&arced_new);
-        debug_assert_eq!(old_count + 1, new_count);
-
-        let _ = Arc::into_raw(arced_old);
-        Surreal {
-            inner: Arc::into_raw(arced_new),
-            err: string_t::null(),
-        }
+        return SurrealResult::ok(Box::leak(boxed));
     }
 
     #[export_name = "sr_surreal_disconnect"]
-    pub extern "C" fn disconnect(db: Surreal) {
-        let _ = db;
-    }
-
-    /// takes error from a Sureal connection, leaving it blank
-    /// useful when errors are expected or recoverable
-    #[export_name = "sr_err"]
-    pub extern "C" fn get_err(db: &mut Surreal) -> string_t {
-        mem::take(&mut db.err)
+    pub extern "C" fn disconnect(db: *mut Surreal) {
+        let _ = unsafe { Box::from_raw(db) };
     }
 
     // authenticate.rs
@@ -131,25 +76,24 @@ impl Surreal {
 
     // live.rs
     #[export_name = "sr_select_live"]
-    pub extern "C" fn select_live(db: &mut Surreal, resource: *const c_char) -> *mut Stream {
+    pub extern "C" fn select_live(
+        db: &mut Surreal,
+        err_ptr: &mut string_t,
+        stream_ptr: &mut &mut Stream,
+        resource: *const c_char,
+    ) -> c_int {
         use surrealdb::method::Stream as sdbStream;
-        with_surreal(db, |surreal| {
+        with_surreal(db, err_ptr, |surreal| {
             let resource = unsafe { CStr::from_ptr(resource) }.to_str().unwrap();
             let fut = surreal.db.select(Resource::from(resource)).live();
 
-            // let stream: sdbStream<sql::Value> = match surreal.rt.block_on(fut.into_future()) {
-            //     Ok(s) => s,
-            //     Err(e) => {
-            //         *err = e.to_string().to_string_t();
-            //         return ptr::null_mut();
-            //     }
-            // };
+            let stream_inner: sdbStream<sql::Value> = surreal.rt.block_on(fut.into_future())?;
 
-            let stream: sdbStream<sql::Value> = surreal.rt.block_on(fut.into_future())?;
+            let stream_boxed = Box::new(Stream::new(stream_inner, surreal.rt.handle().clone()));
 
-            let out = Box::new(Stream::new(stream, surreal.rt.handle().clone()));
+            *stream_ptr = Box::leak(stream_boxed);
 
-            Ok(Box::leak(out) as *mut Stream)
+            Ok(1)
         })
     }
 
@@ -161,8 +105,13 @@ impl Surreal {
 
     // query.rs
     #[export_name = "sr_query"]
-    pub extern "C" fn query(db: &mut Surreal, query: *const c_char) -> ArrayResultArray {
-        with_surreal(db, |surreal| {
+    pub extern "C" fn query(
+        db: &mut Surreal,
+        err_ptr: &mut string_t,
+        res_ptr: &mut *mut ArrayResult,
+        query: *const c_char,
+    ) -> c_int {
+        with_surreal(db, err_ptr, |surreal| {
             let query = unsafe { CStr::from_ptr(query) }
                 .to_str()
                 .expect("Query should be valid utf-8");
@@ -192,15 +141,23 @@ impl Surreal {
                 };
                 acc.push(arr_res);
             }
-            let arr_res_arr: ArrayResultArray = acc.into();
-            Ok(arr_res_arr)
+
+            let ArrayGen { ptr, len } = acc.make_array();
+            *res_ptr = ptr;
+
+            Ok(len)
         })
     }
 
     // select.rs
     #[export_name = "sr_select"]
-    pub extern "C" fn select(db: &mut Surreal, resource: *const c_char) -> Array {
-        with_surreal(db, |surreal| {
+    pub extern "C" fn select(
+        db: &mut Surreal,
+        err_ptr: &mut string_t,
+        res_ptr: &mut *mut Value,
+        resource: *const c_char,
+    ) -> c_int {
+        with_surreal(db, err_ptr, |surreal| {
             let resource = unsafe { CStr::from_ptr(resource) }.to_str().unwrap();
 
             let fut = surreal.db.select(Resource::from(resource));
@@ -210,7 +167,9 @@ impl Surreal {
                 v => Array::from(vec![v.into()]),
             };
 
-            Ok(res)
+            *res_ptr = res.arr;
+
+            Ok(res.len as c_int)
         })
     }
     // set.rs
@@ -228,66 +187,56 @@ impl Surreal {
     // use_db.rs
     #[export_name = "sr_use_db"]
     pub extern "C" fn use_db(db: &mut Surreal, query: *const c_char) {
-        with_surreal(db, |surreal| {
-            let db = unsafe { CStr::from_ptr(query) }.to_str().unwrap();
+        let db_name = unsafe { CStr::from_ptr(query) }.to_str().unwrap();
 
-            let fut = surreal.db.use_db(db);
+        let fut = db.db.use_db(db_name);
 
-            surreal.rt.block_on(fut.into_future()).unwrap();
-            Ok(())
-        })
+        db.rt.block_on(fut.into_future()).unwrap();
     }
     // use_ns.rs
     #[export_name = "sr_use_ns"]
     pub extern "C" fn use_ns(db: &mut Surreal, query: *const c_char) {
-        with_surreal(db, |surreal| {
-            let ns = unsafe { CStr::from_ptr(query) }.to_str().unwrap();
+        let ns_name = unsafe { CStr::from_ptr(query) }.to_str().unwrap();
 
-            let fut = surreal.db.use_ns(ns);
+        let fut = db.db.use_ns(ns_name);
 
-            surreal.rt.block_on(fut.into_future()).unwrap();
-            Ok(())
-        })
+        db.rt.block_on(fut.into_future()).unwrap();
     }
 
     // version.rs
 
     #[export_name = "sr_version"]
-    pub extern "C" fn version(db: &mut Surreal) -> string_t {
-        with_surreal(db, |surreal| {
+    pub extern "C" fn version(
+        db: &mut Surreal,
+        err_ptr: &mut string_t,
+        res_ptr: *mut string_t,
+    ) -> c_int {
+        with_surreal(db, err_ptr, |surreal| {
             let fut = surreal.db.version();
 
             let res = surreal.rt.block_on(fut.into_future())?;
+            let res_str: string_t = res.into();
 
-            return Ok(res.into());
+            println!("version at: {:?}, {res_str:?}", res_str.0);
+
+            unsafe { std::ptr::write(res_ptr, res_str) }
+
+            return Ok(0);
         })
     }
 }
 
-fn with_surreal<C, O>(db: &mut Surreal, fun: C) -> O
+fn with_surreal<C>(db: &Surreal, err: *mut string_t, fun: C) -> c_int
 where
-    C: Fn(&SurrealInner) -> Result<O, string_t>,
-    O: Empty,
+    C: FnOnce(&Surreal) -> Result<c_int, string_t>,
 {
-    let inner_arc = unsafe { Arc::from_raw(db.inner) };
-    let inner = inner_arc.as_ref();
-
-    let res = fun(&inner);
-
-    let _ = Arc::into_raw(inner_arc);
+    let res = fun(&db);
 
     match res {
-        Ok(o) => o,
+        Ok(n) => n,
         Err(e) => {
-            db.err = e;
-            O::empty()
+            unsafe { std::ptr::write(err, e) }
+            -1
         }
-    }
-}
-
-impl Drop for Surreal {
-    fn drop(&mut self) {
-        let _arced_inner = unsafe { Arc::from_raw(self.inner) };
-        let _err = string_t(self.err.0);
     }
 }

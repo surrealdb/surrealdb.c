@@ -15,30 +15,38 @@ int main()
         printf("%s", connect_res.err.msg);
         return 1;
     }
-    sr_surreal_t *db = &connect_res.ok;
+    sr_surreal_t *db = connect_res.ok;
 
-    sr_string_t ver = sr_version(db);
-    if (db->err != 0)
+    sr_string_t err;
+    sr_string_t ver;
+
+    if (sr_version(db, &err, &ver) < 0)
     {
-        printf("%s", db->err);
+        printf("%s", err);
         return 1;
     }
-
-    printf("%s\n", ver);
+    // printf("%s\n", ver);
+    // sr_free_string(ver);
 
     sr_use_ns(db, "test");
     sr_use_db(db, "test");
 
-    sr_query(db, "create foo");
+    sr_arr_res_t *foo_res;
+    int len = sr_query(db, &err, &foo_res, "create foo");
+    // assert this will work
+    sr_free_arr_res_arr(foo_res, len);
 
-    sr_stream_t *stream = sr_select_live(db, "foo");
-    if (db->err != 0)
+    sr_stream_t *stream;
+    if (sr_select_live(db, &err, &stream, "foo") < 0)
     {
-        printf("%s", db->err);
+        printf("%s", err);
         return 1;
     }
 
-    sr_query(db, "create foo");
+    len = sr_query(db, &err, &foo_res, "create foo");
+    // assert this will work
+    sr_free_arr_res_arr(foo_res, len);
+
     sr_notification_t n = sr_stream_next(stream);
     sr_print_notification(&n);
 
@@ -58,35 +66,37 @@ int main()
 
 void test_select(sr_surreal_t *db)
 {
-    sr_array_t foos = sr_select(db, "foo");
-    if (db->err != 0)
+    sr_string_t err;
+    sr_value_t *foos;
+    int len = sr_select(db, &err, &foos, "foo");
+    if (len < 0)
     {
-        printf("%s", db->err);
+        printf("%s", err);
         return;
     }
-    else
-    {
-        sr_value_print(&foos.arr[0]);
-    }
+    sr_value_print(&foos[0]);
+    sr_free_arr(foos, len);
 }
 
 void test_query(sr_surreal_t *db)
 {
-    sr_arr_res_arr_t arr_res = sr_query(db, "CREATE foo SET val = 42; select * from foo;");
-    if (db->err != 0)
+    sr_string_t err;
+    sr_arr_res_t *res_arr;
+    int len = sr_query(db, &err, &res_arr, "CREATE foo SET val = 42; select * from foo;");
+    if (len < 0)
     {
-        printf("%s", db->err);
+        printf("%s", err);
         return;
     }
-    // ArrayResultArray arr_res_arr = res.ok;
-    for (size_t i = 0; i < arr_res.len; i++)
+
+    for (size_t i = 0; i < len; i++)
     {
-        if (arr_res.arr[i].err.code != 0)
+        if (res_arr[i].err.code != 0)
         {
-            printf("error for %d: %s\n", (int)i, arr_res.arr[i].err.msg);
+            printf("error for %d: %s\n", (int)i, res_arr[i].err.msg);
             continue;
         }
-        sr_array_t arr = arr_res.arr[i].ok;
+        sr_array_t arr = res_arr[i].ok;
         for (size_t j = 0; j < arr.len; j++)
         {
             sr_value_t v = arr.arr[j];

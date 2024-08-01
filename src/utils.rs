@@ -1,8 +1,8 @@
-use std::{ffi::CString, ptr};
+use std::ffi::CString;
 
 use libc::c_char;
 
-use crate::{result::ArrayResultArray, string::string_t, value::Array};
+use crate::string::string_t;
 
 pub trait CStringExt {
     fn to_raw_char_ptr(self) -> *mut c_char;
@@ -36,36 +36,36 @@ impl CStringExt for &str {
 }
 
 // must be seperate from Default because implementation for *mut T
-pub trait Empty {
-    fn empty() -> Self;
-}
+// pub trait Empty {
+//     fn empty() -> Self;
+// }
 
-impl Empty for () {
-    fn empty() -> Self {
-        ()
-    }
-}
+// impl Empty for () {
+//     fn empty() -> Self {
+//         ()
+//     }
+// }
 
-impl<T> Empty for *mut T {
-    fn empty() -> Self {
-        ptr::null_mut()
-    }
-}
+// impl<T> Empty for *mut T {
+//     fn empty() -> Self {
+//         ptr::null_mut()
+//     }
+// }
 
-impl Empty for Array {
-    fn empty() -> Self {
-        Array::empty()
-    }
-}
+// impl Empty for Array {
+//     fn empty() -> Self {
+//         Array::empty()
+//     }
+// }
 
-impl Empty for ArrayResultArray {
-    fn empty() -> Self {
-        ArrayResultArray::empty()
-    }
-}
+// impl Empty for ArrayResultArray {
+//     fn empty() -> Self {
+//         ArrayResultArray::empty()
+//     }
+// }
 
-impl Empty for string_t {
-    fn empty() -> Self {
-        string_t::null()
-    }
-}
+// impl Empty for string_t {
+//     fn empty() -> Self {
+//         string_t::null()
+//     }
+// }

@@ -1,13 +1,51 @@
-use std::ptr::{self, slice_from_raw_parts_mut};
+use std::{
+    ffi::c_int,
+    ptr::{self, slice_from_raw_parts_mut},
+};
 
 use crate::value::Value;
 use surrealdb::sql;
 
+pub struct ArrayGen<T> {
+    pub ptr: *mut T,
+    pub len: c_int,
+}
+
+impl<T> ArrayGen<T> {
+    pub fn free(&mut self) {
+        if self.ptr.is_null() {
+            return;
+        }
+        if self.len <= 0 {
+            return;
+        }
+        let slice = slice_from_raw_parts_mut(self.ptr, self.len as usize);
+        let _boxed = unsafe { Box::from_raw(slice) };
+    }
+}
+
+pub trait MakeArray<T> {
+    fn make_array(self) -> ArrayGen<T>;
+}
+
+impl<T> MakeArray<T> for Vec<T> {
+    fn make_array(self) -> ArrayGen<T> {
+        let boxed = self.into_boxed_slice();
+        let slice = Box::leak(boxed);
+        let len = slice.len();
+        let pntr = std::ptr::from_mut(slice);
+        ArrayGen {
+            ptr: pntr as *mut T,
+            len: len as c_int,
+        }
+    }
+}
+
 #[derive(Debug)]
 #[repr(C)]
 pub struct Array {
-    arr: *mut Value,
-    len: usize,
+    pub arr: *mut Value,
+    pub len: c_int,
 }
 
 impl From<sql::Array> for Array {
@@ -19,14 +57,8 @@ impl From<sql::Array> for Array {
 
 impl From<Vec<Value>> for Array {
     fn from(value: Vec<Value>) -> Self {
-        let boxed = value.into_boxed_slice();
-        let slice = Box::leak(boxed);
-        let len = slice.len();
-        let pntr = std::ptr::from_mut(slice);
-        Self {
-            arr: pntr as *mut Value,
-            len: len,
-        }
+        let ArrayGen { ptr, len } = value.make_array();
+        Self { arr: ptr, len: len }
     }
 }
 
@@ -41,17 +73,17 @@ impl Array {
 
 impl Drop for Array {
     fn drop(&mut self) {
-        if self.arr.is_null() {
-            return;
+        ArrayGen {
+            ptr: self.arr,
+            len: self.len,
         }
-        let slice = slice_from_raw_parts_mut(self.arr, self.len);
-        let _boxed = unsafe { Box::from_raw(slice) };
+        .free()
     }
 }
 
 impl Array {
     #[export_name = "sr_free_arr"]
-    pub extern "C" fn free_arr(arr: Array) {
-        let _ = arr;
+    pub extern "C" fn free_arr(ptr: *mut Value, len: c_int) {
+        ArrayGen { ptr, len }.free()
     }
 }
