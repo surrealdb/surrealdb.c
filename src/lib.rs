@@ -25,6 +25,7 @@ use value::Value;
 
 pub const SR_ERROR: c_int = -1;
 pub const SR_FATAL: c_int = -2;
+pub const SR_NONE: c_int = -3;
 
 pub struct Surreal {
     db: sdbSurreal<Any>,

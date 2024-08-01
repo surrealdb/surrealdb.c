@@ -4,6 +4,7 @@ use tokio::runtime::Handle;
 
 use crate::notification::Notification;
 
+/// may be sent across threads, but must not be aliased
 pub struct Stream {
     inner: sdbStream<sql::Value>,
     rt: Handle,

@@ -1,21 +1,30 @@
+use std::ffi::c_int;
+
 use surrealdb::sql::Bytes as sdbBytes;
+
+use super::array::{ArrayGen, MakeArray};
 
 #[derive(Debug)]
 #[repr(C)]
 pub struct Bytes {
     pub arr: *mut u8,
-    pub len: usize,
+    pub len: c_int,
+}
+
+impl Bytes {
+    #[export_name = "sr_free_bytes"]
+    pub extern "C" fn free_bytes(bytes: Bytes) {
+        ArrayGen {
+            ptr: bytes.arr,
+            len: bytes.len,
+        }
+        .free()
+    }
 }
 
 impl From<sdbBytes> for Bytes {
     fn from(value: sdbBytes) -> Self {
-        let boxed = value.into_inner().into_boxed_slice();
-        let slice = Box::leak(boxed);
-        let len = slice.len();
-        let pntr = std::ptr::from_mut(slice);
-        Self {
-            arr: pntr as *mut u8,
-            len: len,
-        }
+        let ArrayGen { ptr, len } = value.into_inner().make_array();
+        Self { arr: ptr, len }
     }
 }

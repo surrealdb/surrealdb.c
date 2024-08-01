@@ -7,6 +7,8 @@
 
 #define sr_SR_FATAL -2
 
+#define sr_SR_NONE -3
+
 typedef enum sr_action {
   SR_ACTION_CREATE,
   SR_ACTION_UPDATE,
@@ -15,6 +17,9 @@ typedef enum sr_action {
 
 typedef struct sr_opaque_object_internal_t sr_opaque_object_internal_t;
 
+/**
+ * may be sent across threads, but must not be aliased
+ */
 typedef struct sr_stream_t sr_stream_t;
 
 typedef struct sr_surreal_t sr_surreal_t;
@@ -66,7 +71,7 @@ typedef struct sr_object_t {
 
 typedef struct sr_bytes_t {
   uint8_t *arr;
-  uintptr_t len;
+  int len;
 } sr_bytes_t;
 
 typedef enum sr_id_t_Tag {
@@ -198,9 +203,13 @@ int sr_version(const struct sr_surreal_t *db, sr_string_t *err_ptr, sr_string_t 
 
 void sr_free_arr(struct sr_value_t *ptr, int len);
 
+void sr_free_bytes(struct sr_bytes_t bytes);
+
 void sr_print_notification(const struct sr_notification_t *notification);
 
 const struct sr_value_t *sr_object_get(const struct sr_object_t *obj, const char *key);
+
+void sr_free_object(struct sr_object_t obj);
 
 void sr_free_arr_res(struct sr_arr_res_t res);
 

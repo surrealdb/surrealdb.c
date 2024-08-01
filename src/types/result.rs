@@ -4,8 +4,8 @@ use std::{
     ptr::{self},
 };
 
-use crate::utils::CStringExt2;
 use crate::{string::string_t, Array, Surreal};
+use crate::{utils::CStringExt2, SR_ERROR};
 
 use super::array::ArrayGen;
 
@@ -26,7 +26,7 @@ impl SurrealError {
 
     pub fn from_msg(msg: impl Display) -> Self {
         let out = Self {
-            code: 1,
+            code: SR_ERROR,
             msg: msg.to_string().to_string_t(),
         };
         out
@@ -81,44 +81,6 @@ impl ArrayResult {
         let _ = res;
     }
 }
-
-// #[repr(C)]
-// pub struct ArrayResultArray {
-//     pub arr: *mut ArrayResult,
-//     pub len: usize,
-// }
-
-// impl From<Vec<ArrayResult>> for ArrayResultArray {
-//     fn from(value: Vec<ArrayResult>) -> Self {
-//         let boxed = value.into_boxed_slice();
-//         let slice = Box::leak(boxed);
-//         let len = slice.len();
-//         let pntr = std::ptr::from_mut(slice);
-//         Self {
-//             arr: pntr as *mut ArrayResult,
-//             len: len,
-//         }
-//     }
-// }
-
-// impl ArrayResultArray {
-//     pub fn empty() -> Self {
-//         Self {
-//             arr: ptr::null_mut(),
-//             len: 0,
-//         }
-//     }
-// }
-
-// impl Drop for ArrayResultArray {
-//     fn drop(&mut self) {
-//         if self.arr.is_null() {
-//             return;
-//         }
-//         let slice = slice_from_raw_parts_mut(self.arr, self.len);
-//         let _boxed = unsafe { Box::from_raw(slice) };
-//     }
-// }
 
 #[export_name = "sr_free_arr_res_arr"]
 pub extern "C" fn free_arr_res_arr(ptr: *mut ArrayResult, len: c_int) {
