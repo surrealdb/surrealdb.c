@@ -4,24 +4,21 @@
 #include <assert.h>
 #include "../surrealdb.h"
 
-void test_query(Surreal *db);
-void test_select(Surreal *db);
+// void test_query(Surreal *db);
+// void test_select(Surreal *db);
 void *print_stream(void *vargp);
-
-Surreal *surreal_cast(void *opaque)
-{
-    return (Surreal *)opaque;
-}
 
 int main()
 {
-    SurrealResult connect_res = connect("memory");
-    if (connect_res.err.code != 0)
-    {
-        printf("%s", connect_res.err.msg);
-        return 1;
-    }
-    Surreal *db = connect_res.ok;
+    // SurrealResult connect_res = connect("memory");
+    // if (connect_res.err.code != 0)
+    // {
+    //     printf("%s", connect_res.err.msg);
+    //     return 1;
+    // }
+    // Surreal *db = connect_res.ok;
+
+    sr_connect("memory");
 
     StringResult ver_res = version(db);
     if (ver_res.err.code != 0)

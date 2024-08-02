@@ -9,15 +9,15 @@ void *print_stream(void *vargp);
 
 int main()
 {
-    sr_surreal_res_t connect_res = sr_connect("memory");
-    if (connect_res.err.code != 0)
+    sr_surreal_t *db;
+    sr_string_t err;
+    if (sr_connect(err, db, "memory") < 0)
     {
-        printf("%s", connect_res.err.msg);
+
+        printf("%s", err);
         return 1;
     }
-    sr_surreal_t *db = connect_res.ok;
 
-    sr_string_t err;
     sr_string_t ver;
 
     if (sr_version(db, &err, &ver) < 0)
@@ -25,11 +25,11 @@ int main()
         printf("%s", err);
         return 1;
     }
-    // printf("%s\n", ver);
-    // sr_free_string(ver);
+    printf("%s\n", ver);
+    sr_free_string(ver);
 
-    sr_use_ns(db, "test");
-    sr_use_db(db, "test");
+    sr_use_ns(db, err, "test");
+    sr_use_db(db, err, "test");
 
     sr_arr_res_t *foo_res;
     int len = sr_query(db, &err, &foo_res, "create foo");

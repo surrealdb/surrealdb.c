@@ -8,7 +8,6 @@ use std::{
     sync::atomic::{AtomicBool, Ordering},
 };
 
-use result::SurrealResult;
 use stream::Stream;
 use string::string_t;
 use surrealdb::{
@@ -35,29 +34,45 @@ pub struct Surreal {
 
 impl Surreal {
     #[export_name = "sr_connect"]
-    pub extern "C" fn connect(endpoint: *const c_char) -> SurrealResult {
-        let Ok(endpoint) = (unsafe { CStr::from_ptr(endpoint).to_str() }) else {
-            return SurrealResult::err("invalid utf8");
+    pub extern "C" fn connect(
+        err_ptr: *mut string_t,
+        surreal_ptr: *mut *mut Surreal,
+        endpoint: *const c_char,
+    ) -> c_int {
+        let res: Result<Surreal, string_t> = 'res: {
+            let Ok(endpoint) = (unsafe { CStr::from_ptr(endpoint).to_str() }) else {
+                break 'res Err("invalid utf8".into());
+            };
+
+            let Ok(rt) = Runtime::new() else {
+                break 'res Err("error creating runtime".into());
+            };
+
+            let con_fut = any::connect(endpoint);
+
+            let db = match rt.block_on(con_fut.into_future()) {
+                Ok(db) => db,
+                Err(e) => break 'res Err(e.into()),
+            };
+
+            Ok(Surreal {
+                db,
+                rt,
+                ps: AtomicBool::new(false),
+            })
         };
 
-        let Ok(rt) = Runtime::new() else {
-            return SurrealResult::err("error creating runtime");
-        };
-
-        let con_fut = any::connect(endpoint);
-
-        let db = match rt.block_on(con_fut.into_future()) {
-            Ok(db) => db,
-            Err(e) => return SurrealResult::err(e.to_string()),
-        };
-
-        let boxed = Box::new(Surreal {
-            db,
-            rt,
-            ps: AtomicBool::new(false),
-        });
-
-        return SurrealResult::ok(Box::leak(boxed));
+        match res {
+            Ok(s) => {
+                let boxed = Box::new(s);
+                unsafe { surreal_ptr.write(Box::leak(boxed)) }
+                1
+            }
+            Err(e) => {
+                unsafe { err_ptr.write(e) }
+                SR_ERROR
+            }
+        }
     }
 
     #[export_name = "sr_surreal_disconnect"]

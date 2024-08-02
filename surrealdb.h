@@ -26,19 +26,6 @@ typedef struct sr_surreal_t sr_surreal_t;
 
 typedef char *sr_string_t;
 
-/**
- * when code = 0 there is no error
- */
-typedef struct sr_SurrealError {
-  int code;
-  sr_string_t msg;
-} sr_SurrealError;
-
-typedef struct sr_surreal_res_t {
-  struct sr_surreal_t *ok;
-  struct sr_SurrealError err;
-} sr_surreal_res_t;
-
 typedef enum sr_number_t_Tag {
   SR_NUMBER_INT,
   SR_NUMBER_FLOAT,
@@ -160,6 +147,14 @@ typedef struct sr_array_t {
   int len;
 } sr_array_t;
 
+/**
+ * when code = 0 there is no error
+ */
+typedef struct sr_SurrealError {
+  int code;
+  sr_string_t msg;
+} sr_SurrealError;
+
 typedef struct sr_arr_res_t {
   struct sr_array_t ok;
   struct sr_SurrealError err;
@@ -172,7 +167,7 @@ typedef struct sr_notification_t {
   struct sr_value_t data;
 } sr_notification_t;
 
-struct sr_surreal_res_t sr_connect(const char *endpoint);
+int sr_connect(sr_string_t *err_ptr, struct sr_surreal_t **surreal_ptr, const char *endpoint);
 
 void sr_surreal_disconnect(struct sr_surreal_t *db);
 

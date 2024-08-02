@@ -33,26 +33,26 @@ impl SurrealError {
     }
 }
 
-#[repr(C)]
-pub struct SurrealResult {
-    pub ok: *mut Surreal,
-    pub err: SurrealError,
-}
+// #[repr(C)]
+// pub struct SurrealResult {
+//     pub ok: *mut Surreal,
+//     pub err: SurrealError,
+// }
 
-impl SurrealResult {
-    pub fn err(msg: impl Display) -> Self {
-        Self {
-            ok: ptr::null_mut(),
-            err: SurrealError::from_msg(msg),
-        }
-    }
-    pub fn ok(ok: &mut Surreal) -> Self {
-        Self {
-            ok,
-            err: SurrealError::empty(),
-        }
-    }
-}
+// impl SurrealResult {
+//     pub fn err(msg: impl Display) -> Self {
+//         Self {
+//             ok: ptr::null_mut(),
+//             err: SurrealError::from_msg(msg),
+//         }
+//     }
+//     pub fn ok(ok: &mut Surreal) -> Self {
+//         Self {
+//             ok,
+//             err: SurrealError::empty(),
+//         }
+//     }
+// }
 
 #[repr(C)]
 pub struct ArrayResult {
