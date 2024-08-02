@@ -161,7 +161,6 @@ typedef struct sr_arr_res_t {
 } sr_arr_res_t;
 
 typedef struct sr_notification_t {
-  bool some;
   struct sr_uuid_t query_id;
   enum sr_action action;
   struct sr_value_t data;
@@ -210,7 +209,12 @@ void sr_free_arr_res(struct sr_arr_res_t res);
 
 void sr_free_arr_res_arr(struct sr_arr_res_t *ptr, int len);
 
-struct sr_notification_t sr_stream_next(struct sr_stream_t *self);
+/**
+ * blocks until next item is recieved on stream
+ * will return 1 and write notification to notification_ptr is recieved
+ * will return SR_NONE if the stream is closed
+ */
+int sr_stream_next(struct sr_stream_t *self, struct sr_notification_t *notification_ptr);
 
 void sr_stream_kill(struct sr_stream_t *stream);
 

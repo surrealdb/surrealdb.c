@@ -1,13 +1,9 @@
-use std::{
-    ffi::c_int,
-    fmt::Display,
-    ptr::{self},
-};
+use std::{ffi::c_int, fmt::Display};
 
-use crate::{string::string_t, Array, Surreal};
+use crate::string::string_t;
 use crate::{utils::CStringExt2, SR_ERROR};
 
-use super::array::ArrayGen;
+use super::array::{Array, ArrayGen};
 
 /// when code = 0 there is no error
 #[repr(C)]

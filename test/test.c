@@ -11,7 +11,7 @@ int main()
 {
     sr_surreal_t *db;
     sr_string_t err;
-    if (sr_connect(err, db, "memory") < 0)
+    if (sr_connect(&err, &db, "memory") < 0)
     {
 
         printf("%s", err);
@@ -28,8 +28,18 @@ int main()
     printf("%s\n", ver);
     sr_free_string(ver);
 
-    sr_use_ns(db, err, "test");
-    sr_use_db(db, err, "test");
+    if (sr_use_ns(db, &err, "test") < 0)
+    {
+
+        printf("%s", err);
+        return 1;
+    }
+    if (sr_use_db(db, &err, "test") < 0)
+    {
+
+        printf("%s", err);
+        return 1;
+    }
 
     sr_arr_res_t *foo_res;
     int len = sr_query(db, &err, &foo_res, "create foo");
@@ -47,8 +57,13 @@ int main()
     // assert this will work
     sr_free_arr_res_arr(foo_res, len);
 
-    sr_notification_t n = sr_stream_next(stream);
-    sr_print_notification(&n);
+    sr_notification_t not ;
+
+    if (sr_stream_next(stream, &not ) > 0)
+    {
+
+        sr_print_notification(&not );
+    }
 
     sr_stream_kill(stream);
 
@@ -91,7 +106,7 @@ void test_query(sr_surreal_t *db)
 
     for (size_t i = 0; i < len; i++)
     {
-        if (res_arr[i].err.code != 0)
+        if (res_arr[i].err.code < 0)
         {
             printf("error for %d: %s\n", (int)i, res_arr[i].err.msg);
             continue;

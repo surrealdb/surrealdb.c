@@ -117,9 +117,10 @@ impl Surreal {
         use surrealdb::method::Stream as sdbStream;
         with_surreal_async(db, err_ptr, |surreal| async {
             let resource = unsafe { CStr::from_ptr(resource) }.to_str()?;
-            let fut = surreal.db.select(Resource::from(resource)).live();
+            // let fut = surreal.db.select(Resource::from(resource)).live();
 
-            let stream_inner: sdbStream<sql::Value> = surreal.rt.block_on(fut.into_future())?;
+            let stream_inner: sdbStream<sql::Value> =
+                surreal.db.select(Resource::from(resource)).live().await?;
 
             let stream_boxed = Box::new(Stream::new(stream_inner, surreal.rt.handle().clone()));
 
@@ -222,7 +223,7 @@ impl Surreal {
         with_surreal_async(db, err_ptr, |surreal| async {
             let ns_name = unsafe { CStr::from_ptr(query) }.to_str()?;
 
-            surreal.db.use_db(ns_name).await?;
+            surreal.db.use_ns(ns_name).await?;
 
             Ok(0)
         })
