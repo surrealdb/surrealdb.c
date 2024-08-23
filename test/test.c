@@ -11,7 +11,8 @@ int main()
 {
     sr_surreal_t *db;
     sr_string_t err;
-    if (sr_connect(&err, &db, "memory") < 0)
+    // if (sr_connect(&err, &db, "memory") < 0)
+    if (sr_connect(&err, &db, "ws://localhost:8000") < 0)
     {
 
         printf("%s", err);
@@ -34,17 +35,24 @@ int main()
         printf("%s", err);
         return 1;
     }
+    printf("after use ns\n");
     if (sr_use_db(db, &err, "test") < 0)
     {
 
         printf("%s", err);
         return 1;
     }
+    printf("after use db\n");
 
     sr_arr_res_t *foo_res;
     int len = sr_query(db, &err, &foo_res, "create foo");
-    // assert this will work
+    if (len < 0)
+    {
+        printf("%s\n", err);
+        return 1;
+    }
     sr_free_arr_res_arr(foo_res, len);
+    printf("after foo query\n");
 
     sr_stream_t *stream;
     if (sr_select_live(db, &err, &stream, "foo") < 0)

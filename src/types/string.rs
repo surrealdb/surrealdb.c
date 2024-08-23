@@ -36,6 +36,19 @@ impl Drop for string_t {
     }
 }
 
+impl Clone for string_t {
+    fn clone(&self) -> Self {
+        let ptr = self.0;
+        if ptr.is_null() {
+            return string_t(ptr::null_mut());
+        } else {
+            let cstr = unsafe { CStr::from_ptr(ptr) };
+            let cstring = CString::from(cstr);
+            string_t(cstring.into_raw())
+        }
+    }
+}
+
 impl<D: Display> From<D> for string_t {
     fn from(value: D) -> Self {
         value.to_string().to_string_t()
@@ -50,6 +63,7 @@ impl Default for string_t {
 
 pub fn ptr_to_str(ptr: *const c_char) -> &'static str {
     let cstr = unsafe { CStr::from_ptr(ptr) };
+    // TODO(raphaeldarley): remove panic because of ub, or check its always caught
     cstr.to_str().unwrap()
 }
 

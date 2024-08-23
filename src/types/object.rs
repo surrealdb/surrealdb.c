@@ -8,7 +8,7 @@ use surrealdb::sql;
 use crate::value::Value;
 
 #[repr(C)]
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Object(Box<BTreeMap<String, Value>>);
 
 impl Object {
@@ -16,6 +16,11 @@ impl Object {
     pub extern "C" fn get(obj: &Object, key: *const c_char) -> Option<&Value> {
         let key = unsafe { CStr::from_ptr(key) }.to_str().unwrap();
         obj.0.get(key)
+    }
+
+    pub extern "C" fn new() -> Object {
+        let boxed = Box::new(BTreeMap::new());
+        Object(boxed)
     }
 
     #[export_name = "sr_free_object"]

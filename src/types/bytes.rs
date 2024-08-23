@@ -22,9 +22,31 @@ impl Bytes {
     }
 }
 
+impl Clone for Bytes {
+    fn clone(&self) -> Self {
+        Self {
+            arr: self.arr.clone(),
+            len: self.len.clone(),
+        }
+    }
+}
+
+impl From<ArrayGen<u8>> for Bytes {
+    fn from(value: ArrayGen<u8>) -> Self {
+        let ArrayGen { ptr, len } = value;
+        Self { arr: ptr, len }
+    }
+}
+
+impl From<Bytes> for ArrayGen<u8> {
+    fn from(value: Bytes) -> Self {
+        let Bytes { arr, len } = value;
+        Self { ptr: arr, len }
+    }
+}
+
 impl From<sdbBytes> for Bytes {
     fn from(value: sdbBytes) -> Self {
-        let ArrayGen { ptr, len } = value.into_inner().make_array();
-        Self { arr: ptr, len }
+        value.into_inner().make_array().into()
     }
 }

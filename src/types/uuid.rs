@@ -1,7 +1,7 @@
 use surrealdb::sql::Uuid as sdbUuid;
 
 #[repr(C)]
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Uuid(pub [u8; 16]);
 
 impl From<sdbUuid> for Uuid {

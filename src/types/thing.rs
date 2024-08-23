@@ -5,7 +5,7 @@ use surrealdb::sql;
 use crate::{array::Array, object::Object, string::string_t, utils::CStringExt2};
 
 #[repr(C)]
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Thing {
     table: string_t,
     id: Id,
@@ -13,7 +13,7 @@ pub struct Thing {
 
 #[allow(non_camel_case_types)]
 #[repr(C)]
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Id {
     SR_ID_NUMBER(i64),
     SR_ID_STRING(string_t),

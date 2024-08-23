@@ -166,13 +166,78 @@ typedef struct sr_notification_t {
   struct sr_value_t data;
 } sr_notification_t;
 
-int sr_connect(sr_string_t *err_ptr, struct sr_surreal_t **surreal_ptr, const char *endpoint);
+/**
+ * connects to a local, remote, or embedded database
+ *
+ * if any function returns SR_FATAL, this must not be used (except to drop) (TODO: check this is safe) doing so will cause the program to abort
+ *
+ * # Examples
+ *
+ * ```c
+ * sr_string_t err;
+ * sr_surreal_t *db;
+ *
+ * // connect to in-memory instance
+ * if (sr_connect(&err, &db, "mem://") < 0) {
+ *     printf("error connecting to db: %s\n", err);
+ *     return 1;
+ * }
+ *
+ * // connect to surrealkv file
+ * if (sr_connect(&err, &db, "surrealkv://test.skv") < 0) {
+ *     printf("error connecting to db: %s\n", err);
+ *     return 1;
+ * }
+ *
+ * // connect to surrealdb server
+ * if (sr_connect(&err, &db, "wss://localhost:8000") < 0) {
+ *     printf("error connecting to db: %s\n", err);
+ *     return 1;
+ * }
+ *
+ * sr_surreal_disconnect(db);
+ * ```
+ */
+int sr_connect(sr_string_t *err_ptr,
+               struct sr_surreal_t **surreal_ptr,
+               const char *endpoint);
 
+/**
+ * disconnect a database connection
+ * note: the Surreal object must not be used after this function has been called
+ *     any object allocations will still be valid, and should be freed, using the appropriate function
+ * TODO: check if Stream can be freed after disconnection because of rt
+ *
+ * # Examples
+ *
+ * ```c
+ * sr_surreal_t *db;
+ * // connect
+ * disconnect(db);
+ * ```
+ */
 void sr_surreal_disconnect(struct sr_surreal_t *db);
 
 /**
+ * make a live selection
  * if successful sets *stream_ptr to be an exclusive reference to an opaque Stream object
- * this pointer should not be copied and only one should be used at a time
+ * which can be moved accross threads but not aliased
+ *
+ * # Examples
+ *
+ * sr_stream_t *stream;
+ * if (sr_select_live(db, &err, &stream, "foo") < 0)
+ * {
+ *     printf("%s", err);
+ *     return 1;
+ * }
+ *
+ * sr_notification_t not ;
+ * if (sr_stream_next(stream, &not ) > 0)
+ * {
+ *     sr_print_notification(&not );
+ * }
+ * sr_stream_kill(stream);
  */
 int sr_select_live(const struct sr_surreal_t *db,
                    sr_string_t *err_ptr,
@@ -184,6 +249,9 @@ int sr_query(const struct sr_surreal_t *db,
              struct sr_arr_res_t **res_ptr,
              const char *query);
 
+/**
+ * query the database
+ */
 int sr_select(const struct sr_surreal_t *db,
               sr_string_t *err_ptr,
               struct sr_value_t **res_ptr,

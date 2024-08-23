@@ -1,6 +1,6 @@
 use std::{
     ffi::c_int,
-    ptr::{self, slice_from_raw_parts_mut},
+    ptr::{self, slice_from_raw_parts, slice_from_raw_parts_mut},
 };
 
 use crate::value::Value;
@@ -9,6 +9,22 @@ use surrealdb::sql;
 pub struct ArrayGen<T> {
     pub ptr: *mut T,
     pub len: c_int,
+}
+
+impl<T> Clone for ArrayGen<T>
+where
+    T: Clone,
+{
+    fn clone(&self) -> Self {
+        if self.ptr.is_null() || self.len == 0 {
+            return Self {
+                ptr: ptr::null_mut(),
+                len: 0,
+            };
+        }
+        let slice = unsafe { &*slice_from_raw_parts(self.ptr, self.len as usize) };
+        slice.to_owned().make_array()
+    }
 }
 
 impl<T> ArrayGen<T> {
@@ -57,8 +73,21 @@ impl From<sql::Array> for Array {
 
 impl From<Vec<Value>> for Array {
     fn from(value: Vec<Value>) -> Self {
-        let ArrayGen { ptr, len } = value.make_array();
-        Self { arr: ptr, len: len }
+        value.make_array().into()
+    }
+}
+
+impl From<ArrayGen<Value>> for Array {
+    fn from(value: ArrayGen<Value>) -> Self {
+        let ArrayGen { ptr, len } = value;
+        Self { arr: ptr, len }
+    }
+}
+
+impl From<Array> for ArrayGen<Value> {
+    fn from(value: Array) -> Self {
+        let Array { arr, len } = value;
+        ArrayGen { ptr: arr, len }
     }
 }
 
@@ -68,6 +97,17 @@ impl Array {
             arr: ptr::null_mut(),
             len: 0,
         }
+    }
+}
+
+impl Clone for Array {
+    fn clone(&self) -> Self {
+        ArrayGen {
+            ptr: self.arr,
+            len: self.len,
+        }
+        .clone()
+        .into()
     }
 }
 

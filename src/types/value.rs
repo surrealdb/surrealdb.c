@@ -8,7 +8,7 @@ use super::duration::Duration;
 
 #[allow(non_camel_case_types)]
 #[repr(C)]
-#[derive(Default, Debug)]
+#[derive(Default, Debug, Clone)]
 pub enum Value {
     #[default]
     SR_VALUE_NONE,

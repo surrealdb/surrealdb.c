@@ -11,7 +11,7 @@ pub mod uuid;
 pub mod value;
 
 #[allow(non_camel_case_types)]
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 #[repr(C)]
 pub enum Number {
     SR_NUMBER_INT(i64),
