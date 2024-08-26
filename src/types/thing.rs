@@ -40,3 +40,17 @@ impl From<sql::Thing> for Thing {
         }
     }
 }
+
+impl From<Thing> for sql::Thing {
+    fn from(value: Thing) -> Self {
+        let table = String::from(value.table);
+        let id = match value.id {
+            Id::SR_ID_NUMBER(i) => sql::Id::Number(i),
+            Id::SR_ID_STRING(s) => sql::Id::String(s.into()),
+            Id::SR_ID_ARRAY(a) => sql::Id::Array((*a).into()),
+            Id::SR_ID_OBJECT(o) => sql::Id::Object(o.into()),
+        };
+
+        (table, id).into()
+    }
+}

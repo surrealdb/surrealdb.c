@@ -247,7 +247,8 @@ int sr_select_live(const struct sr_surreal_t *db,
 int sr_query(const struct sr_surreal_t *db,
              sr_string_t *err_ptr,
              struct sr_arr_res_t **res_ptr,
-             const char *query);
+             const char *query,
+             const struct sr_object_t *vars);
 
 /**
  * query the database
@@ -270,6 +271,18 @@ void sr_free_bytes(struct sr_bytes_t bytes);
 void sr_print_notification(const struct sr_notification_t *notification);
 
 const struct sr_value_t *sr_object_get(const struct sr_object_t *obj, const char *key);
+
+struct sr_object_t sr_object_new(void);
+
+void sr_object_insert(struct sr_object_t *obj, const char *key, const struct sr_value_t *value);
+
+void sr_object_insert_str(struct sr_object_t *obj, const char *key, const char *value);
+
+void sr_object_insert_int(struct sr_object_t *obj, const char *key, int value);
+
+void sr_object_insert_float(struct sr_object_t *obj, const char *key, float value);
+
+void sr_object_insert_double(struct sr_object_t *obj, const char *key, double value);
 
 void sr_free_object(struct sr_object_t obj);
 

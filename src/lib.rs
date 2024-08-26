@@ -20,7 +20,7 @@ use types::result::ArrayResult;
 
 use array::{Array, ArrayGen, MakeArray};
 pub use types::*;
-use value::Value;
+use value::{Object, Value};
 
 pub const SR_ERROR: c_int = -1;
 pub const SR_FATAL: c_int = -2;
@@ -211,17 +211,72 @@ impl Surreal {
     // patch.rs
 
     // query.rs
+    // #[export_name = "sr_query"]
+    // pub extern "C" fn query(
+    //     db: &Surreal,
+    //     err_ptr: *mut string_t,
+    //     res_ptr: *mut *mut ArrayResult,
+    //     query: *const c_char,
+    //     vars: *const Object,
+    // ) -> c_int {
+    //     with_surreal_async(db, err_ptr, |surreal| async {
+    //         let query = unsafe { CStr::from_ptr(query) }.to_str()?;
+    //         let vars: sql::Object = match vars.is_null() {
+    //             true => Default::default(),
+    //             false => unsafe { &*vars }.clone().into(),
+    //         };
+
+    //         println!("got vars: {vars:?}");
+
+    //         // let mut res = surreal.db.query(query).bind(vars).await?;
+    //         let mut res = surreal.db.query(query).await?;
+    //         println!("got res: {res:?}");
+    //         let res_len = res.num_statements();
+
+    //         let mut acc = Vec::with_capacity(res_len);
+    //         for index in 0..res_len {
+    //             let arr_res = match res.take::<sql::Value>(index) {
+    //                 Ok(sql::Value::Array(arr)) => {
+    //                     let a = arr.into();
+    //                     ArrayResult::ok(a)
+    //                 }
+    //                 Ok(val) => {
+    //                     let arr: Array = vec![val.into()].into();
+    //                     ArrayResult::ok(arr)
+    //                 }
+    //                 Err(e) => ArrayResult::err(e.to_string()),
+    //             };
+    //             acc.push(arr_res);
+    //         }
+
+    //         let ArrayGen { ptr, len } = acc.make_array();
+    //         unsafe { res_ptr.write(ptr) }
+
+    //         Ok(len)
+    //     })
+    // }
     #[export_name = "sr_query"]
     pub extern "C" fn query(
         db: &Surreal,
         err_ptr: *mut string_t,
         res_ptr: *mut *mut ArrayResult,
         query: *const c_char,
+        vars: *const Object,
     ) -> c_int {
-        with_surreal_async(db, err_ptr, |surreal| async {
+        with_surreal(db, err_ptr, |surreal| {
             let query = unsafe { CStr::from_ptr(query) }.to_str()?;
+            let vars: sql::Object = match vars.is_null() {
+                true => Default::default(),
+                false => unsafe { &*vars }.clone().into(),
+            };
 
-            let mut res = surreal.db.query(query).await?;
+            println!("got vars: {vars:?}");
+
+            // let mut res = surreal.db.query(query).bind(vars).await?;
+            let fut = surreal.db.query(query).into_future();
+            // let mut res = surreal.db.query(query).await?;
+            let mut res = surreal.rt.block_on(fut)?;
+            println!("got res: {res:?}");
             let res_len = res.num_statements();
 
             let mut acc = Vec::with_capacity(res_len);
@@ -324,6 +379,36 @@ impl Surreal {
 
             return Ok(0);
         })
+    }
+}
+
+fn with_surreal<C>(db: &Surreal, err_ptr: *mut string_t, fun: C) -> c_int
+where
+    C: FnOnce(&Surreal) -> Result<c_int, string_t>,
+{
+    if db.ps.load(Ordering::Acquire) {
+        std::process::abort()
+    }
+
+    let res = match catch_unwind(AssertUnwindSafe(|| fun(&db))) {
+        Ok(r) => r,
+        Err(e) => {
+            if let Some(e_str) = e.downcast_ref::<&str>() {
+                let e_string: string_t = format!("Panicked with: {e_str}").into();
+                unsafe { err_ptr.write(e_string) }
+            } else {
+                unsafe { err_ptr.write("Panicked".into()) }
+            }
+            return SR_FATAL;
+        }
+    };
+
+    match res {
+        Ok(n) => n,
+        Err(e) => {
+            unsafe { err_ptr.write(e) }
+            SR_ERROR
+        }
     }
 }
 

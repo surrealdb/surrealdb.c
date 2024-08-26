@@ -11,15 +11,16 @@ license = "Apache License 2.0"
 crate-type = ["lib", "staticlib", "cdylib"]
 
 [dependencies]
-surrealdb = { git = "https://github.com/surrealdb/surrealdb.git", tag = "v2.0.0-alpha.5", features = [
+surrealdb = { git = "https://github.com/surrealdb/surrealdb.git", tag = "v2.0.0-alpha.10", features = [
     "kv-surrealkv",
     "kv-mem",
 ] }
-surrealdb-core = { git = "https://github.com/surrealdb/surrealdb.git", tag = "v2.0.0-alpha.5" }
+surrealdb-core = { git = "https://github.com/surrealdb/surrealdb.git", tag = "v2.0.0-alpha.10" }
 tokio = { version = "1.38.0", features = ["full"] }
 uuid = "1.9.1"
 futures = "0.3.30"
-libc = "0.2.155"
+libc = "0.2.158"
+chrono = "0.4.38"
 
 [build-dependencies]
-cbindgen = "0.26.0"
+cbindgen = "0.27.0"

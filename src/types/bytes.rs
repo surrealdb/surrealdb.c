@@ -50,3 +50,9 @@ impl From<sdbBytes> for Bytes {
         value.into_inner().make_array().into()
     }
 }
+
+impl From<Bytes> for sdbBytes {
+    fn from(value: Bytes) -> Self {
+        ArrayGen::from(value).into_vec().into()
+    }
+}

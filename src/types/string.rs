@@ -22,8 +22,15 @@ impl string_t {
 
 impl Debug for string_t {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let str = ptr_to_str(self.0);
-        write!(f, "{}", str)
+        let cstr = unsafe { CStr::from_ptr(self.0) };
+        write!(f, "{}", cstr.to_string_lossy())
+    }
+}
+
+impl From<string_t> for String {
+    fn from(value: string_t) -> Self {
+        let cstr = unsafe { CStr::from_ptr(value.0) };
+        cstr.to_string_lossy().into()
     }
 }
 
@@ -61,11 +68,11 @@ impl Default for string_t {
     }
 }
 
-pub fn ptr_to_str(ptr: *const c_char) -> &'static str {
-    let cstr = unsafe { CStr::from_ptr(ptr) };
-    // TODO(raphaeldarley): remove panic because of ub, or check its always caught
-    cstr.to_str().unwrap()
-}
+// pub fn ptr_to_str(ptr: *const c_char) -> &'static str {
+//     let cstr = unsafe { CStr::from_ptr(ptr) };
+//     // // TODO(raphaeldarley): remove panic because of ub, or check its always caught
+//     cstr.to_str().unwrap()
+// }
 
 #[export_name = "sr_free_string"]
 pub extern "C" fn free_string(string: string_t) {

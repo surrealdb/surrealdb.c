@@ -26,6 +26,16 @@ where
         slice.to_owned().make_array()
     }
 }
+impl<T> ArrayGen<T> {
+    pub fn into_vec(self) -> Vec<T> {
+        if self.ptr.is_null() || self.len == 0 {
+            return Vec::with_capacity(0);
+        }
+        let slice = slice_from_raw_parts_mut(self.ptr, self.len as usize);
+        let boxed = unsafe { Box::from_raw(slice) };
+        boxed.into_vec()
+    }
+}
 
 impl<T> ArrayGen<T> {
     pub fn free(&mut self) {
@@ -68,6 +78,15 @@ impl From<sql::Array> for Array {
     fn from(value: sql::Array) -> Self {
         let val_vec: Vec<Value> = value.0.into_iter().map(Into::into).collect();
         val_vec.into()
+    }
+}
+
+impl From<Array> for sql::Array {
+    fn from(value: Array) -> Self {
+        let gen_arr: ArrayGen<Value> = value.into();
+        let vec: Vec<sql::Value> = gen_arr.into_vec().into_iter().map(Into::into).collect();
+
+        Self::from(vec)
     }
 }
 

@@ -1,7 +1,10 @@
+use std::ffi::CStr;
+
+use chrono::DateTime;
 use surrealdb_core::sql;
 use surrealdb_core::sql::Value as sdbValue;
 
-pub use crate::{array::Array, object::Object, Number};
+pub use crate::{array::Array, number::Number, object::Object};
 use crate::{bytes::Bytes, string::string_t, thing::Thing, utils::CStringExt2, uuid::Uuid};
 
 use super::duration::Duration;
@@ -49,6 +52,33 @@ impl From<sdbValue> for Value {
             sdbValue::Bytes(b) => Value::SR_VALUE_BYTES(b.into()),
             sdbValue::Thing(t) => Value::SR_VALUE_THING(t.into()),
             _ => unimplemented!("other variants shouldn't be returned"),
+        }
+    }
+}
+
+impl From<Value> for sdbValue {
+    fn from(value: Value) -> Self {
+        match value {
+            Value::SR_VALUE_NONE => sdbValue::None,
+            Value::SR_VALUE_NULL => sdbValue::Null,
+            Value::SR_VALUE_BOOL(b) => sdbValue::Bool(b),
+            Value::SR_VALUE_NUMBER(n) => sdbValue::Number(n.into()),
+            Value::SR_VALUE_STRAND(s) => sdbValue::Strand(String::from(s).into()),
+            Value::SR_VALUE_DURATION(d) => sdbValue::Duration(d.into()),
+            Value::SR_VALUE_DATETIME(d) => {
+                let cstr = unsafe { CStr::from_ptr(d.0) };
+                sdbValue::Datetime(
+                    DateTime::parse_from_rfc3339(cstr.to_string_lossy().as_ref())
+                        .unwrap_or_default()
+                        .to_utc()
+                        .into(),
+                )
+            }
+            Value::SR_VALUE_UUID(u) => sdbValue::Uuid(u.into()),
+            Value::SR_VALUE_ARRAY(a) => sdbValue::Array((*a).into()),
+            Value::SR_VALUE_OBJECT(o) => sdbValue::Object(o.into()),
+            Value::SR_VALUE_BYTES(b) => sdbValue::Bytes(b.into()),
+            Value::SR_VALUE_THING(t) => sdbValue::Thing(t.into()),
         }
     }
 }

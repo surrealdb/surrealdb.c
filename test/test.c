@@ -45,7 +45,8 @@ int main()
     printf("after use db\n");
 
     sr_arr_res_t *foo_res;
-    int len = sr_query(db, &err, &foo_res, "create foo");
+    int len = sr_query(db, &err, &foo_res, "create foo", 0);
+    printf("after query\n");
     if (len < 0)
     {
         printf("%s\n", err);
@@ -61,7 +62,7 @@ int main()
         return 1;
     }
 
-    len = sr_query(db, &err, &foo_res, "create foo");
+    len = sr_query(db, &err, &foo_res, "create foo", 0);
     // assert this will work
     sr_free_arr_res_arr(foo_res, len);
 
@@ -105,7 +106,11 @@ void test_query(sr_surreal_t *db)
 {
     sr_string_t err;
     sr_arr_res_t *res_arr;
-    int len = sr_query(db, &err, &res_arr, "CREATE foo SET val = 42; select * from foo;");
+
+    sr_object_t vars = sr_object_new();
+    sr_object_insert_int(&vars, "other", 23);
+
+    int len = sr_query(db, &err, &res_arr, "CREATE foo SET val = 42, other = $other; select * from foo;", &vars);
     if (len < 0)
     {
         printf("%s", err);

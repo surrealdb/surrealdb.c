@@ -1,4 +1,4 @@
-use std::ffi::CString;
+use std::ffi::{CStr, CString};
 
 use libc::c_char;
 
@@ -31,6 +31,14 @@ impl CStringExt for String {
 impl CStringExt for &str {
     fn to_raw_char_ptr(self) -> *mut c_char {
         let cstring = CString::new(self).unwrap();
+        cstring.into_raw()
+    }
+}
+
+impl CStringExt for *const c_char {
+    fn to_raw_char_ptr(self) -> *mut c_char {
+        let cstr = unsafe { CStr::from_ptr(self) };
+        let cstring = CString::from(cstr);
         cstring.into_raw()
     }
 }
