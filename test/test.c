@@ -108,9 +108,9 @@ void test_query(sr_surreal_t *db)
     sr_arr_res_t *res_arr;
 
     sr_object_t vars = sr_object_new();
-    sr_object_insert_int(&vars, "other", 23);
+    sr_object_insert_int(&vars, "val", 23);
 
-    int len = sr_query(db, &err, &res_arr, "CREATE foo SET val = 42, other = $other; select * from foo;", &vars);
+    int len = sr_query(db, &err, &res_arr, "CREATE foo SET val = $val; select * from foo;", &vars);
     if (len < 0)
     {
         printf("%s", err);

@@ -190,6 +190,8 @@ typedef struct sr_notification_t {
  * }
  *
  * // connect to surrealdb server
+ * // TODO(raphaeldarley)
+ * // NOTE: CURRENTLY BROKEN
  * if (sr_connect(&err, &db, "wss://localhost:8000") < 0) {
  *     printf("error connecting to db: %s\n", err);
  *     return 1;
@@ -251,7 +253,7 @@ int sr_query(const struct sr_surreal_t *db,
              const struct sr_object_t *vars);
 
 /**
- * query the database
+ * select a resource
  */
 int sr_select(const struct sr_surreal_t *db,
               sr_string_t *err_ptr,

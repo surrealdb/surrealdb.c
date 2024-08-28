@@ -56,6 +56,8 @@ impl Surreal {
     /// }
     ///
     /// // connect to surrealdb server
+    /// // TODO(raphaeldarley)
+    /// // NOTE: CURRENTLY BROKEN
     /// if (sr_connect(&err, &db, "wss://localhost:8000") < 0) {
     ///     printf("error connecting to db: %s\n", err);
     ///     return 1;
@@ -63,6 +65,7 @@ impl Surreal {
     ///
     /// sr_surreal_disconnect(db);
     /// ```
+    // TODO(raphaeldarley): hangs when querying on websocket connection
     #[export_name = "sr_connect"]
     pub extern "C" fn connect(
         err_ptr: *mut string_t,
@@ -211,50 +214,6 @@ impl Surreal {
     // patch.rs
 
     // query.rs
-    // #[export_name = "sr_query"]
-    // pub extern "C" fn query(
-    //     db: &Surreal,
-    //     err_ptr: *mut string_t,
-    //     res_ptr: *mut *mut ArrayResult,
-    //     query: *const c_char,
-    //     vars: *const Object,
-    // ) -> c_int {
-    //     with_surreal_async(db, err_ptr, |surreal| async {
-    //         let query = unsafe { CStr::from_ptr(query) }.to_str()?;
-    //         let vars: sql::Object = match vars.is_null() {
-    //             true => Default::default(),
-    //             false => unsafe { &*vars }.clone().into(),
-    //         };
-
-    //         println!("got vars: {vars:?}");
-
-    //         // let mut res = surreal.db.query(query).bind(vars).await?;
-    //         let mut res = surreal.db.query(query).await?;
-    //         println!("got res: {res:?}");
-    //         let res_len = res.num_statements();
-
-    //         let mut acc = Vec::with_capacity(res_len);
-    //         for index in 0..res_len {
-    //             let arr_res = match res.take::<sql::Value>(index) {
-    //                 Ok(sql::Value::Array(arr)) => {
-    //                     let a = arr.into();
-    //                     ArrayResult::ok(a)
-    //                 }
-    //                 Ok(val) => {
-    //                     let arr: Array = vec![val.into()].into();
-    //                     ArrayResult::ok(arr)
-    //                 }
-    //                 Err(e) => ArrayResult::err(e.to_string()),
-    //             };
-    //             acc.push(arr_res);
-    //         }
-
-    //         let ArrayGen { ptr, len } = acc.make_array();
-    //         unsafe { res_ptr.write(ptr) }
-
-    //         Ok(len)
-    //     })
-    // }
     #[export_name = "sr_query"]
     pub extern "C" fn query(
         db: &Surreal,
@@ -263,7 +222,7 @@ impl Surreal {
         query: *const c_char,
         vars: *const Object,
     ) -> c_int {
-        with_surreal(db, err_ptr, |surreal| {
+        with_surreal_async(db, err_ptr, |surreal| async {
             let query = unsafe { CStr::from_ptr(query) }.to_str()?;
             let vars: sql::Object = match vars.is_null() {
                 true => Default::default(),
@@ -272,10 +231,7 @@ impl Surreal {
 
             println!("got vars: {vars:?}");
 
-            // let mut res = surreal.db.query(query).bind(vars).await?;
-            let fut = surreal.db.query(query).into_future();
-            // let mut res = surreal.db.query(query).await?;
-            let mut res = surreal.rt.block_on(fut)?;
+            let mut res = surreal.db.query(query).bind(vars).await?;
             println!("got res: {res:?}");
             let res_len = res.num_statements();
 
@@ -303,7 +259,7 @@ impl Surreal {
     }
 
     // select.rs
-    /// query the database
+    /// select a resource
     #[export_name = "sr_select"]
     pub extern "C" fn select(
         db: &Surreal,
@@ -421,6 +377,7 @@ where
     if db.ps.load(Ordering::Acquire) {
         std::process::abort()
     }
+    let _guard = db.rt.enter();
 
     let res = match catch_unwind(AssertUnwindSafe(|| db.rt.block_on(fun(&db)))) {
         Ok(r) => r,
