@@ -69,6 +69,15 @@ impl From<sql::Object> for Object {
     }
 }
 
+impl From<&sql::Object> for Object {
+    fn from(value: &sql::Object) -> Self {
+        let map = &value.0;
+        let out = Self(Box::new(
+            map.iter().map(|(k, v)| (k.to_owned(), v.into())).collect(),
+        ));
+        out
+    }
+}
 impl From<Object> for sql::Object {
     fn from(value: Object) -> Self {
         let map = value.0;

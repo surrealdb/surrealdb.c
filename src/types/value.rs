@@ -56,6 +56,47 @@ impl From<sdbValue> for Value {
     }
 }
 
+impl From<&sdbValue> for Value {
+    fn from(value: &sdbValue) -> Self {
+        match value {
+            sdbValue::None => Value::SR_VALUE_NONE,
+            sdbValue::Null => Value::SR_VALUE_NULL,
+            sdbValue::Bool(b) => Value::SR_VALUE_BOOL(*b),
+            sdbValue::Number(n) => match n {
+                sql::Number::Int(i) => Value::SR_VALUE_NUMBER(Number::SR_NUMBER_INT(*i)),
+                sql::Number::Float(f) => Value::SR_VALUE_NUMBER(Number::SR_NUMBER_FLOAT(*f)),
+                sql::Number::Decimal(_) => todo!(),
+                _ => todo!(),
+            },
+            sdbValue::Strand(s) => Value::SR_VALUE_STRAND(s.0.as_str().to_string_t()),
+            sdbValue::Duration(d) => Value::SR_VALUE_DURATION(d.clone().into()),
+            sdbValue::Datetime(dt) => Value::SR_VALUE_DATETIME(dt.to_rfc3339().to_string_t()),
+            sdbValue::Uuid(u) => Value::SR_VALUE_UUID(u.clone().into()),
+            // unecssary box see: https://github.com/mozilla/cbindgen/issues/981
+            sdbValue::Array(a) => Value::SR_VALUE_ARRAY(Box::new(a.into())),
+            sdbValue::Object(o) => Value::SR_VALUE_OBJECT(o.into()),
+            sdbValue::Geometry(_) => todo!(),
+            sdbValue::Bytes(b) => Value::SR_VALUE_BYTES(b.clone().into()),
+            sdbValue::Thing(t) => Value::SR_VALUE_THING(t.into()),
+            _ => unimplemented!("other variants shouldn't be returned"),
+        }
+    }
+}
+impl From<surrealdb::Value> for Value {
+    fn from(value: surrealdb::Value) -> Self {
+        let value: sdbValue = value.into_inner();
+        Self::from(value)
+    }
+}
+impl From<&surrealdb::Value> for Value {
+    fn from(value: &surrealdb::Value) -> Self {
+        // TODO: change to into_inner_ref when merged
+        // SAFETY: surrealdb::Value is a transparent srapper
+        let value: &sdbValue = unsafe { std::mem::transmute(value) };
+        Self::from(value)
+    }
+}
+
 impl From<Value> for sdbValue {
     fn from(value: Value) -> Self {
         match value {

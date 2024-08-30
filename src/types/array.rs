@@ -81,6 +81,13 @@ impl From<sql::Array> for Array {
     }
 }
 
+impl From<&sql::Array> for Array {
+    fn from(value: &sql::Array) -> Self {
+        let val_vec: Vec<Value> = value.0.iter().map(Into::into).collect();
+        val_vec.into()
+    }
+}
+
 impl From<Array> for sql::Array {
     fn from(value: Array) -> Self {
         let gen_arr: ArrayGen<Value> = value.into();

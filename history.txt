@@ -1,0 +1,6 @@
+#V2
+use db `1`;
+info for db
+info for ns
+define database `1`;
+info for ns

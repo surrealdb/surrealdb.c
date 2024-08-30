@@ -13,24 +13,37 @@ use string::string_t;
 use surrealdb::{
     engine::any::{self, Any},
     opt::Resource,
-    sql, Surreal as sdbSurreal,
+    sql, Surreal as sdbSurreal, Value as apiValue,
 };
 use tokio::runtime::Runtime;
 use types::result::ArrayResult;
 
 use array::{Array, ArrayGen, MakeArray};
 pub use types::*;
+use utils::CStringExt2;
 use value::{Object, Value};
 
-pub const SR_ERROR: c_int = -1;
-pub const SR_FATAL: c_int = -2;
-pub const SR_NONE: c_int = -3;
+pub const SR_NONE: c_int = -1;
+pub const SR_ERROR: c_int = -2;
+pub const SR_FATAL: c_int = -3;
 
+/// The object representing a Surreal connection
+///
+/// It is safe to be referenced from multiple threads
+/// If any operation, on any thread returns SR_FATAL then the connection is poisoned and must not be used again.
+/// (use will cause the program to abort)
+///
+/// should be freed with sr_surreal_disconnect
 pub struct Surreal {
     db: sdbSurreal<Any>,
     rt: Runtime,
     ps: AtomicBool,
 }
+
+// struct SurrealInner {
+//     kvs: Datastore,
+//     sess: Session,
+// }
 
 impl Surreal {
     /// connects to a local, remote, or embedded database
@@ -56,8 +69,6 @@ impl Surreal {
     /// }
     ///
     /// // connect to surrealdb server
-    /// // TODO(raphaeldarley)
-    /// // NOTE: CURRENTLY BROKEN
     /// if (sr_connect(&err, &db, "wss://localhost:8000") < 0) {
     ///     printf("error connecting to db: %s\n", err);
     ///     return 1;
@@ -65,7 +76,6 @@ impl Surreal {
     ///
     /// sr_surreal_disconnect(db);
     /// ```
-    // TODO(raphaeldarley): hangs when querying on websocket connection
     #[export_name = "sr_connect"]
     pub extern "C" fn connect(
         err_ptr: *mut string_t,
@@ -104,7 +114,7 @@ impl Surreal {
             Err(e) => {
                 unsafe { err_ptr.write(e) }
                 SR_ERROR
-            }
+            } // todo!()
         }
     }
 
@@ -122,8 +132,7 @@ impl Surreal {
     /// ```
     #[export_name = "sr_surreal_disconnect"]
     pub extern "C" fn disconnect(db: *mut Surreal) {
-        // TODO(raphaeldarley): catch panics
-        let _ = unsafe { Box::from_raw(db) };
+        catch_unwind(AssertUnwindSafe(|| drop(unsafe { Box::from_raw(db) }))).ok();
     }
 
     // authenticate.rs
@@ -138,17 +147,34 @@ impl Surreal {
 
     // create.rs
 
-    // #[export_name = "sr_create"]
-    // pub extern "C" fn create(
-    //     db: &Surreal,
-    //     err_ptr: *mut string_t,
-    //     res_ptr: *mut ,
-    //     resource: *const c_char,
-    // ) -> c_int {
-    //     with_surreal_async(db, err_ptr, |surreal| async {
-    //         let resource = unsafe { CStr::from_ptr(resource) }.to_str()?;
-    //     })
-    // }
+    /// create a record
+    ///
+    #[export_name = "sr_create"]
+    pub extern "C" fn create(
+        db: &Surreal,
+        err_ptr: *mut string_t,
+        res_ptr: *mut &mut Value,
+        resource: *const c_char,
+        content: *const Value,
+    ) -> c_int {
+        with_surreal_async(db, err_ptr, |surreal| async {
+            let resource = unsafe { CStr::from_ptr(resource) }.to_str()?;
+            let content = sql::Value::from(unsafe { &*content }.clone());
+
+            let res = surreal
+                .db
+                .create(Resource::from(resource))
+                .content(content)
+                .await?;
+            if !res_ptr.is_null() {
+                let boxed = Box::new(res.into());
+                unsafe { res_ptr.write(Box::leak(boxed)) }
+                Ok(1)
+            } else {
+                Ok(0)
+            }
+        })
+    }
 
     // delete.rs
 
@@ -192,17 +218,15 @@ impl Surreal {
         use surrealdb::method::Stream as sdbStream;
         with_surreal_async(db, err_ptr, |surreal| async {
             let resource = unsafe { CStr::from_ptr(resource) }.to_str()?;
-            println!("got resource: {resource}");
 
-            let stream_inner: sdbStream<sql::Value> =
+            let stream_inner: sdbStream<apiValue> =
                 surreal.db.select(Resource::from(resource)).live().await?;
-            println!("got stream: {stream_inner:?}");
 
             let stream_boxed = Box::new(Stream::new(stream_inner, surreal.rt.handle().clone()));
 
             unsafe { stream_ptr.write(Box::leak(stream_boxed)) };
-            println!("written back stream");
 
+            // return 1 because 1 stream was written to *stream_ptr
             Ok(1)
         })
     }
@@ -229,15 +253,13 @@ impl Surreal {
                 false => unsafe { &*vars }.clone().into(),
             };
 
-            println!("got vars: {vars:?}");
-
             let mut res = surreal.db.query(query).bind(vars).await?;
-            println!("got res: {res:?}");
             let res_len = res.num_statements();
 
             let mut acc = Vec::with_capacity(res_len);
             for index in 0..res_len {
-                let arr_res = match res.take::<sql::Value>(index) {
+                let api_res = res.take::<apiValue>(index);
+                let arr_res = match api_res.map(|v| v.into_inner()) {
                     Ok(sql::Value::Array(arr)) => {
                         let a = arr.into();
                         ArrayResult::ok(a)
@@ -260,6 +282,28 @@ impl Surreal {
 
     // select.rs
     /// select a resource
+    ///
+    /// can be used to select everything from a table or a single record
+    /// writes values to *res_ptr, and returns number of values
+    /// result values are allocated by Surreal and must be freed with sr_free_arr
+    ///
+    /// # Examples
+    ///
+    /// ```c
+    /// sr_surreal_t *db;
+    /// sr_string_t err;
+    /// sr_value_t *foos;
+    /// int len = sr_select(db, &err, &foos, "foo");
+    /// if (len < 0) {
+    ///     printf("%s", err);
+    ///     return 1;
+    /// }
+    /// ```
+    /// for (int i = 0; i < len; i++)
+    /// {
+    ///     sr_value_print(&foos[i]);
+    /// }
+    /// sr_free_arr(foos, len);
     #[export_name = "sr_select"]
     pub extern "C" fn select(
         db: &Surreal,
@@ -270,7 +314,12 @@ impl Surreal {
         with_surreal_async(db, err_ptr, |surreal| async {
             let resource = unsafe { CStr::from_ptr(resource) }.to_str()?;
 
-            let res = match surreal.db.select(Resource::from(resource)).await? {
+            let res = match surreal
+                .db
+                .select(Resource::from(resource))
+                .await?
+                .into_inner()
+            {
                 sql::Value::Array(a) => Array::from(a),
                 v => Array::from(vec![v.into()]),
             };
@@ -293,6 +342,19 @@ impl Surreal {
     // upsert.rs
 
     // use_db.rs
+    /// select database
+    /// NOTE: namespace must be selected first with sr_use_ns
+    ///
+    /// # Examples
+    /// ```c
+    /// sr_surreal_t *db;
+    /// sr_string_t err;
+    /// if (sr_use_db(db, &err, "test") < 0)
+    /// {
+    ///     printf("%s", err);
+    ///     return 1;
+    /// }
+    /// ```
     #[export_name = "sr_use_db"]
     pub extern "C" fn use_db(db: &Surreal, err_ptr: *mut string_t, query: *const c_char) -> c_int {
         with_surreal_async(db, err_ptr, |surreal| async {
@@ -304,6 +366,19 @@ impl Surreal {
         })
     }
     // use_ns.rs
+    /// select namespace
+    /// NOTE: database must be selected before use with sr_use_db
+    ///
+    /// # Examples
+    /// ```c
+    /// sr_surreal_t *db;
+    /// sr_string_t err;
+    /// if (sr_use_ns(db, &err, "test") < 0)
+    /// {
+    ///     printf("%s", err);
+    ///     return 1;
+    /// }
+    /// ```
     #[export_name = "sr_use_ns"]
     pub extern "C" fn use_ns(db: &Surreal, err_ptr: *mut string_t, query: *const c_char) -> c_int {
         let out = with_surreal_async(db, err_ptr, |surreal| async {
@@ -318,6 +393,22 @@ impl Surreal {
 
     // version.rs
 
+    /// returns the db version
+    /// NOTE: version is allocated in Surreal and must be freed with sr_free_string
+    /// # Examples
+    /// ```c
+    /// sr_surreal_t *db;
+    /// sr_string_t err;
+    /// sr_string_t ver;
+    ///
+    /// if (sr_version(db, &err, &ver) < 0)
+    /// {
+    ///     printf("%s", err);
+    ///     return 1;
+    /// }
+    /// printf("%s", ver);
+    /// sr_free_string(ver);
+    /// ```
     #[export_name = "sr_version"]
     pub extern "C" fn version(
         db: &Surreal,
@@ -325,49 +416,49 @@ impl Surreal {
         res_ptr: *mut string_t,
     ) -> c_int {
         with_surreal_async(db, err_ptr, |surreal| async {
-            // let fut = surreal.db.version();
-
-            // let res = surreal.rt.block_on(fut.into_future())?;
             let res = surreal.db.version().await?;
-            let res_str: string_t = res.into();
+            let res_string = res.to_string();
+            let len = res_string.bytes().len();
+            let res_str: string_t = res_string.to_string_t();
 
             unsafe { res_ptr.write(res_str) }
 
-            return Ok(0);
+            return Ok(len as c_int);
         })
     }
 }
 
-fn with_surreal<C>(db: &Surreal, err_ptr: *mut string_t, fun: C) -> c_int
-where
-    C: FnOnce(&Surreal) -> Result<c_int, string_t>,
-{
-    if db.ps.load(Ordering::Acquire) {
-        std::process::abort()
-    }
+// fn with_surreal<C>(db: &Surreal, err_ptr: *mut string_t, fun: C) -> c_int
+// where
+//     C: FnOnce(&Surreal) -> Result<c_int, string_t>,
+// {
+//     if db.ps.load(Ordering::Acquire) {
+//         std::process::abort()
+//     }
 
-    let res = match catch_unwind(AssertUnwindSafe(|| fun(&db))) {
-        Ok(r) => r,
-        Err(e) => {
-            if let Some(e_str) = e.downcast_ref::<&str>() {
-                let e_string: string_t = format!("Panicked with: {e_str}").into();
-                unsafe { err_ptr.write(e_string) }
-            } else {
-                unsafe { err_ptr.write("Panicked".into()) }
-            }
-            return SR_FATAL;
-        }
-    };
+//     let res = match catch_unwind(AssertUnwindSafe(|| fun(&db))) {
+//         Ok(r) => r,
+//         Err(e) => {
+//             if let Some(e_str) = e.downcast_ref::<&str>() {
+//                 let e_string: string_t = format!("Panicked with: {e_str}").into();
+//                 unsafe { err_ptr.write(e_string) }
+//             } else {
+//                 unsafe { err_ptr.write("Panicked".into()) }
+//             }
+//             return SR_FATAL;
+//         }
+//     };
 
-    match res {
-        Ok(n) => n,
-        Err(e) => {
-            unsafe { err_ptr.write(e) }
-            SR_ERROR
-        }
-    }
-}
+//     match res {
+//         Ok(n) => n,
+//         Err(e) => {
+//             unsafe { err_ptr.write(e) }
+//             SR_ERROR
+//         }
+//     }
+// }
 
+/// Execute a givel closure in an async context, which returns a result then catches panics and writes errors appropriately
 fn with_surreal_async<'a, 'b, C, F>(db: &'a Surreal, err_ptr: *mut string_t, fun: C) -> c_int
 where
     'a: 'b,
@@ -400,3 +491,6 @@ where
         }
     }
 }
+
+pub trait SyncAssert: Sync {}
+impl SyncAssert for Surreal {}

@@ -1,4 +1,5 @@
 use crate::{uuid::Uuid, value::Value};
+use surrealdb::Value as apiValue;
 use surrealdb::{sql, Notification as sdbNotification};
 
 #[derive(Debug)]
@@ -7,6 +8,16 @@ pub struct Notification {
     pub query_id: Uuid,
     pub action: Action,
     pub data: Value,
+}
+
+impl From<sdbNotification<apiValue>> for Notification {
+    fn from(value: sdbNotification<apiValue>) -> Self {
+        Notification {
+            query_id: value.query_id.into(),
+            action: value.action.into(),
+            data: (&value.data).into(),
+        }
+    }
 }
 
 impl From<sdbNotification<sql::Value>> for Notification {

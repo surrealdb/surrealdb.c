@@ -3,11 +3,11 @@
 #include <stdint.h>
 #include <stdlib.h>
 
-#define sr_SR_ERROR -1
+#define sr_SR_NONE -1
 
-#define sr_SR_FATAL -2
+#define sr_SR_ERROR -2
 
-#define sr_SR_NONE -3
+#define sr_SR_FATAL -3
 
 typedef enum sr_action {
   SR_ACTION_CREATE,
@@ -22,6 +22,15 @@ typedef struct sr_opaque_object_internal_t sr_opaque_object_internal_t;
  */
 typedef struct sr_stream_t sr_stream_t;
 
+/**
+ * The object representing a Surreal connection
+ *
+ * It is safe to be referenced from multiple threads
+ * If any operation, on any thread returns SR_FATAL then the connection is poisoned and must not be used again.
+ * (use will cause the program to abort)
+ *
+ * should be freed with sr_surreal_disconnect
+ */
 typedef struct sr_surreal_t sr_surreal_t;
 
 typedef char *sr_string_t;
@@ -51,6 +60,11 @@ typedef struct sr_duration_t {
 typedef struct sr_uuid_t {
   uint8_t _0[16];
 } sr_uuid_t;
+
+typedef struct sr_array_t {
+  struct sr_value_t *arr;
+  int len;
+} sr_array_t;
 
 typedef struct sr_object_t {
   struct sr_opaque_object_internal_t *_0;
@@ -142,11 +156,6 @@ typedef struct sr_value_t {
   };
 } sr_value_t;
 
-typedef struct sr_array_t {
-  struct sr_value_t *arr;
-  int len;
-} sr_array_t;
-
 /**
  * when code = 0 there is no error
  */
@@ -190,8 +199,6 @@ typedef struct sr_notification_t {
  * }
  *
  * // connect to surrealdb server
- * // TODO(raphaeldarley)
- * // NOTE: CURRENTLY BROKEN
  * if (sr_connect(&err, &db, "wss://localhost:8000") < 0) {
  *     printf("error connecting to db: %s\n", err);
  *     return 1;
@@ -219,6 +226,16 @@ int sr_connect(sr_string_t *err_ptr,
  * ```
  */
 void sr_surreal_disconnect(struct sr_surreal_t *db);
+
+/**
+ * create a record
+ *
+ */
+int sr_create(const struct sr_surreal_t *db,
+              sr_string_t *err_ptr,
+              struct sr_value_t **res_ptr,
+              const char *resource,
+              const struct sr_value_t *content);
 
 /**
  * make a live selection
@@ -254,16 +271,86 @@ int sr_query(const struct sr_surreal_t *db,
 
 /**
  * select a resource
+ *
+ * can be used to select everything from a table or a single record
+ * writes values to *res_ptr, and returns number of values
+ * result values are allocated by Surreal and must be freed with sr_free_arr
+ *
+ * # Examples
+ *
+ * ```c
+ * sr_surreal_t *db;
+ * sr_string_t err;
+ * sr_value_t *foos;
+ * int len = sr_select(db, &err, &foos, "foo");
+ * if (len < 0) {
+ *     printf("%s", err);
+ *     return 1;
+ * }
+ * ```
+ * for (int i = 0; i < len; i++)
+ * {
+ *     sr_value_print(&foos[i]);
+ * }
+ * sr_free_arr(foos, len);
  */
 int sr_select(const struct sr_surreal_t *db,
               sr_string_t *err_ptr,
               struct sr_value_t **res_ptr,
               const char *resource);
 
+/**
+ * select database
+ * NOTE: namespace must be selected first with sr_use_ns
+ *
+ * # Examples
+ * ```c
+ * sr_surreal_t *db;
+ * sr_string_t err;
+ * if (sr_use_db(db, &err, "test") < 0)
+ * {
+ *     printf("%s", err);
+ *     return 1;
+ * }
+ * ```
+ */
 int sr_use_db(const struct sr_surreal_t *db, sr_string_t *err_ptr, const char *query);
 
+/**
+ * select namespace
+ * NOTE: database must be selected before use with sr_use_db
+ *
+ * # Examples
+ * ```c
+ * sr_surreal_t *db;
+ * sr_string_t err;
+ * if (sr_use_ns(db, &err, "test") < 0)
+ * {
+ *     printf("%s", err);
+ *     return 1;
+ * }
+ * ```
+ */
 int sr_use_ns(const struct sr_surreal_t *db, sr_string_t *err_ptr, const char *query);
 
+/**
+ * returns the db version
+ * NOTE: version is allocated in Surreal and must be freed with sr_free_string
+ * # Examples
+ * ```c
+ * sr_surreal_t *db;
+ * sr_string_t err;
+ * sr_string_t ver;
+ *
+ * if (sr_version(db, &err, &ver) < 0)
+ * {
+ *     printf("%s", err);
+ *     return 1;
+ * }
+ * printf("%s", ver);
+ * sr_free_string(ver);
+ * ```
+ */
 int sr_version(const struct sr_surreal_t *db, sr_string_t *err_ptr, sr_string_t *res_ptr);
 
 void sr_free_arr(struct sr_value_t *ptr, int len);

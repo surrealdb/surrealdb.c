@@ -13,8 +13,15 @@ args = ["build", "--release"]
 [tasks.test]
 dependencies = ["build"]
 script = [
-    "cc -L./target/debug -lsurrealdb_c -lpthread -otest/a.out test/test.c",
-    "test/a.out",
+    "cc -L./target/debug -lsurrealdb_c -lpthread -otest/test.out test/test.c",
+    "test/test.out",
+]
+
+[tasks.test-scratch]
+dependencies = ["build"]
+script = [
+    "cc -L./target/debug -lsurrealdb_c -lpthread -otest/test_scratch.out test/test_scratch.c",
+    "test/test_scratch.out",
 ]
 
 [tasks.test-doc]
