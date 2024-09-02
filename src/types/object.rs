@@ -10,7 +10,7 @@ use crate::{utils::CStringExt2, value::Value};
 use crate::types::number::Number;
 
 #[repr(C)]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Object(Box<BTreeMap<String, Value>>);
 
 impl Object {

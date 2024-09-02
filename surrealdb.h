@@ -33,7 +33,22 @@ typedef struct sr_stream_t sr_stream_t;
  */
 typedef struct sr_surreal_t sr_surreal_t;
 
+/**
+ * The object representing a Surreal connection
+ *
+ * It is safe to be referenced from multiple threads
+ * If any operation, on any thread returns SR_FATAL then the connection is poisoned and must not be used again.
+ * (use will cause the program to abort)
+ *
+ * should be freed with sr_surreal_disconnect
+ */
+typedef struct sr_surreal_rpc_t sr_surreal_rpc_t;
+
 typedef char *sr_string_t;
+
+typedef struct sr_object_t {
+  struct sr_opaque_object_internal_t *_0;
+} sr_object_t;
 
 typedef enum sr_number_t_Tag {
   SR_NUMBER_INT,
@@ -60,15 +75,6 @@ typedef struct sr_duration_t {
 typedef struct sr_uuid_t {
   uint8_t _0[16];
 } sr_uuid_t;
-
-typedef struct sr_array_t {
-  struct sr_value_t *arr;
-  int len;
-} sr_array_t;
-
-typedef struct sr_object_t {
-  struct sr_opaque_object_internal_t *_0;
-} sr_object_t;
 
 typedef struct sr_bytes_t {
   uint8_t *arr;
@@ -156,6 +162,11 @@ typedef struct sr_value_t {
   };
 } sr_value_t;
 
+typedef struct sr_array_t {
+  struct sr_value_t *arr;
+  int len;
+} sr_array_t;
+
 /**
  * when code = 0 there is no error
  */
@@ -233,9 +244,9 @@ void sr_surreal_disconnect(struct sr_surreal_t *db);
  */
 int sr_create(const struct sr_surreal_t *db,
               sr_string_t *err_ptr,
-              struct sr_value_t **res_ptr,
+              struct sr_object_t **res_ptr,
               const char *resource,
-              const struct sr_value_t *content);
+              const struct sr_object_t *content);
 
 /**
  * make a live selection
@@ -353,9 +364,28 @@ int sr_use_ns(const struct sr_surreal_t *db, sr_string_t *err_ptr, const char *q
  */
 int sr_version(const struct sr_surreal_t *db, sr_string_t *err_ptr, sr_string_t *res_ptr);
 
+int sr_surreal_rpc_new(sr_string_t *err_ptr,
+                       struct sr_surreal_rpc_t **surreal_ptr,
+                       const char *endpoint);
+
+/**
+ * execute rpc
+ *
+ * free result with sr_free_byte_arr
+ */
+int sr_surreal_rpc_execute(const struct sr_surreal_rpc_t *self,
+                           sr_string_t *err_ptr,
+                           uint8_t **res_ptr,
+                           const uint8_t *ptr,
+                           int len);
+
+void sr_surreal_rpc_free(struct sr_surreal_rpc_t *ctx);
+
 void sr_free_arr(struct sr_value_t *ptr, int len);
 
 void sr_free_bytes(struct sr_bytes_t bytes);
+
+void sr_free_byte_arr(uint8_t *ptr, int len);
 
 void sr_print_notification(const struct sr_notification_t *notification);
 
@@ -391,3 +421,5 @@ void sr_stream_kill(struct sr_stream_t *stream);
 void sr_free_string(sr_string_t string);
 
 void sr_value_print(const struct sr_value_t *val);
+
+bool sr_value_eq(const struct sr_value_t *lhs, const struct sr_value_t *rhs);

@@ -1,6 +1,6 @@
 use surrealdb::sql;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 #[repr(C)]
 pub struct Duration {
     secs: u64,

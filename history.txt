@@ -4,3 +4,9 @@ info for db
 info for ns
 define database `1`;
 info for ns
+create foo
+create only foo
+let $foo = create only foo set val = 23
+select value val from only $foo
+define table foo schemaful
+create foo set val = 1

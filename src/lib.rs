@@ -1,3 +1,4 @@
+pub mod rpc;
 pub mod types;
 pub mod utils;
 
@@ -82,6 +83,7 @@ impl Surreal {
         surreal_ptr: *mut *mut Surreal,
         endpoint: *const c_char,
     ) -> c_int {
+        // TODO: wrap in catch unwind
         let res: Result<Surreal, string_t> = 'res: {
             let Ok(endpoint) = (unsafe { CStr::from_ptr(endpoint).to_str() }) else {
                 break 'res Err("invalid utf8".into());
@@ -114,7 +116,7 @@ impl Surreal {
             Err(e) => {
                 unsafe { err_ptr.write(e) }
                 SR_ERROR
-            } // todo!()
+            }
         }
     }
 
@@ -153,21 +155,30 @@ impl Surreal {
     pub extern "C" fn create(
         db: &Surreal,
         err_ptr: *mut string_t,
-        res_ptr: *mut &mut Value,
+        res_ptr: *mut &mut Object,
         resource: *const c_char,
-        content: *const Value,
+        content: *const Object,
     ) -> c_int {
         with_surreal_async(db, err_ptr, |surreal| async {
             let resource = unsafe { CStr::from_ptr(resource) }.to_str()?;
-            let content = sql::Value::from(unsafe { &*content }.clone());
+            let content = sql::Object::from(unsafe { &*content }.clone());
 
             let res = surreal
                 .db
                 .create(Resource::from(resource))
                 .content(content)
                 .await?;
+            let obj = match res.into_inner() {
+                sql::Value::Object(o) => o,
+                other => {
+                    return Err(format!(
+                        "Expected object as return type of create, but found: {other:?}"
+                    )
+                    .into())
+                }
+            };
             if !res_ptr.is_null() {
-                let boxed = Box::new(res.into());
+                let boxed = Box::new(obj.into());
                 unsafe { res_ptr.write(Box::leak(boxed)) }
                 Ok(1)
             } else {

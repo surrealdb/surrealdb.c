@@ -11,7 +11,7 @@ use super::duration::Duration;
 
 #[allow(non_camel_case_types)]
 #[repr(C)]
-#[derive(Default, Debug, Clone)]
+#[derive(Default, Debug, Clone, PartialEq)]
 pub enum Value {
     #[default]
     SR_VALUE_NONE,
@@ -128,5 +128,10 @@ impl Value {
     #[export_name = "sr_value_print"]
     pub extern "C" fn print_value(val: &Value) {
         println!("{val:?}");
+    }
+
+    #[export_name = "sr_value_eq"]
+    pub extern "C" fn value_eq(lhs: &Value, rhs: &Value) -> bool {
+        lhs == rhs
     }
 }

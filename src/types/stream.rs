@@ -1,9 +1,8 @@
 use std::ffi::c_int;
 
-use futures::Stream as _;
 use futures::StreamExt;
+use surrealdb::method::Stream as sdbStream;
 use surrealdb::Value as apiValue;
-use surrealdb::{method::Stream as sdbStream, sql};
 use tokio::runtime::Handle;
 
 use crate::{notification::Notification, SR_NONE};

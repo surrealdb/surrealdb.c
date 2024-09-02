@@ -68,6 +68,15 @@ impl Default for string_t {
     }
 }
 
+impl PartialEq for string_t {
+    fn eq(&self, other: &Self) -> bool {
+        // self.0 == other.0
+        let self_cstr = unsafe { CStr::from_ptr(self.0) };
+        let other_cstr = unsafe { CStr::from_ptr(other.0) };
+        self_cstr == other_cstr
+    }
+}
+
 // pub fn ptr_to_str(ptr: *const c_char) -> &'static str {
 //     let cstr = unsafe { CStr::from_ptr(ptr) };
 //     // // TODO(raphaeldarley): remove panic because of ub, or check its always caught

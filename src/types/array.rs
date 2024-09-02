@@ -35,6 +35,14 @@ impl<T> ArrayGen<T> {
         let boxed = unsafe { Box::from_raw(slice) };
         boxed.into_vec()
     }
+
+    pub fn as_slice<'a>(&'a self) -> &'a [T] {
+        if self.ptr.is_null() || self.len == 0 {
+            return &[];
+        }
+        let slice = slice_from_raw_parts(self.ptr, self.len as usize);
+        unsafe { &*slice }
+    }
 }
 
 impl<T> ArrayGen<T> {
@@ -117,12 +125,27 @@ impl From<Array> for ArrayGen<Value> {
     }
 }
 
+impl From<&Array> for ArrayGen<Value> {
+    fn from(value: &Array) -> Self {
+        let Array { arr, len } = *value;
+        ArrayGen { ptr: arr, len }
+    }
+}
+
 impl Array {
     pub fn empty() -> Self {
         Self {
             arr: ptr::null_mut(),
             len: 0,
         }
+    }
+
+    pub fn as_slice<'a>(&'a self) -> &'a [Value] {
+        if self.arr.is_null() || self.len == 0 {
+            return &[];
+        }
+        let slice = slice_from_raw_parts(self.arr, self.len as usize);
+        unsafe { &*slice }
     }
 }
 
@@ -134,6 +157,12 @@ impl Clone for Array {
         }
         .clone()
         .into()
+    }
+}
+
+impl PartialEq for Array {
+    fn eq(&self, other: &Self) -> bool {
+        self.as_slice() == other.as_slice()
     }
 }
 

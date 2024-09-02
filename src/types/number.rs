@@ -3,7 +3,7 @@ use std::ffi::{c_double, c_float, c_int};
 use surrealdb::sql;
 
 #[allow(non_camel_case_types)]
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 #[repr(C)]
 pub enum Number {
     SR_NUMBER_INT(i64),
