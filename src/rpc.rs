@@ -38,22 +38,21 @@ impl SurrealRpc {
         surreal_ptr: *mut *mut SurrealRpc,
         endpoint: *const c_char,
     ) -> c_int {
-        // TODO: wrap in catch unwind
         // TODO: add options and live query support
-        let res: Result<SurrealRpc, string_t> = 'res: {
+        let res: Result<Result<SurrealRpc, string_t>, _> = catch_unwind(AssertUnwindSafe(|| {
             let Ok(endpoint) = (unsafe { CStr::from_ptr(endpoint).to_str() }) else {
-                break 'res Err("Invalid UTF-8".into());
+                return Err("Invalid UTF-8".into());
             };
 
             let Ok(rt) = Runtime::new() else {
-                break 'res Err("error creating runtime".into());
+                return Err("error creating runtime".into());
             };
 
             let con_fut = Datastore::new(endpoint);
 
             let kvs = match rt.block_on(con_fut.into_future()) {
                 Ok(db) => db,
-                Err(e) => break 'res Err(e.into()),
+                Err(e) => return Err(e.into()),
             };
 
             let inner = SurrealRpcInner {
@@ -67,6 +66,19 @@ impl SurrealRpc {
                 rt,
                 ps: AtomicBool::new(false),
             })
+        }));
+
+        let res: Result<SurrealRpc, string_t> = match res {
+            Ok(r) => r,
+            Err(e) => {
+                if let Some(e_str) = e.downcast_ref::<&str>() {
+                    let e_string: string_t = format!("Panicked with: {e_str}").into();
+                    unsafe { err_ptr.write(e_string) }
+                } else {
+                    unsafe { err_ptr.write("Panicked".into()) }
+                }
+                return SR_FATAL;
+            }
         };
 
         match res {

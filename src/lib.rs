@@ -84,20 +84,20 @@ impl Surreal {
         endpoint: *const c_char,
     ) -> c_int {
         // TODO: wrap in catch unwind
-        let res: Result<Surreal, string_t> = 'res: {
+        let res: Result<Result<Surreal, string_t>, _> = catch_unwind(AssertUnwindSafe(|| {
             let Ok(endpoint) = (unsafe { CStr::from_ptr(endpoint).to_str() }) else {
-                break 'res Err("invalid utf8".into());
+                return Err("invalid utf8".into());
             };
 
             let Ok(rt) = Runtime::new() else {
-                break 'res Err("error creating runtime".into());
+                return Err("error creating runtime".into());
             };
 
             let con_fut = any::connect(endpoint);
 
             let db = match rt.block_on(con_fut.into_future()) {
                 Ok(db) => db,
-                Err(e) => break 'res Err(e.into()),
+                Err(e) => return Err(e.into()),
             };
 
             Ok(Surreal {
@@ -105,6 +105,19 @@ impl Surreal {
                 rt,
                 ps: AtomicBool::new(false),
             })
+        }));
+
+        let res: Result<Surreal, string_t> = match res {
+            Ok(r) => r,
+            Err(e) => {
+                if let Some(e_str) = e.downcast_ref::<&str>() {
+                    let e_string: string_t = format!("Panicked with: {e_str}").into();
+                    unsafe { err_ptr.write(e_string) }
+                } else {
+                    unsafe { err_ptr.write("Panicked".into()) }
+                }
+                return SR_FATAL;
+            }
         };
 
         match res {
