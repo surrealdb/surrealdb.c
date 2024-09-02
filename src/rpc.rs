@@ -174,8 +174,10 @@ impl SurrealRpc {
                 .kvs
                 .notifications()
                 .ok_or("Notifications not enabled")?;
+            let boxed = Box::new(RpcStream { rx: stream });
+            unsafe { stream_ptr.write(Box::leak(boxed)) }
 
-            Ok(0)
+            Ok(1)
         })
     }
 

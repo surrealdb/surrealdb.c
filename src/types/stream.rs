@@ -1,7 +1,7 @@
 use std::ffi::c_int;
 
-use async_channel::Receiver;
 use futures::StreamExt;
+use surrealdb::channel::Receiver;
 use surrealdb::method::Stream as sdbStream;
 use surrealdb::rpc::format::cbor::Cbor;
 use surrealdb::Value as apiValue;
@@ -52,7 +52,7 @@ impl Stream {
 
 // TODO: check if this needs to be dropped async
 pub struct RpcStream {
-    rx: Receiver<dbs::Notification>,
+    pub rx: Receiver<dbs::Notification>,
 }
 
 impl RpcStream {

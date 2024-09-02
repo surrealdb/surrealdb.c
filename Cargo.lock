@@ -3534,7 +3534,6 @@ dependencies = [
 name = "surrealdb_c"
 version = "0.1.0"
 dependencies = [
- "async-channel 2.3.1",
  "cbindgen",
  "chrono",
  "ciborium",
