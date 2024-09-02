@@ -5,6 +5,7 @@ use std::{
     panic::{catch_unwind, AssertUnwindSafe},
     ptr::slice_from_raw_parts,
     sync::atomic::{AtomicBool, Ordering},
+    time::Duration,
 };
 
 use surrealdb::dbs::Session;
@@ -16,7 +17,9 @@ use surrealdb::rpc::Data;
 use surrealdb::sql;
 use tokio::{runtime::Runtime, sync::RwLock};
 
-use crate::{array::MakeArray, string::string_t, SR_ERROR, SR_FATAL};
+use crate::{
+    array::MakeArray, opts::Options, stream::RpcStream, string::string_t, SR_ERROR, SR_FATAL,
+};
 
 /// The object representing a Surreal connection
 ///
@@ -31,14 +34,26 @@ pub struct SurrealRpc {
     ps: AtomicBool,
 }
 
+/// create new rpc context
+///
+/// # Examples
+///
+/// ```c
+/// sr_string_t err;
+/// sr_surreal_rpc_t ctx;
+///
+/// sr_surreal_rpc_new(err, ctx, "surrealkv://test.db", {});
+///
+/// ```
 impl SurrealRpc {
     #[export_name = "sr_surreal_rpc_new"]
     pub extern "C" fn new(
         err_ptr: *mut string_t,
         surreal_ptr: *mut *mut SurrealRpc,
         endpoint: *const c_char,
+        options: Options,
     ) -> c_int {
-        // TODO: add options and live query support
+        // TODO: live query support
         let res: Result<Result<SurrealRpc, string_t>, _> = catch_unwind(AssertUnwindSafe(|| {
             let Ok(endpoint) = (unsafe { CStr::from_ptr(endpoint).to_str() }) else {
                 return Err("Invalid UTF-8".into());
@@ -50,14 +65,27 @@ impl SurrealRpc {
 
             let con_fut = Datastore::new(endpoint);
 
-            let kvs = match rt.block_on(con_fut.into_future()) {
+            let mut kvs = match rt.block_on(con_fut.into_future()) {
                 Ok(db) => db,
                 Err(e) => return Err(e.into()),
             };
 
+            kvs = kvs.with_notifications();
+
+            kvs = kvs.with_strict_mode(options.strict);
+            if options.query_timeout != 0 {
+                kvs =
+                    kvs.with_query_timeout(Some(Duration::from_secs(options.query_timeout as u64)))
+            }
+            if options.transaction_timeout != 0 {
+                kvs = kvs.with_transaction_timeout(Some(Duration::from_secs(
+                    options.transaction_timeout as u64,
+                )))
+            }
+
             let inner = SurrealRpcInner {
                 kvs,
-                sess: Session::default(),
+                sess: Session::default().with_rt(true),
                 vars: BTreeMap::default(),
             };
 
@@ -132,6 +160,25 @@ impl SurrealRpc {
         })
     }
 
+    #[export_name = "sr_surreal_rpc_notifications"]
+    pub extern "C" fn notifications(
+        &self,
+        err_ptr: *mut string_t,
+        stream_ptr: *mut &mut RpcStream,
+    ) -> c_int {
+        with_async(self, err_ptr, |ctx| async {
+            let stream = ctx
+                .inner
+                .read()
+                .await
+                .kvs
+                .notifications()
+                .ok_or("Notifications not enabled")?;
+
+            Ok(0)
+        })
+    }
+
     #[export_name = "sr_surreal_rpc_free"]
     pub extern "C" fn rpc_free(ctx: *mut SurrealRpc) {
         let boxed = unsafe { Box::from_raw(ctx) };
@@ -203,4 +250,8 @@ impl RpcContext for SurrealRpcInner {
         let ver_str = surrealdb_core::env::VERSION.to_string();
         ver_str.into()
     }
+
+    const LQ_SUPPORT: bool = true;
+    async fn handle_live(&self, _lqid: &uuid::Uuid) {}
+    async fn handle_kill(&self, _lqid: &uuid::Uuid) {}
 }

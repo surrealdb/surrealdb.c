@@ -1,3 +1,4 @@
+pub mod opts;
 pub mod rpc;
 pub mod types;
 pub mod utils;
@@ -24,7 +25,8 @@ pub use types::*;
 use utils::CStringExt2;
 use value::{Object, Value};
 
-pub const SR_NONE: c_int = -1;
+pub const SR_NONE: c_int = 0;
+pub const SR_CLOSED: c_int = -1;
 pub const SR_ERROR: c_int = -2;
 pub const SR_FATAL: c_int = -3;
 

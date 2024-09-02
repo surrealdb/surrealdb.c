@@ -3,7 +3,9 @@
 #include <stdint.h>
 #include <stdlib.h>
 
-#define sr_SR_NONE -1
+#define sr_SR_NONE 0
+
+#define sr_SR_CLOSED -1
 
 #define sr_SR_ERROR -2
 
@@ -16,6 +18,8 @@ typedef enum sr_action {
 } sr_action;
 
 typedef struct sr_opaque_object_internal_t sr_opaque_object_internal_t;
+
+typedef struct sr_RpcStream sr_RpcStream;
 
 /**
  * may be sent across threads, but must not be aliased
@@ -179,6 +183,12 @@ typedef struct sr_arr_res_t {
   struct sr_array_t ok;
   struct sr_SurrealError err;
 } sr_arr_res_t;
+
+typedef struct sr_option_t {
+  bool strict;
+  uint8_t query_timeout;
+  uint8_t transaction_timeout;
+} sr_option_t;
 
 typedef struct sr_notification_t {
   struct sr_uuid_t query_id;
@@ -366,7 +376,8 @@ int sr_version(const struct sr_surreal_t *db, sr_string_t *err_ptr, sr_string_t 
 
 int sr_surreal_rpc_new(sr_string_t *err_ptr,
                        struct sr_surreal_rpc_t **surreal_ptr,
-                       const char *endpoint);
+                       const char *endpoint,
+                       struct sr_option_t options);
 
 /**
  * execute rpc
@@ -378,6 +389,10 @@ int sr_surreal_rpc_execute(const struct sr_surreal_rpc_t *self,
                            uint8_t **res_ptr,
                            const uint8_t *ptr,
                            int len);
+
+int sr_surreal_rpc_notifications(const struct sr_surreal_rpc_t *self,
+                                 sr_string_t *err_ptr,
+                                 struct sr_RpcStream **stream_ptr);
 
 void sr_surreal_rpc_free(struct sr_surreal_rpc_t *ctx);
 
