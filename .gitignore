@@ -26,3 +26,14 @@ Temporary Items
 # -----------------------------------
 
 *.db
+
+
+# Added by cargo
+
+/target
+*.skv
+/test/a.out
+/test/*.out
+/test/*.skv
+/test/*.db
+/test/*.out.dSYM

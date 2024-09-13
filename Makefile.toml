@@ -1,0 +1,32 @@
+[config]
+skip_core_tasks = true
+reduce_output = true
+
+[tasks.build]
+command = "cargo"
+args = ["build"]
+
+[tasks.build-release]
+command = "cargo"
+args = ["build", "--release"]
+
+[tasks.test]
+dependencies = ["build"]
+script = [
+    "cc -L./target/debug -lsurrealdb_c -lpthread -otest/test.out test/test.c",
+    "test/test.out",
+]
+
+[tasks.test-scratch]
+dependencies = ["build"]
+script = [
+    "cc -L./target/debug -lsurrealdb_c -lpthread -otest/test_scratch.out test/test_scratch.c",
+    "test/test_scratch.out",
+]
+
+[tasks.test-doc]
+dependencies = ["build"]
+script = [
+    "cc -L./target/debug -lsurrealdb_c -lpthread -otest/doc.out test/doc.c",
+    "test/doc.out",
+]

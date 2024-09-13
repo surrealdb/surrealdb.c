@@ -1,0 +1,31 @@
+language = "C"
+
+[export]
+prefix = "sr_"
+
+
+[export.rename]
+"Duration" = "duration_t"
+"Number" = "number_t"
+"Array" = "array_t"
+"Object" = "object_t"
+"Value" = "value_t"
+"Thing" = "thing_t"
+"Uuid" = "uuid_t"
+"Bytes" = "bytes_t"
+"string_t" = "string_t"
+"Id" = "id_t"
+"Notification" = "notification_t"
+"Action" = "action"
+"BTreeMap_String__Value" = "opaque_object_internal_t"
+"Stream" = "stream_t"
+"Surreal" = "surreal_t"
+"SurrealRpc" = "surreal_rpc_t"
+"ArrayResult" = "arr_res_t"
+"ArrayResultArray" = "arr_res_arr_t"
+"ArrayResultArrayResult" = "arr_res_arr_res_t"
+"StringResult" = "string_res_t"
+"SurrealResult" = "surreal_res_t"
+"SR_FATAL" = "SR_FATAL"
+"SR_ERROR" = "SR_ERROR"
+"Options" = "option_t"

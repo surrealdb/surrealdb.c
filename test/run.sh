@@ -1,0 +1,1 @@
+cc -g -L../target/debug -lsurrealdb_c -lpthread test.c && ./a.out
