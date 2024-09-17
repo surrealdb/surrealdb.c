@@ -1,4 +1,7 @@
-use std::{ffi::CString, ops::Bound};
+use std::{
+    ffi::{c_char, c_int, CStr, CString},
+    ops::Bound,
+};
 
 use surrealdb::sql;
 
@@ -13,32 +16,32 @@ pub struct Thing {
     id: Id,
 }
 
-// impl Thing {
-//     #[export_name = "sr_thing_new_string"]
-//     pub fn new_string(table: *const c_char, id: *const c_char) -> Thing {
-//         let table = unsafe { CStr::from_ptr(table) }
-//             .to_string_lossy()
-//             .to_string_t();
-//         let id = unsafe { CStr::from_ptr(id) }
-//             .to_string_lossy()
-//             .to_string_t();
-//         Thing {
-//             table,
-//             id: Id::SR_ID_STRING(id),
-//         }
-//     }
+impl Thing {
+    #[export_name = "sr_thing_new_string"]
+    pub fn new_string(table: *const c_char, id: *const c_char) -> Thing {
+        let table = unsafe { CStr::from_ptr(table) }
+            .to_string_lossy()
+            .to_string_t();
+        let id = unsafe { CStr::from_ptr(id) }
+            .to_string_lossy()
+            .to_string_t();
+        Thing {
+            table,
+            id: Id::SR_ID_STRING(id),
+        }
+    }
 
-//     #[export_name = "sr_thing_new_int"]
-//     pub fn new_int(table: *const c_char, id: c_int) -> Thing {
-//         let table = unsafe { CStr::from_ptr(table) }
-//             .to_string_lossy()
-//             .to_string_t();
-//         Thing {
-//             table,
-//             id: Id::SR_ID_NUMBER(id as i64),
-//         }
-//     }
-// }
+    #[export_name = "sr_thing_new_int"]
+    pub fn new_int(table: *const c_char, id: c_int) -> Thing {
+        let table = unsafe { CStr::from_ptr(table) }
+            .to_string_lossy()
+            .to_string_t();
+        Thing {
+            table,
+            id: Id::SR_ID_NUMBER(id as i64),
+        }
+    }
+}
 
 #[allow(non_camel_case_types)]
 #[repr(C)]
