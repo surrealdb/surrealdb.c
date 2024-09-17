@@ -17,9 +17,15 @@ typedef enum sr_action {
   SR_ACTION_DELETE,
 } sr_action;
 
+typedef enum sr_BoundKind {
+  SR_BOUND_INCLUDED,
+  SR_BOUND_EXCLUDED,
+  SR_BOUND_UNBOUNDED,
+} sr_BoundKind;
+
 typedef struct sr_opaque_object_internal_t sr_opaque_object_internal_t;
 
-typedef struct sr_RpcStream sr_RpcStream;
+typedef struct sr_rpc_stream_t sr_rpc_stream_t;
 
 /**
  * may be sent across threads, but must not be aliased
@@ -85,36 +91,6 @@ typedef struct sr_bytes_t {
   int len;
 } sr_bytes_t;
 
-typedef enum sr_id_t_Tag {
-  SR_ID_NUMBER,
-  SR_ID_STRING,
-  SR_ID_ARRAY,
-  SR_ID_OBJECT,
-} sr_id_t_Tag;
-
-typedef struct sr_id_t {
-  sr_id_t_Tag tag;
-  union {
-    struct {
-      int64_t sr_id_number;
-    };
-    struct {
-      sr_string_t sr_id_string;
-    };
-    struct {
-      struct sr_array_t *sr_id_array;
-    };
-    struct {
-      struct sr_object_t sr_id_object;
-    };
-  };
-} sr_id_t;
-
-typedef struct sr_thing_t {
-  sr_string_t table;
-  struct sr_id_t id;
-} sr_thing_t;
-
 typedef enum sr_value_t_Tag {
   SR_VALUE_NONE,
   SR_VALUE_NULL,
@@ -170,6 +146,51 @@ typedef struct sr_array_t {
   struct sr_value_t *arr;
   int len;
 } sr_array_t;
+
+typedef struct sr_IdRange {
+  enum sr_BoundKind beg_kind;
+  struct sr_id_t *beg;
+  enum sr_BoundKind end_kind;
+  struct sr_id_t *end;
+} sr_IdRange;
+
+typedef enum sr_id_t_Tag {
+  SR_ID_NUMBER,
+  SR_ID_STRING,
+  SR_ID_ARRAY,
+  SR_ID_OBJECT,
+  SR_ID_UUID,
+  SR_ID_RANGE,
+} sr_id_t_Tag;
+
+typedef struct sr_id_t {
+  sr_id_t_Tag tag;
+  union {
+    struct {
+      int64_t sr_id_number;
+    };
+    struct {
+      sr_string_t sr_id_string;
+    };
+    struct {
+      struct sr_array_t *sr_id_array;
+    };
+    struct {
+      struct sr_object_t sr_id_object;
+    };
+    struct {
+      struct sr_uuid_t sr_id_uuid;
+    };
+    struct {
+      struct sr_IdRange sr_id_range;
+    };
+  };
+} sr_id_t;
+
+typedef struct sr_thing_t {
+  sr_string_t table;
+  struct sr_id_t id;
+} sr_thing_t;
 
 /**
  * when code = 0 there is no error
@@ -249,14 +270,20 @@ int sr_connect(sr_string_t *err_ptr,
 void sr_surreal_disconnect(struct sr_surreal_t *db);
 
 /**
- * create a record
+ * create a record not
  *
  */
 int sr_create(const struct sr_surreal_t *db,
               sr_string_t *err_ptr,
-              struct sr_object_t **res_ptr,
-              const char *resource,
+              struct sr_object_t *res_ptr,
+              const char *table,
               const struct sr_object_t *content);
+
+int sr_create_thing(const struct sr_surreal_t *db,
+                    sr_string_t *err_ptr,
+                    struct sr_object_t *res_ptr,
+                    const struct sr_thing_t *thing,
+                    const struct sr_object_t *content);
 
 /**
  * make a live selection
@@ -302,7 +329,7 @@ int sr_query(const struct sr_surreal_t *db,
  * ```c
  * sr_surreal_t *db;
  * sr_string_t err;
- * sr_value_t *foos;
+ * sr_object_t *foos;
  * int len = sr_select(db, &err, &foos, "foo");
  * if (len < 0) {
  *     printf("%s", err);
@@ -392,11 +419,13 @@ int sr_surreal_rpc_execute(const struct sr_surreal_rpc_t *self,
 
 int sr_surreal_rpc_notifications(const struct sr_surreal_rpc_t *self,
                                  sr_string_t *err_ptr,
-                                 struct sr_RpcStream **stream_ptr);
+                                 struct sr_rpc_stream_t **stream_ptr);
 
 void sr_surreal_rpc_free(struct sr_surreal_rpc_t *ctx);
 
 void sr_free_arr(struct sr_value_t *ptr, int len);
+
+void sr_free_string_arr(sr_string_t *ptr, int len);
 
 void sr_free_bytes(struct sr_bytes_t bytes);
 
@@ -418,7 +447,15 @@ void sr_object_insert_float(struct sr_object_t *obj, const char *key, float valu
 
 void sr_object_insert_double(struct sr_object_t *obj, const char *key, double value);
 
+void sr_object_insert_thing(struct sr_object_t *obj, const char *key, struct sr_thing_t value);
+
+int sr_object_into_arr(struct sr_object_t obj, sr_string_t **key_ptr, struct sr_value_t **val_ptr);
+
 void sr_free_object(struct sr_object_t obj);
+
+bool sr_object_eq(const struct sr_object_t *lhs, const struct sr_object_t *rhs);
+
+void sr_object_print(const struct sr_object_t *value);
 
 void sr_free_arr_res(struct sr_arr_res_t res);
 
@@ -434,6 +471,8 @@ int sr_stream_next(struct sr_stream_t *self, struct sr_notification_t *notificat
 void sr_stream_kill(struct sr_stream_t *stream);
 
 void sr_free_string(sr_string_t string);
+
+sr_string_t sr_string_new(const char *string);
 
 void sr_value_print(const struct sr_value_t *val);
 

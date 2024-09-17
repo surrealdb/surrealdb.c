@@ -10,3 +10,4 @@ let $foo = create only foo set val = 23
 select value val from only $foo
 define table foo schemaful
 create foo set val = 1
+create foo content [{val: 1}, {val: 2}]

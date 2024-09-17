@@ -27,3 +27,9 @@ impl From<Duration> for sql::Duration {
         std::time::Duration::new(value.secs, value.nanos).into()
     }
 }
+
+impl From<&Duration> for sql::Duration {
+    fn from(value: &Duration) -> Self {
+        std::time::Duration::new(value.secs, value.nanos).into()
+    }
+}

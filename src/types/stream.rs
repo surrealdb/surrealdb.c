@@ -50,7 +50,6 @@ impl Stream {
     }
 }
 
-// TODO: check if this needs to be dropped async
 pub struct RpcStream {
     pub rx: Receiver<dbs::Notification>,
 }

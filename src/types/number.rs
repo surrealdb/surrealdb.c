@@ -36,3 +36,12 @@ impl From<Number> for sql::Number {
         }
     }
 }
+
+impl From<&Number> for sql::Number {
+    fn from(value: &Number) -> Self {
+        match value {
+            Number::SR_NUMBER_INT(i) => sql::Number::Int(*i),
+            Number::SR_NUMBER_FLOAT(f) => sql::Number::Float(*f),
+        }
+    }
+}

@@ -34,6 +34,13 @@ impl From<string_t> for String {
     }
 }
 
+impl From<&string_t> for String {
+    fn from(value: &string_t) -> Self {
+        let cstr = unsafe { CStr::from_ptr(value.0) };
+        cstr.to_string_lossy().into()
+    }
+}
+
 impl Drop for string_t {
     fn drop(&mut self) {
         let ptr = self.0;
@@ -77,13 +84,13 @@ impl PartialEq for string_t {
     }
 }
 
-// pub fn ptr_to_str(ptr: *const c_char) -> &'static str {
-//     let cstr = unsafe { CStr::from_ptr(ptr) };
-//     // // TODO(raphaeldarley): remove panic because of ub, or check its always caught
-//     cstr.to_str().unwrap()
-// }
-
 #[export_name = "sr_free_string"]
 pub extern "C" fn free_string(string: string_t) {
     drop(string)
+}
+
+#[export_name = "sr_string_new"]
+pub extern "C" fn string_new(string: *const c_char) -> string_t {
+    let cstr = unsafe { CStr::from_ptr(string) };
+    cstr.to_string_lossy().to_string_t()
 }
