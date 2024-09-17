@@ -33,68 +33,30 @@ The official SurrealDB SDK for C.
 
 ## Getting started
 
+> [!WARNING]
+> There is an issue with cbindgen which causes incorrect ordering of header files, so linking may fail.\
+> This should be fixed soon, or can be worked around by using a published header file or manually reordering
+
+
+
 Connect to an in-memory instance, SurrealKV or remote
 
 ```c
 #include "path/to/surrealdb.h"
 
-SurrealResult connect_res = connect("memory");
-if (connect_res.err.code != 0)
+sr_surreal_t *db;
+sr_string_t err;
+
+// connect to server
+char *endpoint = "ws://localhost:8000";
+// connect to file
+char *endpoint = "surrealkv://database.skv";
+
+if (sr_connect(&err, &db, endpoint) < 0)
 {
-    printf("%s", connect_res.err.msg);
+    printf("failed to connect: %s", err);
     return 1;
 }
-Surreal *db = connect_res.ok;
 
-use_ns(db, "test");
-use_db(db, "test");
-```
-
-### Using query
-
-```c
-       ArrayResultArrayResult res = query(db, "CREATE foo:1 SET val = 42; CREATE foo:1 SET val = 48; SELECT * FROM foo;");
-    if (res.err.code != 0)
-    {
-        printf("%s", res.err.msg);
-        free_string(res.err.msg);
-        return 1;
-    }
-    ArrayResultArray arr_res_arr = res.ok;
-    assert(arr_res_arr.len == 3);
-    assert(arr_res_arr.arr[0].err.code == 0);
-    assert(arr_res_arr.arr[1].err.code != 0);
-    printf("error: %s\n", arr_res_arr.arr[1].err.msg); // error: Database record `foo:1` already exists
-    free_string(arr_res_arr.arr[1].err.msg);
-    assert(arr_res_arr.arr[2].err.code == 0);
-
-    array_t foos = arr_res_arr.arr[2].ok;
-    double sum = 0;
-    for (size_t i = 0; i < foos.len; i++)
-    {
-        value_t foo = foos.arr[i];
-        assert(foo.tag == Object);
-        const value_t *val = get(&foo.object, "val");
-        switch (val->tag)
-        {
-        case Number:
-            switch (val->number.tag)
-            {
-            case Int:
-                sum += val->number.int_;
-                break;
-            case Float:
-                sum += val->number.float_;
-                break;
-            default:
-                break;
-            }
-            break;
-
-        default:
-            break;
-        }
-    }
-    printf("total of foo vals: %f\n", sum);
-    free_arr_res_arr(arr_res_arr);
+sr_surreal_disconnect(db);
 ```
