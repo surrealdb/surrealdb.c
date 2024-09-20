@@ -1,1 +1,3 @@
-cc -g -L../target/debug -lsurrealdb_c -lpthread test.c && ./a.out
+cc -c test.c -o test.o
+cc -o ./a.out ./test.c ../target/debug/libsurrealdb_c.a -lpthread -lm
+./a.out
