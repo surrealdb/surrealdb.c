@@ -6,6 +6,8 @@ use std::{
 use crate::value::Value;
 use surrealdb::sql;
 
+use super::string::string_t;
+
 pub struct ArrayGen<T> {
     pub ptr: *mut T,
     pub len: c_int,
@@ -105,6 +107,15 @@ impl From<Array> for sql::Array {
     }
 }
 
+impl From<&Array> for sql::Array {
+    fn from(value: &Array) -> Self {
+        let gen_arr: ArrayGen<Value> = value.into();
+        let vec: Vec<sql::Value> = gen_arr.into_vec().into_iter().map(Into::into).collect();
+
+        Self::from(vec)
+    }
+}
+
 impl From<Vec<Value>> for Array {
     fn from(value: Vec<Value>) -> Self {
         value.make_array().into()
@@ -179,6 +190,11 @@ impl Drop for Array {
 impl Array {
     #[export_name = "sr_free_arr"]
     pub extern "C" fn free_arr(ptr: *mut Value, len: c_int) {
+        ArrayGen { ptr, len }.free()
+    }
+
+    #[export_name = "sr_free_string_arr"]
+    pub extern "C" fn free_string_arr(ptr: *mut string_t, len: c_int) {
         ArrayGen { ptr, len }.free()
     }
 }

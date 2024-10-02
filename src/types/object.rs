@@ -9,6 +9,8 @@ use crate::{utils::CStringExt2, value::Value};
 
 use crate::types::number::Number;
 
+use super::{array::MakeArray, string::string_t, thing::Thing};
+
 #[repr(C)]
 #[derive(Debug, Clone, PartialEq)]
 pub struct Object(Box<BTreeMap<String, Value>>);
@@ -53,9 +55,46 @@ impl Object {
         Self::insert(obj, key, &Value::SR_VALUE_NUMBER(Number::from(value)));
     }
 
+    #[export_name = "sr_object_insert_thing"]
+    pub extern "C" fn insert_thing(obj: *mut Object, key: *const c_char, value: Thing) {
+        Self::insert(obj, key, &Value::SR_VALUE_THING(value.clone()));
+    }
+
+    #[export_name = "sr_object_into_arr"]
+    pub extern "C" fn into_arr(
+        obj: Object,
+        key_ptr: *mut *mut string_t,
+        val_ptr: *mut *mut Value,
+    ) -> c_int {
+        let mut key_vec = Vec::new();
+        let mut val_vec = Vec::new();
+        for (k, v) in *obj.0 {
+            key_vec.push(k.to_string_t());
+            val_vec.push(v);
+        }
+
+        let key_arr = key_vec.make_array();
+        unsafe { key_ptr.write(key_arr.ptr) }
+
+        let val_arr = val_vec.make_array();
+        unsafe { val_ptr.write(val_arr.ptr) }
+
+        key_arr.len
+    }
+
     #[export_name = "sr_free_object"]
     pub extern "C" fn free_object(obj: Object) {
         drop(obj)
+    }
+
+    #[export_name = "sr_object_eq"]
+    pub extern "C" fn object_eq(lhs: &Object, rhs: &Object) -> bool {
+        lhs == rhs
+    }
+
+    #[export_name = "sr_object_print"]
+    pub extern "C" fn object_print(value: &Object) {
+        println!("{value:?}");
     }
 }
 
@@ -83,6 +122,15 @@ impl From<Object> for sql::Object {
         let map = value.0;
         let out: BTreeMap<String, sql::Value> =
             map.into_iter().map(|(k, v)| (k, v.into())).collect();
+        out.into()
+    }
+}
+
+impl From<&Object> for sql::Object {
+    fn from(value: &Object) -> Self {
+        let map = &value.0;
+        let out: BTreeMap<String, sql::Value> =
+            map.iter().map(|(k, v)| (k.to_owned(), v.into())).collect();
         out.into()
     }
 }

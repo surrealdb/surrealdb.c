@@ -61,11 +61,12 @@ int main()
     srand(42);
     errors += run_endpoint("memory");
     printf("\n");
+    errors += run_endpoint("surrealkv://ci_test.skv");
+    printf("\n");
     errors += run_endpoint("ws://localhost:8000");
     printf("\n");
-    // TODO: fix http
-    // errors += run_endpoint("http://localhost:8000");
-    // printf("\n");
+    errors += run_endpoint("http://localhost:8000");
+    printf("\n");
 
     if (errors == 0)
     {
@@ -88,7 +89,6 @@ int test_version(sr_surreal_t *db)
         printf("%s", err);
         return 1;
     }
-    printf("%s", ver);
     sr_free_string(ver);
     return 0;
 }
@@ -193,27 +193,29 @@ int test_create_select(sr_surreal_t *db)
 
     sr_object_t foo1_obj = sr_object_new();
     sr_object_insert_str(&foo1_obj, "val", "hello surreal");
-    // sr_value_t foo1_val = {
-    //     .tag = SR_VALUE_OBJECT,
-    //     .sr_value_object = foo1_obj};
+    sr_thing_t foo1_id = {.table = sr_string_new("foo"), .id = {.tag = SR_ID_NUMBER, .sr_id_number = 1}};
+    sr_object_insert_thing(&foo1_obj, "id", foo1_id);
 
-    sr_value_t *foo1_res;
-    sr_create(db, err, &foo1_res, "foo:1", &foo1_obj);
+    sr_object_t foo1_res;
+    if (sr_create(db, &err, &foo1_res, "foo", &foo1_obj) < 0)
+    {
+        printf("%s\n", err);
+        return 1;
+    }
+
+    if (!sr_object_eq(&foo1_obj, &foo1_res))
+    {
+        printf("create had incorrect value: \n");
+        sr_object_print(&foo1_res);
+        printf("but expected:\n");
+        sr_object_print(&foo1_obj);
+        return 1;
+    }
+
+    sr_free_object(foo1_res);
 
     sr_object_t foo2_obj = sr_object_new();
     sr_object_insert_float(&foo2_obj, "val", 4.2);
 
-    // sr_arr_res_t *res_arr;
-    // // already checked query so assume this works
-    // int len = sr_query(db, &err, &res_arr, "CREATE foo:1 SET val = 2; CREATE foo:2 SET val = 4;", 0);
-    // if (len < 0)
-    // {
-    //     printf("%s", err);
-    //     return 1;
-    // }
-    // sr_free_arr_res_arr(res_arr, len);
-
-    // printf("%s\n\n", res.ok);
-
-    return 0;
+        return 0;
 }

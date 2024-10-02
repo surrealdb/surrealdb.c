@@ -53,7 +53,6 @@ impl SurrealRpc {
         endpoint: *const c_char,
         options: Options,
     ) -> c_int {
-        // TODO: live query support
         let res: Result<Result<SurrealRpc, string_t>, _> = catch_unwind(AssertUnwindSafe(|| {
             let Ok(endpoint) = (unsafe { CStr::from_ptr(endpoint).to_str() }) else {
                 return Err("Invalid UTF-8".into());
@@ -174,8 +173,10 @@ impl SurrealRpc {
                 .kvs
                 .notifications()
                 .ok_or("Notifications not enabled")?;
+            let boxed = Box::new(RpcStream { rx: stream });
+            unsafe { stream_ptr.write(Box::leak(boxed)) }
 
-            Ok(0)
+            Ok(1)
         })
     }
 

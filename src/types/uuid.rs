@@ -29,3 +29,10 @@ impl From<Uuid> for sdbUuid {
         tmp.into()
     }
 }
+
+impl From<&Uuid> for sdbUuid {
+    fn from(value: &Uuid) -> Self {
+        let tmp: uuid::Uuid = value.clone().into();
+        tmp.into()
+    }
+}

@@ -64,6 +64,16 @@ impl From<Bytes> for ArrayGen<u8> {
     }
 }
 
+impl From<&Bytes> for ArrayGen<u8> {
+    fn from(value: &Bytes) -> Self {
+        let Bytes { arr, len } = value;
+        Self {
+            ptr: *arr,
+            len: *len,
+        }
+    }
+}
+
 impl From<sdbBytes> for Bytes {
     fn from(value: sdbBytes) -> Self {
         value.into_inner().make_array().into()
@@ -72,6 +82,12 @@ impl From<sdbBytes> for Bytes {
 
 impl From<Bytes> for sdbBytes {
     fn from(value: Bytes) -> Self {
+        ArrayGen::from(value).into_vec().into()
+    }
+}
+
+impl From<&Bytes> for sdbBytes {
+    fn from(value: &Bytes) -> Self {
         ArrayGen::from(value).into_vec().into()
     }
 }

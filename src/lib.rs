@@ -15,8 +15,10 @@ use string::string_t;
 use surrealdb::{
     engine::any::{self, Any},
     opt::Resource,
-    sql, Surreal as sdbSurreal, Value as apiValue,
+    sql::{self},
+    RecordId, Surreal as sdbSurreal, Value as apiValue,
 };
+use thing::Thing;
 use tokio::runtime::Runtime;
 use types::result::ArrayResult;
 
@@ -42,11 +44,6 @@ pub struct Surreal {
     rt: Runtime,
     ps: AtomicBool,
 }
-
-// struct SurrealInner {
-//     kvs: Datastore,
-//     sess: Session,
-// }
 
 impl Surreal {
     /// connects to a local, remote, or embedded database
@@ -85,7 +82,6 @@ impl Surreal {
         surreal_ptr: *mut *mut Surreal,
         endpoint: *const c_char,
     ) -> c_int {
-        // TODO: wrap in catch unwind
         let res: Result<Result<Surreal, string_t>, _> = catch_unwind(AssertUnwindSafe(|| {
             let Ok(endpoint) = (unsafe { CStr::from_ptr(endpoint).to_str() }) else {
                 return Err("invalid utf8".into());
@@ -164,37 +160,78 @@ impl Surreal {
 
     // create.rs
 
-    /// create a record
+    /// create a record not
     ///
     #[export_name = "sr_create"]
     pub extern "C" fn create(
         db: &Surreal,
         err_ptr: *mut string_t,
-        res_ptr: *mut &mut Object,
-        resource: *const c_char,
+        res_ptr: *mut Object,
+        table: *const c_char,
         content: *const Object,
     ) -> c_int {
         with_surreal_async(db, err_ptr, |surreal| async {
-            let resource = unsafe { CStr::from_ptr(resource) }.to_str()?;
+            let table = unsafe { CStr::from_ptr(table) }.to_str()?;
             let content = sql::Object::from(unsafe { &*content }.clone());
 
             let res = surreal
                 .db
-                .create(Resource::from(resource))
+                .create(Resource::from(table))
                 .content(content)
                 .await?;
+
             let obj = match res.into_inner() {
                 sql::Value::Object(o) => o,
                 other => {
                     return Err(format!(
-                        "Expected object as return type of create, but found: {other:?}"
+                        "Expected Object as return type of create, but found: {other:?}"
                     )
                     .into())
                 }
             };
             if !res_ptr.is_null() {
-                let boxed = Box::new(obj.into());
-                unsafe { res_ptr.write(Box::leak(boxed)) }
+                unsafe { res_ptr.write(obj.into()) }
+                Ok(1)
+            } else {
+                Ok(0)
+            }
+        })
+    }
+
+    #[export_name = "sr_create_thing"]
+    pub extern "C" fn create_thing(
+        db: &Surreal,
+        err_ptr: *mut string_t,
+        res_ptr: *mut Object,
+        thing: *const Thing,
+        content: *const Object,
+    ) -> c_int {
+        with_surreal_async(db, err_ptr, |surreal| async {
+            // let table = unsafe { CStr::from_ptr(table) }.to_str()?;
+            let thing = sql::Thing::from(unsafe { &*thing });
+            let content = sql::Object::from(unsafe { &*content }.clone());
+
+            let res = surreal
+                .db
+                .create(RecordId::from_inner(thing))
+                .content(content)
+                .await?;
+
+            let Some(val): Option<sql::Value> = res else {
+                return Ok(SR_NONE);
+            };
+
+            let obj = match val {
+                sql::Value::Object(o) => o,
+                other => {
+                    return Err(format!(
+                        "Expected Object as return type of create, but found: {other:?}"
+                    )
+                    .into())
+                }
+            };
+            if !res_ptr.is_null() {
+                unsafe { res_ptr.write(obj.into()) }
                 Ok(1)
             } else {
                 Ok(0)
@@ -318,7 +355,7 @@ impl Surreal {
     /// ```c
     /// sr_surreal_t *db;
     /// sr_string_t err;
-    /// sr_value_t *foos;
+    /// sr_object_t *foos;
     /// int len = sr_select(db, &err, &foos, "foo");
     /// if (len < 0) {
     ///     printf("%s", err);
