@@ -36,6 +36,7 @@ The official SurrealDB SDK for C.
 > [!WARNING]
 > There is an issue with cbindgen which causes incorrect ordering of header files, so linking may fail.\
 > This should be fixed soon, or can be worked around by using a published header file or manually reordering
+> see: https://github.com/mozilla/cbindgen/issues/981
 
 
 
