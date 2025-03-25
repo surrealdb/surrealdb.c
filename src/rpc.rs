@@ -164,10 +164,10 @@ impl SurrealRpc {
     pub extern "C" fn notifications(
         &self,
         err_ptr: *mut string_t,
-        stream_ptr: *mut &mut RpcStream,
+        _stream_ptr: *mut &mut RpcStream,
     ) -> c_int {
         with_async(self, err_ptr, |ctx| async {
-            let stream = ctx
+            let _ = ctx
                 .inner
                 .read()
                 .await
