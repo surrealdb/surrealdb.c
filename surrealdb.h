@@ -392,7 +392,7 @@ int sr_surreal_rpc_execute(const struct sr_surreal_rpc_t *self,
 
 int sr_surreal_rpc_notifications(const struct sr_surreal_rpc_t *self,
                                  sr_string_t *err_ptr,
-                                 struct sr_RpcStream **stream_ptr);
+                                 struct sr_RpcStream **_stream_ptr);
 
 void sr_surreal_rpc_free(struct sr_surreal_rpc_t *ctx);
 
