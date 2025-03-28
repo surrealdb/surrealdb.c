@@ -197,8 +197,8 @@ int test_create_select(sr_surreal_t *db)
     //     .tag = SR_VALUE_OBJECT,
     //     .sr_value_object = foo1_obj};
 
-    sr_value_t *foo1_res;
-    sr_create(db, err, &foo1_res, "foo:1", &foo1_obj);
+    sr_object_t *foo1_res;
+    sr_create(db, &err, &foo1_res, "foo:1", &foo1_obj);
 
     sr_object_t foo2_obj = sr_object_new();
     sr_object_insert_float(&foo2_obj, "val", 4.2);
