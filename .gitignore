@@ -2,6 +2,9 @@
 # OS X
 # -----------------------------------
 
+# IDE files
+.idea
+
 # Directory files
 .DS_Store
 .AppleDouble
