@@ -9,7 +9,6 @@ use std::{
     panic::{catch_unwind, AssertUnwindSafe},
     sync::atomic::{AtomicBool, Ordering},
 };
-
 use stream::Stream;
 use string::string_t;
 use surrealdb::{

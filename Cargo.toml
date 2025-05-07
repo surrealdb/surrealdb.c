@@ -26,6 +26,7 @@ libc = "0.2.158"
 chrono = "0.4.38"
 async-channel = "2.3.1"
 ciborium = "0.2.2"
+arc-swap = "1.7.1"
 
 [build-dependencies]
 cbindgen = "0.28.0"

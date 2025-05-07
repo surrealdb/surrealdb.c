@@ -7,19 +7,21 @@ use std::{
     sync::atomic::{AtomicBool, Ordering},
     time::Duration,
 };
-
+use std::any::Any;
+use std::fmt::Debug;
+use std::sync::Arc;
+use arc_swap::ArcSwap;
 use surrealdb::dbs::Session;
 use surrealdb::kvs::Datastore;
 use surrealdb::rpc::format::cbor;
-use surrealdb::rpc::method::Method;
-use surrealdb::rpc::rpc_context::RpcContext;
+use surrealdb::rpc::Method;
+use surrealdb::rpc::RpcContext;
 use surrealdb::rpc::Data;
 use surrealdb::sql;
+use surrealdb_core::rpc::{RpcProtocolV1, RpcProtocolV2};
 use tokio::{runtime::Runtime, sync::RwLock};
-
-use crate::{
-    array::MakeArray, opts::Options, stream::RpcStream, string::string_t, SR_ERROR, SR_FATAL,
-};
+use tokio::sync::Semaphore;
+use crate::{array::MakeArray, opts::Options, result, stream::RpcStream, string::string_t, SR_ERROR, SR_FATAL};
 
 /// The object representing a Surreal connection
 ///
@@ -54,6 +56,7 @@ impl SurrealRpc {
         options: Options,
     ) -> c_int {
         // TODO: live query support
+        // TODO: Continue standardizing for V2
         let res: Result<Result<SurrealRpc, string_t>, _> = catch_unwind(AssertUnwindSafe(|| {
             let Ok(endpoint) = (unsafe { CStr::from_ptr(endpoint).to_str() }) else {
                 return Err("Invalid UTF-8".into());
@@ -85,8 +88,9 @@ impl SurrealRpc {
 
             let inner = SurrealRpcInner {
                 kvs,
-                sess: Session::default().with_rt(true),
+                sess: ArcSwap::new(Arc::new(Session::default().with_rt(true))),
                 vars: BTreeMap::default(),
+                lock: Arc::new(Semaphore::new(1)),
             };
 
             Ok(SurrealRpc {
@@ -137,7 +141,9 @@ impl SurrealRpc {
             let in_bytes = slice_from_raw_parts(ptr, len as usize);
             let in_bytes = unsafe { &*in_bytes };
             let in_data = cbor::req(in_bytes.to_vec())?;
-            let method = Method::parse(in_data.method);
+            let method = Method::parse_case_insensitive(in_data.method.to_str());
+            //let method = Method::parse(in_data.method);
+            /*
             let res = match method.can_be_immut() {
                 true => {
                     ctx.inner
@@ -150,13 +156,32 @@ impl SurrealRpc {
                     ctx.inner
                         .write()
                         .await
-                        .execute(method, in_data.params)
-                        .await
+                        .execute(None, method, in_data.params)
+                        .await?
                 }
             }?;
-            let out = cbor::res(res)?.make_array();
-            unsafe { res_ptr.write(out.ptr) }
-            Ok(out.len)
+             */
+            let inner = &ctx.inner.write().await;
+            let res = <SurrealRpcInner as RpcProtocolV2>::execute(
+                &*inner,
+                method,
+                in_data.params,
+            ).await?;
+            
+            // TODO(Lance): Handle Data::Other and/or Data::Live ??
+            let result = match res {
+                Data::Other(v) => {
+                    let out = cbor::res(v)?.make_array();
+                    //let out = cbor::res(res)?.make_array();
+                    unsafe { res_ptr.write(out.ptr) }
+                    Ok(out.len)
+                }
+                _ => {
+                    Err("C SDK: RPC::execute had malformed response.")
+                }
+            }?;
+            
+            Ok(result)
         })
     }
 
@@ -221,23 +246,12 @@ where
 
 struct SurrealRpcInner {
     kvs: Datastore,
-    sess: Session,
+    sess: ArcSwap<Session>,
+    lock: Arc<Semaphore>,
     vars: BTreeMap<String, sql::Value>,
 }
 
-impl RpcContext for SurrealRpcInner {
-    fn kvs(&self) -> &Datastore {
-        &self.kvs
-    }
-
-    fn session(&self) -> &Session {
-        &self.sess
-    }
-
-    fn session_mut(&mut self) -> &mut Session {
-        &mut self.sess
-    }
-
+impl SurrealRpcInner {
     fn vars(&self) -> &std::collections::BTreeMap<String, sql::Value> {
         &self.vars
     }
@@ -245,13 +259,35 @@ impl RpcContext for SurrealRpcInner {
     fn vars_mut(&mut self) -> &mut std::collections::BTreeMap<String, sql::Value> {
         &mut self.vars
     }
+}
 
+impl RpcContext for SurrealRpcInner {
+    fn kvs(&self) -> &Datastore {
+        &self.kvs
+    }
+
+    fn lock(&self) -> Arc<Semaphore> {
+        self.lock.clone()   
+    }
+
+    fn session(&self) -> Arc<Session> {
+        self.sess.load().clone()
+    }
+
+    fn set_session(&self, session: Arc<Session>) {
+        self.sess.store(session);
+    }
     fn version_data(&self) -> Data {
         let ver_str = surrealdb_core::env::VERSION.to_string();
         ver_str.into()
     }
-
+    
     const LQ_SUPPORT: bool = true;
+
     async fn handle_live(&self, _lqid: &uuid::Uuid) {}
+
     async fn handle_kill(&self, _lqid: &uuid::Uuid) {}
 }
+
+impl RpcProtocolV1 for SurrealRpcInner{}
+impl RpcProtocolV2 for SurrealRpcInner{}
