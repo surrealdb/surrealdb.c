@@ -9,11 +9,13 @@ use std::{
     panic::{catch_unwind, AssertUnwindSafe},
     sync::atomic::{AtomicBool, Ordering},
 };
+use serde::{Deserialize, Serialize};
 use stream::Stream;
 use string::string_t;
 use surrealdb::{
     engine::any::{self, Any},
     opt::Resource,
+    opt::auth,
     sql, Surreal as sdbSurreal, Value as apiValue,
 };
 use tokio::runtime::Runtime;
@@ -23,6 +25,7 @@ use array::{Array, ArrayGen, MakeArray};
 pub use types::*;
 use utils::CStringExt2;
 use value::{Object, Value};
+use crate::credentials::{credentials_scope, signin_details};
 
 pub const SR_NONE: c_int = 0;
 pub const SR_CLOSED: c_int = -1;
@@ -357,6 +360,137 @@ impl Surreal {
     // set.rs
 
     // signin.rs
+    /// sign in as root or to a db
+    ///
+    /// used to provide credentials to a db for access permissions, either root or scoped
+    ///
+    /// # Examples
+    ///
+    /// ```c
+    /// sr_surreal_t *db;
+    /// sr_string_t err;
+    ///
+    /// sr_credentials_scope scope = sr_credentials_scope::ROOT;
+    /// const sr_string_t user = "<user>";
+    /// // SHOULD NEVER BE HARDCODED
+    /// const sr_string_t password = "<password>;
+    /// sr_credentials creds = sr_credentials {
+    ///     .username = user,
+    ///     .password = pass,
+    /// };
+    ///
+    /// if (sr_signin(db, &err, &scope, &creds, nullptr) < 0) {
+    ///     printf("Failed to authenticate credentials: %s", err);
+    ///     return 1;
+    /// }
+    /// ```
+    #[export_name = "sr_signin"]
+    pub extern "C" fn signin(
+        db: &Surreal,
+        err_ptr: *mut string_t,
+        scope: &credentials_scope, 
+        creds: &credentials::credentials, 
+        details: *const signin_details
+    ) -> c_int {
+        with_surreal_async(db, err_ptr, |surreal| async {
+            let user = unsafe { CStr::from_ptr(creds.username.0).to_str()? };
+            let pass = unsafe { CStr::from_ptr(creds.password.0).to_str()? };
+            
+            let mut ns = "";
+            let mut db = "";
+            let mut ac = "";
+            
+            if !details.is_null() {
+                let details = unsafe { &*details };
+
+                if !details.namespace.0.is_null() {
+                    ns = unsafe { CStr::from_ptr(details.namespace.0).to_str()? };
+                }
+
+                if !details.database.0.is_null() {
+                    db = unsafe { CStr::from_ptr(details.database.0).to_str()? };
+                }
+
+                if !details.access.0.is_null() {
+                    ac = unsafe { CStr::from_ptr(details.access.0).to_str()? };
+                }
+            }
+            
+            match scope {
+                credentials_scope::ROOT => {
+                    let login = auth::Root {
+                        username: user,
+                        password: pass,
+                    };
+                    let _res = surreal.db.signin(login).await?;
+                }
+                credentials_scope::NAMESPACE => {
+                    if ns.is_empty() {
+                        Err("Namespace must be provided.")?   
+                    }
+                    
+                    let login = auth::Namespace {
+                        namespace: ns,
+                        username: user,
+                        password: pass,
+                    };
+                    
+                    let _res = surreal.db.signin(login).await?;
+                }
+                credentials_scope::DATABASE => {
+                    if ns.is_empty() {
+                        Err("Namespace must be provided.")?   
+                    }
+                    if db.is_empty() {
+                        Err("Database must be provided.")?   
+                    }
+                    
+                    let login = auth::Database {
+                        namespace: ns,
+                        database: db,
+                        username: user,
+                        password: pass,
+                    };
+                    
+                    let _res = surreal.db.signin(login).await?;
+                }
+                credentials_scope::RECORD => {
+                    if ns.is_empty() {
+                        Err("Namespace must be provided.")?
+                    }
+                    if db.is_empty() {
+                        Err("Database must be provided.")?
+                    }
+                    if ac.is_empty() {
+                        Err("Access method must be provided.")?   
+                    }
+                    
+                    #[derive(Debug, Serialize, Deserialize)]
+                    struct CredsInner {
+                        username: String,
+                        password: String,
+                    }
+                    
+                    let creds_inner = CredsInner {
+                        username: user.to_string(),
+                        password: pass.to_string()
+                    };
+                    
+                    let login = auth::Record {
+                        namespace: ns,
+                        database: db,
+                        access: ac,
+                        params: creds_inner,
+                    };
+                    
+                    let _res = surreal.db.signin(login).await?;
+                }
+            };
+            Ok(0)
+        })
+    }
+    
+    
 
     // signup.rs
 

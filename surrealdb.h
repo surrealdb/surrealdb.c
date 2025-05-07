@@ -17,6 +17,13 @@ typedef enum sr_action {
   SR_ACTION_DELETE,
 } sr_action;
 
+typedef enum sr_credentials_scope {
+  ROOT,
+  NAMESPACE,
+  DATABASE,
+  RECORD,
+} sr_credentials_scope;
+
 typedef struct sr_opaque_object_internal_t sr_opaque_object_internal_t;
 
 typedef struct sr_RpcStream sr_RpcStream;
@@ -184,6 +191,17 @@ typedef struct sr_arr_res_t {
   struct sr_SurrealError err;
 } sr_arr_res_t;
 
+typedef struct sr_credentials {
+  sr_string_t username;
+  sr_string_t password;
+} sr_credentials;
+
+typedef struct sr_signin_details {
+  sr_string_t namespace_;
+  sr_string_t database;
+  sr_string_t access;
+} sr_signin_details;
+
 typedef struct sr_option_t {
   bool strict;
   uint8_t query_timeout;
@@ -319,6 +337,38 @@ int sr_select(const struct sr_surreal_t *db,
               sr_string_t *err_ptr,
               struct sr_value_t **res_ptr,
               const char *resource);
+
+/**
+ * sign in as root or to a db
+ *
+ * used to provide credentials to a db for access permissions, either root or scoped
+ *
+ * # Examples
+ *
+ * ```c
+ * sr_surreal_t *db;
+ * sr_string_t err;
+ *
+ * sr_credentials_scope scope = sr_credentials_scope::ROOT;
+ * const sr_string_t user = "<user>";
+ * // SHOULD NEVER BE HARDCODED
+ * const sr_string_t password = "<password>;
+ * sr_credentials creds = sr_credentials {
+ *     .username = user,
+ *     .password = pass,
+ * };
+ *
+ * if (sr_signin(db, &err, &scope, &creds, nullptr) < 0) {
+ *     printf("Failed to authenticate credentials: %s", err);
+ *     return 1;
+ * }
+ * ```
+ */
+int sr_signin(const struct sr_surreal_t *db,
+              sr_string_t *err_ptr,
+              const enum sr_credentials_scope *scope,
+              const struct sr_credentials *creds,
+              const struct sr_signin_details *details);
 
 /**
  * select database

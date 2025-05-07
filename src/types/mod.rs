@@ -1,5 +1,6 @@
 pub mod array;
 pub mod bytes;
+pub mod credentials;
 pub mod duration;
 pub mod notification;
 pub mod number;
