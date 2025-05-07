@@ -25,7 +25,7 @@ use array::{Array, ArrayGen, MakeArray};
 pub use types::*;
 use utils::CStringExt2;
 use value::{Object, Value};
-use crate::credentials::{credentials_scope, signin_details};
+use crate::credentials::{credentials_scope, credentials_access};
 
 pub const SR_NONE: c_int = 0;
 pub const SR_CLOSED: c_int = -1;
@@ -219,7 +219,7 @@ impl Surreal {
     // live.rs
     /// make a live selection
     /// if successful sets *stream_ptr to be an exclusive reference to an opaque Stream object
-    /// which can be moved accross threads but not aliased
+    /// which can be moved across threads but not aliased
     ///
     /// # Examples
     ///
@@ -312,7 +312,7 @@ impl Surreal {
     /// select a resource
     ///
     /// can be used to select everything from a table or a single record
-    /// writes values to *res_ptr, and returns number of values
+    /// writes values to *res_ptr, and returns the number of values
     /// result values are allocated by Surreal and must be freed with sr_free_arr
     ///
     /// # Examples
@@ -360,9 +360,9 @@ impl Surreal {
     // set.rs
 
     // signin.rs
-    /// sign in as root or to a db
+    /// Sign in utilizing the surreal authentication types.
     ///
-    /// used to provide credentials to a db for access permissions, either root or scoped
+    /// Used to provide credentials to a db for access permissions, either root or scoped.
     ///
     /// # Examples
     ///
@@ -384,13 +384,38 @@ impl Surreal {
     ///     return 1;
     /// }
     /// ```
+    /// ```c
+    /// sr_surreal_t *db;
+    /// sr_string_t err;
+    ///
+    /// sr_credentials_scope scope = sr_credentials_scope::DATABASE;
+    /// const sr_string_t user = "<user>";
+    /// // SHOULD NEVER BE HARDCODED
+    /// const sr_string_t password = "<password>;
+    /// sr_credentials creds = sr_credentials {
+    ///     .username = user,
+    ///     .password = pass,
+    /// };
+    /// sr_string_t namespace_ = "testing";
+    /// sr_string_t db_name = "perf-test";
+    /// sr_credentials_access details = sr_credentials_access {
+    ///     .namespace_ = namespace_,
+    ///     .database = db_name,
+    ///     .access = nullptr,
+    /// };
+    ///
+    /// if (sr_signin(db, &err, &scope, &creds, &details) < 0) {
+    ///     printf("Failed to authenticate credentials: %s", err);
+    ///     return 1;
+    /// }
+    /// ```
     #[export_name = "sr_signin"]
     pub extern "C" fn signin(
         db: &Surreal,
         err_ptr: *mut string_t,
         scope: &credentials_scope, 
         creds: &credentials::credentials, 
-        details: *const signin_details
+        details: *const credentials_access
     ) -> c_int {
         with_surreal_async(db, err_ptr, |surreal| async {
             let user = unsafe { CStr::from_ptr(creds.username.0).to_str()? };
@@ -617,7 +642,7 @@ impl Surreal {
 //     }
 // }
 
-/// Execute a givel closure in an async context, which returns a result then catches panics and writes errors appropriately
+/// Execute a given closure in an async context, which returns a result then catches panics and writes errors appropriately
 fn with_surreal_async<'a, 'b, C, F>(db: &'a Surreal, err_ptr: *mut string_t, fun: C) -> c_int
 where
     'a: 'b,

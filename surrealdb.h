@@ -196,11 +196,11 @@ typedef struct sr_credentials {
   sr_string_t password;
 } sr_credentials;
 
-typedef struct sr_signin_details {
+typedef struct sr_credentials_access {
   sr_string_t namespace_;
   sr_string_t database;
   sr_string_t access;
-} sr_signin_details;
+} sr_credentials_access;
 
 typedef struct sr_option_t {
   bool strict;
@@ -279,7 +279,7 @@ int sr_create(const struct sr_surreal_t *db,
 /**
  * make a live selection
  * if successful sets *stream_ptr to be an exclusive reference to an opaque Stream object
- * which can be moved accross threads but not aliased
+ * which can be moved across threads but not aliased
  *
  * # Examples
  *
@@ -312,7 +312,7 @@ int sr_query(const struct sr_surreal_t *db,
  * select a resource
  *
  * can be used to select everything from a table or a single record
- * writes values to *res_ptr, and returns number of values
+ * writes values to *res_ptr, and returns the number of values
  * result values are allocated by Surreal and must be freed with sr_free_arr
  *
  * # Examples
@@ -339,9 +339,9 @@ int sr_select(const struct sr_surreal_t *db,
               const char *resource);
 
 /**
- * sign in as root or to a db
+ * Sign in utilizing the surreal authentication types.
  *
- * used to provide credentials to a db for access permissions, either root or scoped
+ * Used to provide credentials to a db for access permissions, either root or scoped.
  *
  * # Examples
  *
@@ -363,12 +363,37 @@ int sr_select(const struct sr_surreal_t *db,
  *     return 1;
  * }
  * ```
+ * ```c
+ * sr_surreal_t *db;
+ * sr_string_t err;
+ *
+ * sr_credentials_scope scope = sr_credentials_scope::DATABASE;
+ * const sr_string_t user = "<user>";
+ * // SHOULD NEVER BE HARDCODED
+ * const sr_string_t password = "<password>;
+ * sr_credentials creds = sr_credentials {
+ *     .username = user,
+ *     .password = pass,
+ * };
+ * sr_string_t namespace_ = "testing";
+ * sr_string_t db_name = "perf-test";
+ * sr_credentials_access details = sr_credentials_access {
+ *     .namespace_ = namespace_,
+ *     .database = db_name,
+ *     .access = nullptr,
+ * };
+ *
+ * if (sr_signin(db, &err, &scope, &creds, &details) < 0) {
+ *     printf("Failed to authenticate credentials: %s", err);
+ *     return 1;
+ * }
+ * ```
  */
 int sr_signin(const struct sr_surreal_t *db,
               sr_string_t *err_ptr,
               const enum sr_credentials_scope *scope,
               const struct sr_credentials *creds,
-              const struct sr_signin_details *details);
+              const struct sr_credentials_access *details);
 
 /**
  * select database

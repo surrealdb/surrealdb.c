@@ -37,7 +37,7 @@ pub struct credentials {
 #[allow(non_camel_case_types)]
 #[repr(C)]
 #[derive(Debug, Clone, PartialEq)]
-pub struct signin_details {
+pub struct credentials_access {
     pub namespace: string_t,
     pub database: string_t,
     pub access: string_t,
