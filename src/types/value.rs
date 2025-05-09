@@ -4,7 +4,7 @@ use chrono::DateTime;
 use surrealdb_core::sql;
 use surrealdb_core::sql::Value as sdbValue;
 
-pub use crate::{array::Array, number::Number, object::Object};
+pub use crate::{array::Array, number::Number, object::Object, geometry::sr_geometry};
 use crate::{bytes::Bytes, string::string_t, thing::Thing, utils::CStringExt2, uuid::Uuid};
 
 use super::duration::Duration;
@@ -24,7 +24,7 @@ pub enum Value {
     SR_VALUE_UUID(Uuid),
     SR_VALUE_ARRAY(Box<Array>),
     SR_VALUE_OBJECT(Object),
-    // Geometry(Geometry),
+    SR_GEOMETRY_OBJECT(sr_geometry),
     SR_VALUE_BYTES(Bytes),
     SR_VALUE_THING(Thing),
 }
@@ -118,6 +118,7 @@ impl From<Value> for sdbValue {
             Value::SR_VALUE_UUID(u) => sdbValue::Uuid(u.into()),
             Value::SR_VALUE_ARRAY(a) => sdbValue::Array((*a).into()),
             Value::SR_VALUE_OBJECT(o) => sdbValue::Object(o.into()),
+            Value::SR_GEOMETRY_OBJECT(g) => sdbValue::Geometry(g.into()),
             Value::SR_VALUE_BYTES(b) => sdbValue::Bytes(b.into()),
             Value::SR_VALUE_THING(t) => sdbValue::Thing(t.into()),
         }

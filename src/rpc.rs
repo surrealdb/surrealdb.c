@@ -9,6 +9,7 @@ use std::{
 };
 use std::any::Any;
 use std::fmt::Debug;
+use std::future::Future;
 use std::sync::Arc;
 use arc_swap::ArcSwap;
 use surrealdb::dbs::Session;
@@ -177,7 +178,7 @@ impl SurrealRpc {
                     Ok(out.len)
                 }
                 _ => {
-                    Err("C SDK: RPC::execute had malformed response.")
+                    Err("C SDK: RPC::execute had unimplemented response.")
                 }
             }?;
             
@@ -251,14 +252,9 @@ struct SurrealRpcInner {
     vars: BTreeMap<String, sql::Value>,
 }
 
-impl SurrealRpcInner {
-    fn vars(&self) -> &std::collections::BTreeMap<String, sql::Value> {
-        &self.vars
-    }
 
-    fn vars_mut(&mut self) -> &mut std::collections::BTreeMap<String, sql::Value> {
-        &mut self.vars
-    }
+impl SurrealRpcInner {
+
 }
 
 impl RpcContext for SurrealRpcInner {

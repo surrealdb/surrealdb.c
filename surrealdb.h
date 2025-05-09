@@ -24,6 +24,16 @@ typedef enum sr_credentials_scope {
   RECORD,
 } sr_credentials_scope;
 
+typedef struct sr_ArrayGen_sr_coord sr_ArrayGen_sr_coord;
+
+typedef struct sr_ArrayGen_sr_g_linestring sr_ArrayGen_sr_g_linestring;
+
+typedef struct sr_ArrayGen_sr_g_point sr_ArrayGen_sr_g_point;
+
+typedef struct sr_ArrayGen_sr_g_polygon sr_ArrayGen_sr_g_polygon;
+
+typedef struct sr_ArrayGen_sr_geometry sr_ArrayGen_sr_geometry;
+
 typedef struct sr_opaque_object_internal_t sr_opaque_object_internal_t;
 
 typedef struct sr_RpcStream sr_RpcStream;
@@ -87,6 +97,73 @@ typedef struct sr_uuid_t {
   uint8_t _0[16];
 } sr_uuid_t;
 
+typedef struct sr_sr_coord {
+  double x;
+  double y;
+} sr_sr_coord;
+
+typedef struct sr_sr_g_point {
+  struct sr_sr_coord _0;
+} sr_sr_g_point;
+
+typedef struct sr_sr_g_linestring {
+  struct sr_ArrayGen_sr_coord _0;
+} sr_sr_g_linestring;
+
+typedef struct sr_sr_g_polygon {
+  struct sr_sr_g_linestring _0;
+  struct sr_ArrayGen_sr_g_linestring _1;
+} sr_sr_g_polygon;
+
+typedef struct sr_sr_g_multipoint {
+  struct sr_ArrayGen_sr_g_point _0;
+} sr_sr_g_multipoint;
+
+typedef struct sr_sr_g_multilinestring {
+  struct sr_ArrayGen_sr_g_linestring _0;
+} sr_sr_g_multilinestring;
+
+typedef struct sr_sr_g_multipolygon {
+  struct sr_ArrayGen_sr_g_polygon _0;
+} sr_sr_g_multipolygon;
+
+typedef enum sr_sr_geometry_Tag {
+  sr_g_point,
+  sr_g_line,
+  sr_g_polygon,
+  sr_g_multipoint,
+  sr_g_multiline,
+  sr_g_multipolygon,
+  sr_g_collection,
+} sr_sr_geometry_Tag;
+
+typedef struct sr_sr_geometry {
+  sr_sr_geometry_Tag tag;
+  union {
+    struct {
+      struct sr_sr_g_point sr_g_point;
+    };
+    struct {
+      struct sr_sr_g_linestring sr_g_line;
+    };
+    struct {
+      struct sr_sr_g_polygon sr_g_polygon;
+    };
+    struct {
+      struct sr_sr_g_multipoint sr_g_multipoint;
+    };
+    struct {
+      struct sr_sr_g_multilinestring sr_g_multiline;
+    };
+    struct {
+      struct sr_sr_g_multipolygon sr_g_multipolygon;
+    };
+    struct {
+      struct sr_ArrayGen_sr_geometry sr_g_collection;
+    };
+  };
+} sr_sr_geometry;
+
 typedef struct sr_bytes_t {
   uint8_t *arr;
   int len;
@@ -133,6 +210,7 @@ typedef enum sr_value_t_Tag {
   SR_VALUE_UUID,
   SR_VALUE_ARRAY,
   SR_VALUE_OBJECT,
+  SR_GEOMETRY_OBJECT,
   SR_VALUE_BYTES,
   SR_VALUE_THING,
 } sr_value_t_Tag;
@@ -163,6 +241,9 @@ typedef struct sr_value_t {
     };
     struct {
       struct sr_object_t sr_value_object;
+    };
+    struct {
+      struct sr_sr_geometry sr_geometry_object;
     };
     struct {
       struct sr_bytes_t sr_value_bytes;

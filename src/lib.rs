@@ -45,11 +45,6 @@ pub struct Surreal {
     ps: AtomicBool,
 }
 
-// struct SurrealInner {
-//     kvs: Datastore,
-//     sess: Session,
-// }
-
 impl Surreal {
     /// connects to a local, remote, or embedded database
     ///
@@ -413,18 +408,18 @@ impl Surreal {
     pub extern "C" fn signin(
         db: &Surreal,
         err_ptr: *mut string_t,
-        scope: &credentials_scope, 
-        creds: &credentials::credentials, 
+        scope: &credentials_scope,
+        creds: &credentials::credentials,
         details: *const credentials_access
     ) -> c_int {
         with_surreal_async(db, err_ptr, |surreal| async {
             let user = unsafe { CStr::from_ptr(creds.username.0).to_str()? };
             let pass = unsafe { CStr::from_ptr(creds.password.0).to_str()? };
-            
+
             let mut ns = "";
             let mut db = "";
             let mut ac = "";
-            
+
             if !details.is_null() {
                 let details = unsafe { &*details };
 
@@ -440,7 +435,7 @@ impl Surreal {
                     ac = unsafe { CStr::from_ptr(details.access.0).to_str()? };
                 }
             }
-            
+
             match scope {
                 credentials_scope::ROOT => {
                     let login = auth::Root {
@@ -451,32 +446,32 @@ impl Surreal {
                 }
                 credentials_scope::NAMESPACE => {
                     if ns.is_empty() {
-                        Err("Namespace must be provided.")?   
+                        Err("Namespace must be provided.")?
                     }
-                    
+
                     let login = auth::Namespace {
                         namespace: ns,
                         username: user,
                         password: pass,
                     };
-                    
+
                     let _res = surreal.db.signin(login).await?;
                 }
                 credentials_scope::DATABASE => {
                     if ns.is_empty() {
-                        Err("Namespace must be provided.")?   
+                        Err("Namespace must be provided.")?
                     }
                     if db.is_empty() {
-                        Err("Database must be provided.")?   
+                        Err("Database must be provided.")?
                     }
-                    
+
                     let login = auth::Database {
                         namespace: ns,
                         database: db,
                         username: user,
                         password: pass,
                     };
-                    
+
                     let _res = surreal.db.signin(login).await?;
                 }
                 credentials_scope::RECORD => {
@@ -487,35 +482,35 @@ impl Surreal {
                         Err("Database must be provided.")?
                     }
                     if ac.is_empty() {
-                        Err("Access method must be provided.")?   
+                        Err("Access method must be provided.")?
                     }
-                    
+
                     #[derive(Debug, Serialize, Deserialize)]
                     struct CredsInner {
                         username: String,
                         password: String,
                     }
-                    
+
                     let creds_inner = CredsInner {
                         username: user.to_string(),
                         password: pass.to_string()
                     };
-                    
+
                     let login = auth::Record {
                         namespace: ns,
                         database: db,
                         access: ac,
                         params: creds_inner,
                     };
-                    
+
                     let _res = surreal.db.signin(login).await?;
                 }
             };
             Ok(0)
         })
     }
-    
-    
+
+
 
     // signup.rs
 

@@ -2,6 +2,7 @@ pub mod array;
 pub mod bytes;
 pub mod credentials;
 pub mod duration;
+pub mod geometry;
 pub mod notification;
 pub mod number;
 pub mod object;
