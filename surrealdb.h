@@ -87,6 +87,11 @@ typedef struct sr_uuid_t {
   uint8_t _0[16];
 } sr_uuid_t;
 
+typedef struct sr_array_t {
+  struct sr_value_t *arr;
+  int len;
+} sr_array_t;
+
 typedef struct sr_sr_g_coord {
   double x;
   double y;
@@ -269,11 +274,6 @@ typedef struct sr_value_t {
   };
 } sr_value_t;
 
-typedef struct sr_array_t {
-  struct sr_value_t *arr;
-  int len;
-} sr_array_t;
-
 /**
  * when code = 0 there is no error
  */
@@ -363,6 +363,71 @@ int sr_connect(sr_string_t *err_ptr,
 void sr_surreal_disconnect(struct sr_surreal_t *db);
 
 /**
+ * authenticate with a token
+ *
+ * # Examples
+ *
+ * ```c
+ * sr_surreal_t *db;
+ * sr_string_t err;
+ * const sr_string_t token = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...";
+ * if (sr_authenticate(db, &err, token) < 0) {
+ *     printf("Failed to authenticate: %s", err);
+ *     return 1;
+ * }
+ * ```
+ */
+int sr_authenticate(const struct sr_surreal_t *db, sr_string_t *err_ptr, const char *token);
+
+/**
+ * begin a new transaction
+ *
+ * # Examples
+ *
+ * ```c
+ * sr_surreal_t *db;
+ * sr_string_t err;
+ * if (sr_begin(db, &err) < 0) {
+ *     printf("Failed to begin transaction: %s", err);
+ *     return 1;
+ * }
+ * ```
+ */
+int sr_begin(const struct sr_surreal_t *db, sr_string_t *err_ptr);
+
+/**
+ * cancel the current transaction
+ *
+ * # Examples
+ *
+ * ```c
+ * sr_surreal_t *db;
+ * sr_string_t err;
+ * if (sr_cancel(db, &err) < 0) {
+ *     printf("Failed to cancel transaction: %s", err);
+ *     return 1;
+ * }
+ * ```
+ */
+int sr_cancel(const struct sr_surreal_t *db, sr_string_t *err_ptr);
+
+/**
+ * commit the current transaction
+ *
+ * # Examples
+ *
+ * ```c
+ * sr_surreal_t *db;
+ * sr_string_t err;
+ * if (sr_commit(db, &err) < 0) {
+ *     printf("Failed to commit transaction: %s", err);
+ *     return 1;
+ * }
+ * ```
+ */
+int sr_commit(const struct sr_surreal_t *db, sr_string_t *err_ptr);
+
+/**
  * create a record
  *
  */
@@ -371,6 +436,116 @@ int sr_create(const struct sr_surreal_t *db,
               struct sr_object_t **res_ptr,
               const char *resource,
               const struct sr_object_t *content);
+
+/**
+ * delete a record or records
+ *
+ * # Examples
+ *
+ * ```c
+ * sr_surreal_t *db;
+ * sr_string_t err;
+ * sr_value_t *deleted;
+ * int len = sr_delete(db, &err, &deleted, "foo:bar");
+ * if (len < 0) {
+ *     printf("%s", err);
+ *     return 1;
+ * }
+ * sr_free_arr(deleted, len);
+ * ```
+ */
+int sr_delete(const struct sr_surreal_t *db,
+              sr_string_t *err_ptr,
+              struct sr_value_t **res_ptr,
+              const char *resource);
+
+/**
+ * export database data to a file
+ *
+ * # Examples
+ *
+ * ```c
+ * sr_surreal_t *db;
+ * sr_string_t err;
+ * if (sr_export(db, &err, "backup.surql") < 0) {
+ *     printf("Export failed: %s", err);
+ *     return 1;
+ * }
+ * ```
+ */
+int sr_export(const struct sr_surreal_t *db, sr_string_t *err_ptr, const char *file_path);
+
+/**
+ * check the health of the database server
+ *
+ * # Examples
+ *
+ * ```c
+ * sr_surreal_t *db;
+ * sr_string_t err;
+ * if (sr_health(db, &err) < 0) {
+ *     printf("Database unhealthy: %s", err);
+ *     return 1;
+ * }
+ * ```
+ */
+int sr_health(const struct sr_surreal_t *db, sr_string_t *err_ptr);
+
+/**
+ * import database data from a file
+ *
+ * # Examples
+ *
+ * ```c
+ * sr_surreal_t *db;
+ * sr_string_t err;
+ * if (sr_import(db, &err, "backup.surql") < 0) {
+ *     printf("Import failed: %s", err);
+ *     return 1;
+ * }
+ * ```
+ */
+int sr_import(const struct sr_surreal_t *db, sr_string_t *err_ptr, const char *file_path);
+
+/**
+ * insert one or more records
+ *
+ * # Examples
+ *
+ * ```c
+ * sr_surreal_t *db;
+ * sr_string_t err;
+ * sr_value_t *inserted;
+ * sr_object_t *content = ...; // create content object
+ * int len = sr_insert(db, &err, &inserted, "foo", content);
+ * if (len < 0) {
+ *     printf("%s", err);
+ *     return 1;
+ * }
+ * sr_free_arr(inserted, len);
+ * ```
+ */
+int sr_insert(const struct sr_surreal_t *db,
+              sr_string_t *err_ptr,
+              struct sr_value_t **res_ptr,
+              const char *resource,
+              const struct sr_object_t *content);
+
+/**
+ * invalidate the current authentication session
+ *
+ * # Examples
+ *
+ * ```c
+ * sr_surreal_t *db;
+ * sr_string_t err;
+ * if (sr_invalidate(db, &err) < 0) {
+ *     printf("%s", err);
+ *     return 1;
+ * }
+ * ```
+ */
+int sr_invalidate(const struct sr_surreal_t *db, sr_string_t *err_ptr);
 
 /**
  * make a live selection
@@ -398,6 +573,45 @@ int sr_select_live(const struct sr_surreal_t *db,
                    struct sr_stream_t **stream_ptr,
                    const char *resource);
 
+/**
+ * merge data into existing records
+ *
+ * # Examples
+ *
+ * ```c
+ * sr_surreal_t *db;
+ * sr_string_t err;
+ * sr_value_t *merged;
+ * sr_object_t *content = ...; // create content object
+ * int len = sr_merge(db, &err, &merged, "foo:bar", content);
+ * if (len < 0) {
+ *     printf("%s", err);
+ *     return 1;
+ * }
+ * sr_free_arr(merged, len);
+ * ```
+ */
+int sr_merge(const struct sr_surreal_t *db,
+             sr_string_t *err_ptr,
+             struct sr_value_t **res_ptr,
+             const char *resource,
+             const struct sr_object_t *content);
+
+/**
+ * patch records with JSON patch operations using SurrealQL
+ *
+ * # Examples
+ *
+ * ```c
+ * sr_surreal_t *db;
+ * sr_string_t err;
+ * sr_value_t *patched;
+ * // Use SurrealQL PATCH syntax in query instead
+ * // This is a placeholder - patch operations require specific PatchOps type
+ * // which is complex to expose through C API
+ * // Users should use merge() or update() for similar functionality
+ * ```
+ */
 int sr_query(const struct sr_surreal_t *db,
              sr_string_t *err_ptr,
              struct sr_arr_res_t **res_ptr,
@@ -433,6 +647,26 @@ int sr_select(const struct sr_surreal_t *db,
               sr_string_t *err_ptr,
               struct sr_value_t **res_ptr,
               const char *resource);
+
+/**
+ * set a variable for the current session
+ *
+ * # Examples
+ *
+ * ```c
+ * sr_surreal_t *db;
+ * sr_string_t err;
+ * sr_value_t *value = ...; // create value
+ * if (sr_set(db, &err, "my_var", value) < 0) {
+ *     printf("%s", err);
+ *     return 1;
+ * }
+ * ```
+ */
+int sr_set(const struct sr_surreal_t *db,
+           sr_string_t *err_ptr,
+           const char *key,
+           const struct sr_value_t *value);
 
 /**
  * Sign in utilizing the surreal authentication types.
@@ -490,6 +724,106 @@ int sr_signin(const struct sr_surreal_t *db,
               const enum sr_credentials_scope *scope,
               const struct sr_credentials *creds,
               const struct sr_credentials_access *details);
+
+/**
+ * Sign up a new user with credentials
+ *
+ * # Examples
+ *
+ * ```c
+ * sr_surreal_t *db;
+ * sr_string_t err;
+ * sr_credentials_scope scope = sr_credentials_scope::RECORD;
+ * const sr_string_t user = "newuser";
+ * const sr_string_t password = "password123";
+ * sr_credentials creds = sr_credentials {
+ *     .username = user,
+ *     .password = password,
+ * };
+ * sr_string_t namespace_ = "test";
+ * sr_string_t db_name = "test";
+ * sr_string_t access = "user";
+ * sr_credentials_access details = sr_credentials_access {
+ *     .namespace_ = namespace_,
+ *     .database = db_name,
+ *     .access = access,
+ * };
+ *
+ * if (sr_signup(db, &err, &scope, &creds, &details) < 0) {
+ *     printf("Failed to sign up: %s", err);
+ *     return 1;
+ * }
+ * ```
+ */
+int sr_signup(const struct sr_surreal_t *db,
+              sr_string_t *err_ptr,
+              const enum sr_credentials_scope *scope,
+              const struct sr_credentials *creds,
+              const struct sr_credentials_access *details);
+
+/**
+ * unset a variable from the current session
+ *
+ * # Examples
+ *
+ * ```c
+ * sr_surreal_t *db;
+ * sr_string_t err;
+ * if (sr_unset(db, &err, "my_var") < 0) {
+ *     printf("%s", err);
+ *     return 1;
+ * }
+ * ```
+ */
+int sr_unset(const struct sr_surreal_t *db, sr_string_t *err_ptr, const char *key);
+
+/**
+ * update records with new content
+ *
+ * # Examples
+ *
+ * ```c
+ * sr_surreal_t *db;
+ * sr_string_t err;
+ * sr_value_t *updated;
+ * sr_object_t *content = ...; // create content object
+ * int len = sr_update(db, &err, &updated, "foo:bar", content);
+ * if (len < 0) {
+ *     printf("%s", err);
+ *     return 1;
+ * }
+ * sr_free_arr(updated, len);
+ * ```
+ */
+int sr_update(const struct sr_surreal_t *db,
+              sr_string_t *err_ptr,
+              struct sr_value_t **res_ptr,
+              const char *resource,
+              const struct sr_object_t *content);
+
+/**
+ * upsert (insert or update) records
+ *
+ * # Examples
+ *
+ * ```c
+ * sr_surreal_t *db;
+ * sr_string_t err;
+ * sr_value_t *upserted;
+ * sr_object_t *content = ...; // create content object
+ * int len = sr_upsert(db, &err, &upserted, "foo:bar", content);
+ * if (len < 0) {
+ *     printf("%s", err);
+ *     return 1;
+ * }
+ * sr_free_arr(upserted, len);
+ * ```
+ */
+int sr_upsert(const struct sr_surreal_t *db,
+              sr_string_t *err_ptr,
+              struct sr_value_t **res_ptr,
+              const char *resource,
+              const struct sr_object_t *content);
 
 /**
  * select database

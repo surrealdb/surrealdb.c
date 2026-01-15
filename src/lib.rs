@@ -150,12 +150,94 @@ impl Surreal {
     }
 
     // authenticate.rs
+    /// authenticate with a token
+    ///
+    /// # Examples
+    ///
+    /// ```c
+    /// sr_surreal_t *db;
+    /// sr_string_t err;
+    /// const sr_string_t token = "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...";
+    /// if (sr_authenticate(db, &err, token) < 0) {
+    ///     printf("Failed to authenticate: %s", err);
+    ///     return 1;
+    /// }
+    /// ```
+    #[export_name = "sr_authenticate"]
+    pub extern "C" fn authenticate(
+        db: &Surreal,
+        err_ptr: *mut string_t,
+        token: *const c_char,
+    ) -> c_int {
+        with_surreal_async(db, err_ptr, |surreal| async {
+            let token = unsafe { CStr::from_ptr(token) }.to_str()?;
+            surreal.db.authenticate(token).await?;
+            Ok(0)
+        })
+    }
 
     // begin.rs
+    /// begin a new transaction
+    ///
+    /// # Examples
+    ///
+    /// ```c
+    /// sr_surreal_t *db;
+    /// sr_string_t err;
+    /// if (sr_begin(db, &err) < 0) {
+    ///     printf("Failed to begin transaction: %s", err);
+    ///     return 1;
+    /// }
+    /// ```
+    #[export_name = "sr_begin"]
+    pub extern "C" fn begin(db: &Surreal, err_ptr: *mut string_t) -> c_int {
+        with_surreal_async(db, err_ptr, |surreal| async {
+            surreal.db.query("BEGIN TRANSACTION").await?;
+            Ok(0)
+        })
+    }
 
     // cancel.rs
+    /// cancel the current transaction
+    ///
+    /// # Examples
+    ///
+    /// ```c
+    /// sr_surreal_t *db;
+    /// sr_string_t err;
+    /// if (sr_cancel(db, &err) < 0) {
+    ///     printf("Failed to cancel transaction: %s", err);
+    ///     return 1;
+    /// }
+    /// ```
+    #[export_name = "sr_cancel"]
+    pub extern "C" fn cancel(db: &Surreal, err_ptr: *mut string_t) -> c_int {
+        with_surreal_async(db, err_ptr, |surreal| async {
+            surreal.db.query("CANCEL TRANSACTION").await?;
+            Ok(0)
+        })
+    }
 
     // commit.rs
+    /// commit the current transaction
+    ///
+    /// # Examples
+    ///
+    /// ```c
+    /// sr_surreal_t *db;
+    /// sr_string_t err;
+    /// if (sr_commit(db, &err) < 0) {
+    ///     printf("Failed to commit transaction: %s", err);
+    ///     return 1;
+    /// }
+    /// ```
+    #[export_name = "sr_commit"]
+    pub extern "C" fn commit(db: &Surreal, err_ptr: *mut string_t) -> c_int {
+        with_surreal_async(db, err_ptr, |surreal| async {
+            surreal.db.query("COMMIT TRANSACTION").await?;
+            Ok(0)
+        })
+    }
 
     // content.rs
 
@@ -200,16 +282,188 @@ impl Surreal {
     }
 
     // delete.rs
+    /// delete a record or records
+    ///
+    /// # Examples
+    ///
+    /// ```c
+    /// sr_surreal_t *db;
+    /// sr_string_t err;
+    /// sr_value_t *deleted;
+    /// int len = sr_delete(db, &err, &deleted, "foo:bar");
+    /// if (len < 0) {
+    ///     printf("%s", err);
+    ///     return 1;
+    /// }
+    /// sr_free_arr(deleted, len);
+    /// ```
+    #[export_name = "sr_delete"]
+    pub extern "C" fn delete(
+        db: &Surreal,
+        err_ptr: *mut string_t,
+        res_ptr: *mut *mut Value,
+        resource: *const c_char,
+    ) -> c_int {
+        with_surreal_async(db, err_ptr, |surreal| async {
+            let resource = unsafe { CStr::from_ptr(resource) }.to_str()?;
+
+            let res = match surreal
+                .db
+                .delete(Resource::from(resource))
+                .await?
+                .into_inner()
+            {
+                sql::Value::Array(a) => Array::from(a),
+                v => Array::from(vec![v.into()]),
+            };
+
+            let ArrayGen { ptr, len } = res.into();
+            unsafe { res_ptr.write(ptr) }
+
+            Ok(len as c_int)
+        })
+    }
 
     // export.rs
+    /// export database data to a file
+    ///
+    /// # Examples
+    ///
+    /// ```c
+    /// sr_surreal_t *db;
+    /// sr_string_t err;
+    /// if (sr_export(db, &err, "backup.surql") < 0) {
+    ///     printf("Export failed: %s", err);
+    ///     return 1;
+    /// }
+    /// ```
+    #[export_name = "sr_export"]
+    pub extern "C" fn export(
+        db: &Surreal,
+        err_ptr: *mut string_t,
+        file_path: *const c_char,
+    ) -> c_int {
+        with_surreal_async(db, err_ptr, |surreal| async {
+            let file_path = unsafe { CStr::from_ptr(file_path) }.to_str()?;
+            surreal.db.export(file_path).await?;
+            Ok(0)
+        })
+    }
 
     // health.rs
+    /// check the health of the database server
+    ///
+    /// # Examples
+    ///
+    /// ```c
+    /// sr_surreal_t *db;
+    /// sr_string_t err;
+    /// if (sr_health(db, &err) < 0) {
+    ///     printf("Database unhealthy: %s", err);
+    ///     return 1;
+    /// }
+    /// ```
+    #[export_name = "sr_health"]
+    pub extern "C" fn health(db: &Surreal, err_ptr: *mut string_t) -> c_int {
+        with_surreal_async(db, err_ptr, |surreal| async {
+            surreal.db.health().await?;
+            Ok(0)
+        })
+    }
 
     // import.rs
+    /// import database data from a file
+    ///
+    /// # Examples
+    ///
+    /// ```c
+    /// sr_surreal_t *db;
+    /// sr_string_t err;
+    /// if (sr_import(db, &err, "backup.surql") < 0) {
+    ///     printf("Import failed: %s", err);
+    ///     return 1;
+    /// }
+    /// ```
+    #[export_name = "sr_import"]
+    pub extern "C" fn import(
+        db: &Surreal,
+        err_ptr: *mut string_t,
+        file_path: *const c_char,
+    ) -> c_int {
+        with_surreal_async(db, err_ptr, |surreal| async {
+            let file_path = unsafe { CStr::from_ptr(file_path) }.to_str()?;
+            surreal.db.import(file_path).await?;
+            Ok(0)
+        })
+    }
 
     // insert.rs
+    /// insert one or more records
+    ///
+    /// # Examples
+    ///
+    /// ```c
+    /// sr_surreal_t *db;
+    /// sr_string_t err;
+    /// sr_value_t *inserted;
+    /// sr_object_t *content = ...; // create content object
+    /// int len = sr_insert(db, &err, &inserted, "foo", content);
+    /// if (len < 0) {
+    ///     printf("%s", err);
+    ///     return 1;
+    /// }
+    /// sr_free_arr(inserted, len);
+    /// ```
+    #[export_name = "sr_insert"]
+    pub extern "C" fn insert(
+        db: &Surreal,
+        err_ptr: *mut string_t,
+        res_ptr: *mut *mut Value,
+        resource: *const c_char,
+        content: *const Object,
+    ) -> c_int {
+        with_surreal_async(db, err_ptr, |surreal| async {
+            let resource = unsafe { CStr::from_ptr(resource) }.to_str()?;
+            let content = sql::Object::from(unsafe { &*content }.clone());
+
+            let res = match surreal
+                .db
+                .insert(Resource::from(resource))
+                .content(content)
+                .await?
+                .into_inner()
+            {
+                sql::Value::Array(a) => Array::from(a),
+                v => Array::from(vec![v.into()]),
+            };
+
+            let ArrayGen { ptr, len } = res.into();
+            unsafe { res_ptr.write(ptr) }
+
+            Ok(len as c_int)
+        })
+    }
 
     // invalidate.rs
+    /// invalidate the current authentication session
+    ///
+    /// # Examples
+    ///
+    /// ```c
+    /// sr_surreal_t *db;
+    /// sr_string_t err;
+    /// if (sr_invalidate(db, &err) < 0) {
+    ///     printf("%s", err);
+    ///     return 1;
+    /// }
+    /// ```
+    #[export_name = "sr_invalidate"]
+    pub extern "C" fn invalidate(db: &Surreal, err_ptr: *mut string_t) -> c_int {
+        with_surreal_async(db, err_ptr, |surreal| async {
+            surreal.db.invalidate().await?;
+            Ok(0)
+        })
+    }
 
     // live.rs
     /// make a live selection
@@ -255,10 +509,70 @@ impl Surreal {
     }
 
     // merge.rs
+    /// merge data into existing records
+    ///
+    /// # Examples
+    ///
+    /// ```c
+    /// sr_surreal_t *db;
+    /// sr_string_t err;
+    /// sr_value_t *merged;
+    /// sr_object_t *content = ...; // create content object
+    /// int len = sr_merge(db, &err, &merged, "foo:bar", content);
+    /// if (len < 0) {
+    ///     printf("%s", err);
+    ///     return 1;
+    /// }
+    /// sr_free_arr(merged, len);
+    /// ```
+    #[export_name = "sr_merge"]
+    pub extern "C" fn merge(
+        db: &Surreal,
+        err_ptr: *mut string_t,
+        res_ptr: *mut *mut Value,
+        resource: *const c_char,
+        content: *const Object,
+    ) -> c_int {
+        with_surreal_async(db, err_ptr, |surreal| async {
+            let resource = unsafe { CStr::from_ptr(resource) }.to_str()?;
+            let content = sql::Object::from(unsafe { &*content }.clone());
+
+            let res = match surreal
+                .db
+                .update(Resource::from(resource))
+                .merge(content)
+                .await?
+                .into_inner()
+            {
+                sql::Value::Array(a) => Array::from(a),
+                v => Array::from(vec![v.into()]),
+            };
+
+            let ArrayGen { ptr, len } = res.into();
+            unsafe { res_ptr.write(ptr) }
+
+            Ok(len as c_int)
+        })
+    }
 
     // mod.rs
 
     // patch.rs
+    /// patch records with JSON patch operations using SurrealQL
+    ///
+    /// # Examples
+    ///
+    /// ```c
+    /// sr_surreal_t *db;
+    /// sr_string_t err;
+    /// sr_value_t *patched;
+    /// // Use SurrealQL PATCH syntax in query instead
+    /// // This is a placeholder - patch operations require specific PatchOps type
+    /// // which is complex to expose through C API
+    /// // Users should use merge() or update() for similar functionality
+    /// ```
+    // Note: Patch API in SurrealDB 2.4.1 requires PatchOps type which is not easily
+    // exposed through C API. Users should use sr_merge() for similar functionality.
 
     // query.rs
     #[export_name = "sr_query"]
@@ -354,6 +668,34 @@ impl Surreal {
         })
     }
     // set.rs
+    /// set a variable for the current session
+    ///
+    /// # Examples
+    ///
+    /// ```c
+    /// sr_surreal_t *db;
+    /// sr_string_t err;
+    /// sr_value_t *value = ...; // create value
+    /// if (sr_set(db, &err, "my_var", value) < 0) {
+    ///     printf("%s", err);
+    ///     return 1;
+    /// }
+    /// ```
+    #[export_name = "sr_set"]
+    pub extern "C" fn set(
+        db: &Surreal,
+        err_ptr: *mut string_t,
+        key: *const c_char,
+        value: *const Value,
+    ) -> c_int {
+        with_surreal_async(db, err_ptr, |surreal| async {
+            let key = unsafe { CStr::from_ptr(key) }.to_str()?;
+            let value: sql::Value = unsafe { &*value }.clone().into();
+            
+            surreal.db.set(key, value).await?;
+            Ok(0)
+        })
+    }
 
     // signin.rs
     /// Sign in utilizing the surreal authentication types.
@@ -514,12 +856,231 @@ impl Surreal {
 
 
     // signup.rs
+    /// Sign up a new user with credentials
+    ///
+    /// # Examples
+    ///
+    /// ```c
+    /// sr_surreal_t *db;
+    /// sr_string_t err;
+    /// sr_credentials_scope scope = sr_credentials_scope::RECORD;
+    /// const sr_string_t user = "newuser";
+    /// const sr_string_t password = "password123";
+    /// sr_credentials creds = sr_credentials {
+    ///     .username = user,
+    ///     .password = password,
+    /// };
+    /// sr_string_t namespace_ = "test";
+    /// sr_string_t db_name = "test";
+    /// sr_string_t access = "user";
+    /// sr_credentials_access details = sr_credentials_access {
+    ///     .namespace_ = namespace_,
+    ///     .database = db_name,
+    ///     .access = access,
+    /// };
+    ///
+    /// if (sr_signup(db, &err, &scope, &creds, &details) < 0) {
+    ///     printf("Failed to sign up: %s", err);
+    ///     return 1;
+    /// }
+    /// ```
+    #[export_name = "sr_signup"]
+    pub extern "C" fn signup(
+        db: &Surreal,
+        err_ptr: *mut string_t,
+        scope: &credentials_scope,
+        creds: &credentials::credentials,
+        details: *const credentials_access
+    ) -> c_int {
+        with_surreal_async(db, err_ptr, |surreal| async {
+            let user = unsafe { CStr::from_ptr(creds.username.0).to_str()? };
+            let pass = unsafe { CStr::from_ptr(creds.password.0).to_str()? };
+
+            let mut ns = "";
+            let mut db = "";
+            let mut ac = "";
+
+            if !details.is_null() {
+                let details = unsafe { &*details };
+
+                if !details.namespace.0.is_null() {
+                    ns = unsafe { CStr::from_ptr(details.namespace.0).to_str()? };
+                }
+
+                if !details.database.0.is_null() {
+                    db = unsafe { CStr::from_ptr(details.database.0).to_str()? };
+                }
+
+                if !details.access.0.is_null() {
+                    ac = unsafe { CStr::from_ptr(details.access.0).to_str()? };
+                }
+            }
+
+            match scope {
+                credentials_scope::ROOT => {
+                    Err("Cannot signup as ROOT user")?
+                }
+                credentials_scope::NAMESPACE => {
+                    Err("Namespace scope does not support signup. Use RECORD scope instead.")?
+                }
+                credentials_scope::DATABASE => {
+                    Err("Database scope does not support signup. Use RECORD scope instead.")?
+                }
+                credentials_scope::RECORD => {
+                    if ns.is_empty() {
+                        Err("Namespace must be provided.")?
+                    }
+                    if db.is_empty() {
+                        Err("Database must be provided.")?
+                    }
+                    if ac.is_empty() {
+                        Err("Access method must be provided.")?
+                    }
+
+                    #[derive(Debug, Serialize, Deserialize)]
+                    struct CredsInner {
+                        username: String,
+                        password: String,
+                    }
+
+                    let creds_inner = CredsInner {
+                        username: user.to_string(),
+                        password: pass.to_string()
+                    };
+
+                    let signup = auth::Record {
+                        namespace: ns,
+                        database: db,
+                        access: ac,
+                        params: creds_inner,
+                    };
+
+                    let _res = surreal.db.signup(signup).await?;
+                }
+            };
+            Ok(0)
+        })
+    }
 
     // unset.rs
+    /// unset a variable from the current session
+    ///
+    /// # Examples
+    ///
+    /// ```c
+    /// sr_surreal_t *db;
+    /// sr_string_t err;
+    /// if (sr_unset(db, &err, "my_var") < 0) {
+    ///     printf("%s", err);
+    ///     return 1;
+    /// }
+    /// ```
+    #[export_name = "sr_unset"]
+    pub extern "C" fn unset(
+        db: &Surreal,
+        err_ptr: *mut string_t,
+        key: *const c_char,
+    ) -> c_int {
+        with_surreal_async(db, err_ptr, |surreal| async {
+            let key = unsafe { CStr::from_ptr(key) }.to_str()?;
+            surreal.db.unset(key).await?;
+            Ok(0)
+        })
+    }
 
     // update.rs
+    /// update records with new content
+    ///
+    /// # Examples
+    ///
+    /// ```c
+    /// sr_surreal_t *db;
+    /// sr_string_t err;
+    /// sr_value_t *updated;
+    /// sr_object_t *content = ...; // create content object
+    /// int len = sr_update(db, &err, &updated, "foo:bar", content);
+    /// if (len < 0) {
+    ///     printf("%s", err);
+    ///     return 1;
+    /// }
+    /// sr_free_arr(updated, len);
+    /// ```
+    #[export_name = "sr_update"]
+    pub extern "C" fn update(
+        db: &Surreal,
+        err_ptr: *mut string_t,
+        res_ptr: *mut *mut Value,
+        resource: *const c_char,
+        content: *const Object,
+    ) -> c_int {
+        with_surreal_async(db, err_ptr, |surreal| async {
+            let resource = unsafe { CStr::from_ptr(resource) }.to_str()?;
+            let content = sql::Object::from(unsafe { &*content }.clone());
+
+            let res = match surreal
+                .db
+                .update(Resource::from(resource))
+                .content(content)
+                .await?
+                .into_inner()
+            {
+                sql::Value::Array(a) => Array::from(a),
+                v => Array::from(vec![v.into()]),
+            };
+
+            let ArrayGen { ptr, len } = res.into();
+            unsafe { res_ptr.write(ptr) }
+
+            Ok(len as c_int)
+        })
+    }
 
     // upsert.rs
+    /// upsert (insert or update) records
+    ///
+    /// # Examples
+    ///
+    /// ```c
+    /// sr_surreal_t *db;
+    /// sr_string_t err;
+    /// sr_value_t *upserted;
+    /// sr_object_t *content = ...; // create content object
+    /// int len = sr_upsert(db, &err, &upserted, "foo:bar", content);
+    /// if (len < 0) {
+    ///     printf("%s", err);
+    ///     return 1;
+    /// }
+    /// sr_free_arr(upserted, len);
+    /// ```
+    #[export_name = "sr_upsert"]
+    pub extern "C" fn upsert(
+        db: &Surreal,
+        err_ptr: *mut string_t,
+        res_ptr: *mut *mut Value,
+        resource: *const c_char,
+        content: *const Object,
+    ) -> c_int {
+        with_surreal_async(db, err_ptr, |surreal| async {
+            let resource = unsafe { CStr::from_ptr(resource) }.to_str()?;
+            let content = sql::Object::from(unsafe { &*content }.clone());
+
+            let res = match surreal
+                .db
+                .upsert(Resource::from(resource))
+                .content(content)
+                .await?
+                .into_inner()
+            {
+                sql::Value::Array(a) => Array::from(a),
+                v => Array::from(vec![v.into()]),
+            };
+
+            let ArrayGen { ptr, len } = res.into();
+            unsafe { res_ptr.write(ptr) }
+
+            Ok(len as c_int)
+        })
+    }
 
     // use_db.rs
     /// select database

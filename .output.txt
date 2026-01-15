@@ -1,404 +1,311 @@
-   Compiling surrealdb_c v0.1.0 (C:\Projects\tmp\surrealcpp\surrealdb.c)
-warning: unused import: `std::any::Any`
-  --> src\rpc.rs:10:5
-   |
-10 | use std::any::Any;
-   |     ^^^^^^^^^^^^^
-   |
-   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
-warning: unused import: `std::fmt::Debug`
-  --> src\rpc.rs:11:5
-   |
-11 | use std::fmt::Debug;
-   |     ^^^^^^^^^^^^^^^
-warning: unused import: `std::future::Future`
-  --> src\rpc.rs:12:5
-   |
-12 | use std::future::Future;
-   |     ^^^^^^^^^^^^^^^^^^^
-warning: unused import: `result`
-  --> src\rpc.rs:25:46
-   |
-25 | use crate::{array::MakeArray, opts::Options, result, stream::RpcStream,...
-   |                                              ^^^^^^
-warning: unused import: `crate::geometry::sr_geometry`
- --> src\types\array.rs:8:5
-  |
-8 | use crate::geometry::sr_geometry;
-  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-warning: unused import: `ffi::CString`
- --> src\types\credentials.rs:1:11
-  |
-1 | use std::{ffi::CString, fmt::Debug};
-  |           ^^^^^^^^^^^^
-warning: unused import: `object::Object`
- --> src\types\credentials.rs:5:5
-  |
-5 |     object::Object
-  |     ^^^^^^^^^^^^^^
-warning: unused imports: `c_double`, `c_float`, and `c_int`
- --> src\types\geometry.rs:1:16
-  |
-1 | use std::ffi::{c_double, c_float, c_int};
-  |                ^^^^^^^^  ^^^^^^^  ^^^^^
-warning: unused import: `surrealdb::sql`
- --> src\types\geometry.rs:3:5
-  |
-3 | use surrealdb::sql;
-  |     ^^^^^^^^^^^^^^
-warning: unused import: `crate::types::geometry::*`
- --> src\types\value.rs:9:5
-  |
-9 | use crate::types::geometry::*;
-  |     ^^^^^^^^^^^^^^^^^^^^^^^^^
-error[E0277]: `types::array::ArrayGen<sr_g_coord>` doesn't implement `std::fmt::Debug`
-  --> src\types\geometry.rs:78:28
-   |
-76 | #[derive(Debug, Clone, PartialEq)]
-   |          ----- in this derive macro expansion
-77 | #[repr(C)]
-78 | pub struct sr_g_linestring(pub ArrayGen<sr_g_coord>);
-   |                            ^^^^^^^^^^^^^^^^^^^^^^^^ unsatisfied trait bound
-   |
-   = help: the trait `std::fmt::Debug` is not implemented for `types::array::ArrayGen<sr_g_coord>`
-   = note: add `#[derive(Debug)]` to `types::array::ArrayGen<sr_g_coord>` or manually `impl std::fmt::Debug for types::array::ArrayGen<sr_g_coord>`
-   = help: the trait `std::fmt::Debug` is implemented for `types::array::ArrayGen<sr_geometry>`
-help: consider annotating `types::array::ArrayGen<sr_g_coord>` with `#[derive(Debug)]`
-  --> src\types\array.rs:11:1
-   |
-11 + #[derive(Debug)]
-12 | pub struct ArrayGen<T> {
-   |
-error[E0369]: binary operation `==` cannot be applied to type `types::array::ArrayGen<sr_g_coord>`
-  --> src\types\geometry.rs:78:28
-   |
-76 | #[derive(Debug, Clone, PartialEq)]
-   |                        --------- in this derive macro expansion
-77 | #[repr(C)]
-78 | pub struct sr_g_linestring(pub ArrayGen<sr_g_coord>);
-   |                            ^^^^^^^^^^^^^^^^^^^^^^^^
-   |
-note: an implementation of `PartialEq` might be missing for `types::array::ArrayGen<sr_g_coord>`
-  --> src\types\array.rs:11:1
-   |
-11 | pub struct ArrayGen<T> {
-   | ^^^^^^^^^^^^^^^^^^^^^^ must implement `PartialEq`
-help: consider annotating `types::array::ArrayGen<sr_g_coord>` with `#[derive(PartialEq)]`
-  --> src\types\array.rs:11:1
-   |
-11 + #[derive(PartialEq)]
-12 | pub struct ArrayGen<T> {
-   |
-error[E0277]: `types::array::ArrayGen<sr_g_linestring>` doesn't implement `std::fmt::Debug`
-   --> src\types\geometry.rs:103:46
-    |
-101 | ...ve(Debug, Clone, PartialEq)]
-    |       ----- in this derive macro expansion
-102 | ...(C)]
-103 | ...ruct sr_g_polygon(pub sr_g_linestring, pub ArrayGen<sr_g_linestring>);
-    |                                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ unsatisfied trait bound
-    |
-    = help: the trait `std::fmt::Debug` is not implemented for `types::array::ArrayGen<sr_g_linestring>`
-    = note: add `#[derive(Debug)]` to `types::array::ArrayGen<sr_g_linestring>` or manually `impl std::fmt::Debug for types::array::ArrayGen<sr_g_linestring>`
-    = help: the trait `std::fmt::Debug` is implemented for `types::array::ArrayGen<sr_geometry>`
-help: consider annotating `types::array::ArrayGen<sr_g_linestring>` with `#[derive(Debug)]`
-   --> src\types\array.rs:11:1
-    |
- 11 + #[derive(Debug)]
- 12 | pub struct ArrayGen<T> {
-    |
-error[E0369]: binary operation `==` cannot be applied to type `types::array::ArrayGen<sr_g_linestring>`
-   --> src\types\geometry.rs:103:46
-    |
-101 | ... Clone, PartialEq)]
-    |            --------- in this derive macro expansion
-102 | ...
-103 | ..._polygon(pub sr_g_linestring, pub ArrayGen<sr_g_linestring>);
-    |                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-    |
-note: an implementation of `PartialEq` might be missing for `types::array::ArrayGen<sr_g_linestring>`
-   --> src\types\array.rs:11:1
-    |
- 11 | pub struct ArrayGen<T> {
-    | ^^^^^^^^^^^^^^^^^^^^^^ must implement `PartialEq`
-help: consider annotating `types::array::ArrayGen<sr_g_linestring>` with `#[derive(PartialEq)]`
-   --> src\types\array.rs:11:1
-    |
- 11 + #[derive(PartialEq)]
- 12 | pub struct ArrayGen<T> {
-    |
-error[E0277]: `types::array::ArrayGen<sr_g_point>` doesn't implement `std::fmt::Debug`
-   --> src\types\geometry.rs:117:28
-    |
-115 | #[derive(Debug, Clone, PartialEq)]
-    |          ----- in this derive macro expansion
-116 | #[repr(C)]
-117 | pub struct sr_g_multipoint(pub ArrayGen<sr_g_point>);
-    |                            ^^^^^^^^^^^^^^^^^^^^^^^^ unsatisfied trait bound
-    |
-    = help: the trait `std::fmt::Debug` is not implemented for `types::array::ArrayGen<sr_g_point>`
-    = note: add `#[derive(Debug)]` to `types::array::ArrayGen<sr_g_point>` or manually `impl std::fmt::Debug for types::array::ArrayGen<sr_g_point>`
-    = help: the trait `std::fmt::Debug` is implemented for `types::array::ArrayGen<sr_geometry>`
-help: consider annotating `types::array::ArrayGen<sr_g_point>` with `#[derive(Debug)]`
-   --> src\types\array.rs:11:1
-    |
- 11 + #[derive(Debug)]
- 12 | pub struct ArrayGen<T> {
-    |
-error[E0369]: binary operation `==` cannot be applied to type `types::array::ArrayGen<sr_g_point>`
-   --> src\types\geometry.rs:117:28
-    |
-115 | #[derive(Debug, Clone, PartialEq)]
-    |                        --------- in this derive macro expansion
-116 | #[repr(C)]
-117 | pub struct sr_g_multipoint(pub ArrayGen<sr_g_point>);
-    |                            ^^^^^^^^^^^^^^^^^^^^^^^^
-    |
-note: an implementation of `PartialEq` might be missing for `types::array::ArrayGen<sr_g_point>`
-   --> src\types\array.rs:11:1
-    |
- 11 | pub struct ArrayGen<T> {
-    | ^^^^^^^^^^^^^^^^^^^^^^ must implement `PartialEq`
-help: consider annotating `types::array::ArrayGen<sr_g_point>` with `#[derive(PartialEq)]`
-   --> src\types\array.rs:11:1
-    |
- 11 + #[derive(PartialEq)]
- 12 | pub struct ArrayGen<T> {
-    |
-error[E0277]: `types::array::ArrayGen<sr_g_linestring>` doesn't implement `std::fmt::Debug`
-   --> src\types\geometry.rs:134:33
-    |
-132 | #[derive(Debug, Clone, PartialEq)]
-    |          ----- in this derive macro expansion
-133 | #[repr(C)]
-134 | pub struct sr_g_multilinestring(pub ArrayGen<sr_g_linestring>);
-    |                                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ unsatisfied trait bound
-    |
-    = help: the trait `std::fmt::Debug` is not implemented for `types::array::ArrayGen<sr_g_linestring>`
-    = note: add `#[derive(Debug)]` to `types::array::ArrayGen<sr_g_linestring>` or manually `impl std::fmt::Debug for types::array::ArrayGen<sr_g_linestring>`
-    = help: the trait `std::fmt::Debug` is implemented for `types::array::ArrayGen<sr_geometry>`
-help: consider annotating `types::array::ArrayGen<sr_g_linestring>` with `#[derive(Debug)]`
-   --> src\types\array.rs:11:1
-    |
- 11 + #[derive(Debug)]
- 12 | pub struct ArrayGen<T> {
-    |
-error[E0369]: binary operation `==` cannot be applied to type `types::array::ArrayGen<sr_g_linestring>`
-   --> src\types\geometry.rs:134:33
-    |
-132 | #[derive(Debug, Clone, PartialEq)]
-    |                        --------- in this derive macro expansion
-133 | #[repr(C)]
-134 | pub struct sr_g_multilinestring(pub ArrayGen<sr_g_linestring>);
-    |                                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-    |
-note: an implementation of `PartialEq` might be missing for `types::array::ArrayGen<sr_g_linestring>`
-   --> src\types\array.rs:11:1
-    |
- 11 | pub struct ArrayGen<T> {
-    | ^^^^^^^^^^^^^^^^^^^^^^ must implement `PartialEq`
-help: consider annotating `types::array::ArrayGen<sr_g_linestring>` with `#[derive(PartialEq)]`
-   --> src\types\array.rs:11:1
-    |
- 11 + #[derive(PartialEq)]
- 12 | pub struct ArrayGen<T> {
-    |
-error[E0277]: `types::array::ArrayGen<sr_g_polygon>` doesn't implement `std::fmt::Debug`
-   --> src\types\geometry.rs:145:30
-    |
-143 | #[derive(Debug, Clone, PartialEq)]
-    |          ----- in this derive macro expansion
-144 | #[repr(C)]
-145 | pub struct sr_g_multipolygon(pub ArrayGen<sr_g_polygon>);
-    |                              ^^^^^^^^^^^^^^^^^^^^^^^^^^ unsatisfied trait bound
-    |
-    = help: the trait `std::fmt::Debug` is not implemented for `types::array::ArrayGen<sr_g_polygon>`
-    = note: add `#[derive(Debug)]` to `types::array::ArrayGen<sr_g_polygon>` or manually `impl std::fmt::Debug for types::array::ArrayGen<sr_g_polygon>`
-    = help: the trait `std::fmt::Debug` is implemented for `types::array::ArrayGen<sr_geometry>`
-help: consider annotating `types::array::ArrayGen<sr_g_polygon>` with `#[derive(Debug)]`
-   --> src\types\array.rs:11:1
-    |
- 11 + #[derive(Debug)]
- 12 | pub struct ArrayGen<T> {
-    |
-error[E0369]: binary operation `==` cannot be applied to type `types::array::ArrayGen<sr_g_polygon>`
-   --> src\types\geometry.rs:145:30
-    |
-143 | #[derive(Debug, Clone, PartialEq)]
-    |                        --------- in this derive macro expansion
-144 | #[repr(C)]
-145 | pub struct sr_g_multipolygon(pub ArrayGen<sr_g_polygon>);
-    |                              ^^^^^^^^^^^^^^^^^^^^^^^^^^
-    |
-note: an implementation of `PartialEq` might be missing for `types::array::ArrayGen<sr_g_polygon>`
-   --> src\types\array.rs:11:1
-    |
- 11 | pub struct ArrayGen<T> {
-    | ^^^^^^^^^^^^^^^^^^^^^^ must implement `PartialEq`
-help: consider annotating `types::array::ArrayGen<sr_g_polygon>` with `#[derive(PartialEq)]`
-   --> src\types\array.rs:11:1
-    |
- 11 + #[derive(PartialEq)]
- 12 | pub struct ArrayGen<T> {
-    |
-error[E0277]: the trait bound `Vec<Geometry>: From<Array>` is not satisfied
-   --> src\types\geometry.rs:187:71
-    |
-187 | ...etry::Collection(c.into()),
-    |                       ^^^^ unsatisfied trait bound
-    |
-    = help: the trait `std::convert::From<types::array::Array>` is not implemented for `Vec<surrealdb::sql::Geometry>`
-    = help: the following other types implement trait `std::convert::From<T>`:
-              `Vec<T, A>` implements `std::convert::From<BinaryHeap<T, A>>`
-              `Vec<T, A>` implements `std::convert::From<Box<[T], A>>`
-              `Vec<T, A>` implements `std::convert::From<VecDeque<T, A>>`
-              `Vec<T>` implements `std::convert::From<&[T; N]>`
-              `Vec<T>` implements `std::convert::From<&[T]>`
-              `Vec<T>` implements `std::convert::From<&mut [T; N]>`
-              `Vec<T>` implements `std::convert::From<&mut [T]>`
-              `Vec<T>` implements `std::convert::From<Cow<'_, [T]>>`
-            and 17 others
-    = note: required for `types::array::Array` to implement `std::convert::Into<Vec<surrealdb::sql::Geometry>>`
-    = note: the full name for the type has been written to 'C:\Projects\tmp\surrealcpp\surrealdb.c\target\debug\deps\surrealdb_c-8dd5b298d3653c3d.long-type-8538475929220334226.txt'
-    = note: consider using `--verbose` to print the full type name to the console
-error[E0277]: the trait bound `sr_g_polygon: std::convert::From<geo_types::Polygon>` is not satisfied
-   --> src\types\geometry.rs:197:65
-    |
-197 |             Geometry::Polygon(p) => sr_geometry::sr_g_polygon(p.into()),
-    |                                                                 ^^^^ unsatisfied trait bound
-    |
-help: the trait `std::convert::From<geo_types::Polygon>` is not implemented for `sr_g_polygon`
-   --> src\types\geometry.rs:103:1
-    |
-103 | pub struct sr_g_polygon(pub sr_g_linestring, pub ArrayGen<sr_g_linestr...
-    | ^^^^^^^^^^^^^^^^^^^^^^^
-    = note: required for `geo_types::Polygon` to implement `std::convert::Into<sr_g_polygon>`
-error[E0277]: the trait bound `sr_g_multilinestring: From<...>` is not satisfied
-   --> src\types\geometry.rs:199:69
-    |
-199 | ...::sr_g_multiline(l.into()),
-    |                       ^^^^ unsatisfied trait bound
-    |
-help: the trait `std::convert::From<geo_types::MultiLineString>` is not implemented for `sr_g_multilinestring`
-   --> src\types\geometry.rs:134:1
-    |
-134 | pub struct sr_g_multilinestring(pub ArrayGen<sr_g_linestring>);
-    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-    = note: required for `geo_types::MultiLineString` to implement `std::convert::Into<sr_g_multilinestring>`
-    = note: the full name for the type has been written to 'C:\Projects\tmp\surrealcpp\surrealdb.c\target\debug\deps\surrealdb_c-8dd5b298d3653c3d.long-type-6845571450813133161.txt'
-    = note: consider using `--verbose` to print the full type name to the console
-error[E0277]: the trait bound `sr_g_multipolygon: From<MultiPolygon>` is not satisfied
-   --> src\types\geometry.rs:200:75
-    |
-200 | ...r_g_multipolygon(p.into()),
-    |                       ^^^^ unsatisfied trait bound
-    |
-help: the trait `std::convert::From<geo_types::MultiPolygon>` is not implemented for `sr_g_multipolygon`
-   --> src\types\geometry.rs:145:1
-    |
-145 | pub struct sr_g_multipolygon(pub ArrayGen<sr_g_polygon>);
-    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-    = note: required for `geo_types::MultiPolygon` to implement `std::convert::Into<sr_g_multipolygon>`
-    = note: the full name for the type has been written to 'C:\Projects\tmp\surrealcpp\surrealdb.c\target\debug\deps\surrealdb_c-8dd5b298d3653c3d.long-type-2776092086700916405.txt'
-    = note: consider using `--verbose` to print the full type name to the console
-error[E0277]: the trait bound `Array: From<Vec<Geometry>>` is not satisfied
-   --> src\types\geometry.rs:201:71
-    |
-201 | ...:sr_g_collection(c.into()),
-    |                       ^^^^ unsatisfied trait bound
-    |
-help: the trait `std::convert::From<Vec<surrealdb::sql::Geometry>>` is not implemented for `types::array::Array`
-   --> src\types\array.rs:82:1
-    |
- 82 | pub struct Array {
-    | ^^^^^^^^^^^^^^^^
-    = help: the following other types implement trait `std::convert::From<T>`:
-              `types::array::Array` implements `std::convert::From<&surrealdb::sql::Array>`
-              `types::array::Array` implements `std::convert::From<Vec<types::value::Value>>`
-              `types::array::Array` implements `std::convert::From<surrealdb::sql::Array>`
-              `types::array::Array` implements `From<ArrayGen<Value>>`
-    = note: required for `Vec<surrealdb::sql::Geometry>` to implement `std::convert::Into<types::array::Array>`
-    = note: the full name for the type has been written to 'C:\Projects\tmp\surrealcpp\surrealdb.c\target\debug\deps\surrealdb_c-8dd5b298d3653c3d.long-type-17470614097777546710.txt'
-    = note: consider using `--verbose` to print the full type name to the console
-error[E0277]: the trait bound `Geometry: From<Value>` is not satisfied
-   --> src\types\geometry.rs:211:33
-    |
-211 |             n.push(s[i].clone().into());
-    |                                 ^^^^ unsatisfied trait bound
-    |
-    = help: the trait `std::convert::From<types::value::Value>` is not implemented for `surrealdb::sql::Geometry`
-    = help: the following other types implement trait `std::convert::From<T>`:
-              `surrealdb::sql::Geometry` implements `std::convert::From<(f64, f64)>`
-              `surrealdb::sql::Geometry` implements `std::convert::From<Vec<geo_types::LineString>>`
-              `surrealdb::sql::Geometry` implements `std::convert::From<Vec<geo_types::Point>>`
-              `surrealdb::sql::Geometry` implements `std::convert::From<Vec<geo_types::Polygon>>`
-              `surrealdb::sql::Geometry` implements `std::convert::From<Vec<surrealdb::sql::Geometry>>`
-              `surrealdb::sql::Geometry` implements `std::convert::From<[f64; 2]>`
-              `surrealdb::sql::Geometry` implements `std::convert::From<geo_types::LineString>`
-              `surrealdb::sql::Geometry` implements `std::convert::From<geo_types::MultiLineString>`
-            and 4 others
-    = note: required for `types::value::Value` to implement `std::convert::Into<surrealdb::sql::Geometry>`
-    = note: the full name for the type has been written to 'C:\Projects\tmp\surrealcpp\surrealdb.c\target\debug\deps\surrealdb_c-8dd5b298d3653c3d.long-type-12876197837395366115.txt'
-    = note: consider using `--verbose` to print the full type name to the console
-help: consider removing this method call, as the receiver has type `types::value::Value` and `types::value::Value: std::convert::From<types::value::Value>` trivially holds
-    |
-211 -             n.push(s[i].clone().into());
-211 +             n.push(s[i].into());
-    |
-error[E0277]: the trait bound `Geometry: From<&Value>` is not satisfied
-   --> src\types\geometry.rs:213:67
-    |
-213 | ...).iter().map(|c| c.into()).collect::<Vec<Geometry>>())
-    |                       ^^^^ unsatisfied trait bound
-    |
-    = help: the trait `std::convert::From<&types::value::Value>` is not implemented for `surrealdb::sql::Geometry`
-    = help: the following other types implement trait `std::convert::From<T>`:
-              `surrealdb::sql::Geometry` implements `std::convert::From<(f64, f64)>`
-              `surrealdb::sql::Geometry` implements `std::convert::From<Vec<geo_types::LineString>>`
-              `surrealdb::sql::Geometry` implements `std::convert::From<Vec<geo_types::Point>>`
-              `surrealdb::sql::Geometry` implements `std::convert::From<Vec<geo_types::Polygon>>`
-              `surrealdb::sql::Geometry` implements `std::convert::From<Vec<surrealdb::sql::Geometry>>`
-              `surrealdb::sql::Geometry` implements `std::convert::From<[f64; 2]>`
-              `surrealdb::sql::Geometry` implements `std::convert::From<geo_types::LineString>`
-              `surrealdb::sql::Geometry` implements `std::convert::From<geo_types::MultiLineString>`
-            and 4 others
-    = note: required for `&types::value::Value` to implement `std::convert::Into<surrealdb::sql::Geometry>`
-    = note: the full name for the type has been written to 'C:\Projects\tmp\surrealcpp\surrealdb.c\target\debug\deps\surrealdb_c-8dd5b298d3653c3d.long-type-16133308974520478476.txt'
-    = note: consider using `--verbose` to print the full type name to the console
-warning: unused variable: `stream_ptr`
-   --> src\rpc.rs:193:9
-    |
-193 |         stream_ptr: *mut &mut RpcStream,
-    |         ^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_stream_ptr`
-    |
-    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
-warning: unused variable: `stream`
-   --> src\rpc.rs:196:17
-    |
-196 |             let stream = ctx
-    |                 ^^^^^^ help: if this is intentional, prefix it with an underscore: `_stream`
-warning: unreachable pattern
-   --> src\types\value.rs:126:13
-    |
-126 | ...   _ => unimplemented!("other variants shouldn't be returned"),
-    |       ^ no value can reach this
-    |
-note: multiple earlier patterns match some of the same values
-   --> src\types\value.rs:126:13
-    |
-105 | ...   Value::SR_VALUE_NONE => sdbValue::None,
-    |       -------------------- matches some of the same values
-106 | ...   Value::SR_VALUE_NULL => sdbValue::Null,
-    |       -------------------- matches some of the same values
-107 | ...   Value::SR_VALUE_BOOL(b) => sdbValue::Bool(b),
-    |       ----------------------- matches some of the same values
-108 | ...   Value::SR_VALUE_NUMBER(n) => sdbValue::Number(n.into()),
-    |       ------------------------- matches some of the same values
-...
-126 | ...   _ => unimplemented!("other variants shouldn't be returned"),
-    |       ^ ...and 9 other patterns collectively make this unreachable
-    = note: `#[warn(unreachable_patterns)]` (part of `#[warn(unused)]`) on by default
-Some errors have detailed explanations: E0277, E0369.
-For more information about an error, try `rustc --explain E0277`.
-warning: `surrealdb_c` (lib) generated 13 warnings
-error: could not compile `surrealdb_c` (lib) due to 17 previous errors; 13 warnings emitted
+cargo :     Updating crates.io index
+At line:1 char:47
++ cd "C:\Projects\tmp\surrealcpp\surrealdb.c" ; cargo update 2>&1
++                                               ~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (    Updating crates.io index:Stri
+   ng) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+
+    Updating git repository `https://github.com/surrealdb/surrealdb.git`
+     Locking 267 packages to latest compatible versions
+    Updating ahash v0.8.11 -> v0.8.12
+    Updating aho-corasick v1.1.3 -> v1.1.4
+    Updating allocator-api2 v0.2.18 -> v0.2.21
+    Updating ammonia v4.0.0 -> v4.1.2
+    Updating anstream v0.6.15 -> v0.6.21
+    Updating anstyle v1.0.8 -> v1.0.13
+    Updating anstyle-parse v0.2.5 -> v0.2.7
+    Updating anstyle-query v1.1.1 -> v1.1.5
+    Updating anstyle-wincon v3.0.4 -> v3.0.11
+    Updating any_ascii v0.3.2 -> v0.3.3
+      Adding ar_archive_writer v0.2.0
+    Updating arrayref v0.3.8 -> v0.3.9
+    Updating async-executor v1.13.2 -> v1.13.3
+    Updating async-graphql v7.0.16 -> v7.1.0
+    Updating async-graphql-derive v7.0.16 -> v7.1.0
+    Updating async-graphql-parser v7.0.16 -> v7.1.0
+    Updating async-graphql-value v7.0.16 -> v7.1.0
+    Removing async-stream v0.3.5
+    Removing async-stream-impl v0.3.5
+    Updating async-trait v0.1.81 -> v0.1.89
+      Adding asynk-strim v0.1.5
+    Updating autocfg v1.3.0 -> v1.5.0
+    Updating base64ct v1.6.0 -> v1.8.3
+    Updating bitflags v2.6.0 -> v2.10.0
+    Updating blake3 v1.5.4 -> v1.8.3
+    Updating borsh v1.5.1 -> v1.6.0
+    Updating borsh-derive v1.5.1 -> v1.6.0
+    Updating bumpalo v3.16.0 -> v3.19.1
+    Updating bytemuck v1.17.1 -> v1.24.0
+    Updating bytes v1.7.1 -> v1.11.0
+    Updating castaway v0.2.3 -> v0.2.4
+    Updating cc v1.2.21 -> v1.2.52
+    Updating cfg-if v1.0.0 -> v1.0.4
+    Updating clap v4.5.16 -> v4.5.54
+    Updating clap_builder v4.5.15 -> v4.5.54
+    Updating clap_lex v0.7.2 -> v0.7.7
+    Updating colorchoice v1.0.2 -> v1.0.4
+    Updating constant_time_eq v0.3.1 -> v0.4.2
+    Updating cpufeatures v0.2.13 -> v0.2.17
+    Updating crc32fast v1.4.2 -> v1.5.0
+    Updating crossbeam-deque v0.8.5 -> v0.8.6
+    Updating crossbeam-utils v0.8.20 -> v0.8.21
+    Updating crunchy v0.2.2 -> v0.2.4
+    Updating crypto-common v0.1.6 -> v0.1.7
+      Adding cssparser v0.35.0
+      Adding cssparser-macros v0.6.1
+    Removing darling v0.20.10
+      Adding darling v0.21.3
+      Adding darling v0.23.0
+    Removing darling_core v0.20.10
+      Adding darling_core v0.21.3
+      Adding darling_core v0.23.0
+    Removing darling_macro v0.20.10
+      Adding darling_macro v0.21.3
+      Adding darling_macro v0.23.0
+    Updating data-encoding v2.6.0 -> v2.10.0
+    Updating deranged v0.3.11 -> v0.5.5
+    Updating deunicode v1.6.0 -> v1.6.2
+      Adding displaydoc v0.2.5
+    Updating dmp v0.2.0 -> v0.2.3
+      Adding dtoa v1.0.11
+      Adding dtoa-short v0.3.5
+      Adding dyn-clone v1.0.20
+    Updating either v1.13.0 -> v1.15.0
+    Updating encoding_rs v0.8.34 -> v0.8.35
+    Updating equivalent v1.0.1 -> v1.0.2
+    Updating errno v0.3.9 -> v0.3.14
+    Updating event-listener v5.3.1 -> v5.4.1
+    Updating ext-sort v0.1.4 -> v0.1.5
+    Updating fastrand v2.1.1 -> v2.3.0
+      Adding find-msvc-tools v0.1.7
+      Adding foldhash v0.1.5
+    Updating form_urlencoded v1.2.1 -> v1.2.2
+    Updating futures-lite v2.3.0 -> v2.6.1
+    Updating geographiclib-rs v0.2.4 -> v0.2.5
+    Removing getrandom v0.2.15
+    Removing getrandom v0.3.2
+      Adding getrandom v0.2.17
+      Adding getrandom v0.3.4
+    Updating h2 v0.4.12 -> v0.4.13
+    Updating half v2.4.1 -> v2.7.1
+      Adding hashbrown v0.15.5
+      Adding hashbrown v0.16.1
+    Updating hermit-abi v0.3.9 -> v0.5.2
+    Updating html5ever v0.27.0 -> v0.35.0
+    Updating http v1.3.1 -> v1.4.0
+    Updating http-body-util v0.1.2 -> v0.1.3
+    Updating httparse v1.9.4 -> v1.10.1
+    Updating humantime v2.1.0 -> v2.3.0
+    Updating hyper v1.4.1 -> v1.8.1
+    Updating hyper-rustls v0.27.2 -> v0.27.7
+    Updating hyper-util v0.1.7 -> v0.1.19
+    Updating iana-time-zone v0.1.60 -> v0.1.64
+      Adding icu_collections v2.1.1
+      Adding icu_locale_core v2.1.1
+      Adding icu_normalizer v2.1.1
+      Adding icu_normalizer_data v2.1.1
+      Adding icu_properties v2.1.2
+      Adding icu_properties_data v2.1.2
+      Adding icu_provider v2.1.1
+    Updating idna v0.5.0 -> v1.1.0
+      Adding idna_adapter v1.2.1
+    Updating indexmap v2.4.0 -> v2.13.0
+    Updating inout v0.1.3 -> v0.1.4
+    Updating ipnet v2.9.0 -> v2.11.0
+      Adding iri-string v0.7.10
+    Updating is_terminal_polyfill v1.70.1 -> v1.70.2
+    Updating itoa v1.0.11 -> v1.0.17
+    Updating js-sys v0.3.77 -> v0.3.85
+    Updating jsonwebtoken v9.3.0 -> v9.3.1
+    Updating libc v0.2.172 -> v0.2.180
+    Updating libm v0.2.8 -> v0.2.15
+    Updating libredox v0.1.3 -> v0.1.12
+    Updating linux-raw-sys v0.4.14 -> v0.11.0
+      Adding litemap v0.8.1
+    Updating lock_api v0.4.12 -> v0.4.14
+    Updating log v0.4.22 -> v0.4.29
+    Updating lru v0.12.4 -> v0.12.5
+      Adding lru-slab v0.1.2
+    Updating markup5ever v0.12.1 -> v0.35.0
+      Adding match_token v0.35.0
+    Updating matrixmultiply v0.3.9 -> v0.3.10
+    Updating memchr v2.7.4 -> v2.7.6
+    Updating mio v1.0.2 -> v1.1.1
+    Updating noisy_float v0.2.0 -> v0.2.1
+    Updating ntapi v0.4.1 -> v0.4.2
+    Updating num_cpus v1.16.0 -> v1.17.0
+      Adding object v0.32.2
+    Updating object_store v0.12.0 -> v0.12.4
+    Updating once_cell v1.19.0 -> v1.21.3
+      Adding once_cell_polyfill v1.70.2
+    Updating parking v2.2.0 -> v2.2.1
+    Updating parking_lot v0.12.3 -> v0.12.5
+    Updating parking_lot_core v0.9.10 -> v0.9.12
+    Removing paste v1.0.15
+    Updating pem v3.0.4 -> v3.0.6
+    Updating percent-encoding v2.3.1 -> v2.3.2
+    Updating pest v2.7.11 -> v2.8.5
+    Updating phf v0.11.2 -> v0.11.3
+    Updating phf_codegen v0.11.2 -> v0.11.3
+    Removing phf_generator v0.10.0
+    Removing phf_generator v0.11.2
+      Adding phf_generator v0.11.3
+    Updating phf_macros v0.11.2 -> v0.11.3
+    Removing phf_shared v0.10.0
+    Removing phf_shared v0.11.2
+      Adding phf_shared v0.11.3
+    Removing pin-project v1.1.5
+    Removing pin-project-internal v1.1.5
+    Updating pin-project-lite v0.2.14 -> v0.2.16
+      Adding potential_utf v0.1.4
+    Updating ppv-lite86 v0.2.20 -> v0.2.21
+    Updating proc-macro-crate v3.2.0 -> v3.4.0
+    Removing proc-macro-error v1.0.4
+    Removing proc-macro-error-attr v1.0.4
+    Updating proc-macro2 v1.0.86 -> v1.0.105
+    Updating psm v0.1.21 -> v0.1.28
+    Updating quick_cache v0.6.5 -> v0.6.18
+    Updating quinn v0.11.3 -> v0.11.9
+    Updating quinn-proto v0.11.6 -> v0.11.13
+    Updating quinn-udp v0.5.4 -> v0.5.14
+    Updating quote v1.0.37 -> v1.0.43
+    Updating r-efi v5.2.0 -> v5.3.0
+      Adding rand v0.9.2
+      Adding rand_chacha v0.9.0
+      Adding rand_core v0.9.5
+    Updating rayon v1.10.0 -> v1.11.0
+    Updating rayon-core v1.12.1 -> v1.13.0
+    Updating redox_syscall v0.5.3 -> v0.5.18
+    Updating ref-cast v1.0.23 -> v1.0.25
+    Updating ref-cast-impl v1.0.23 -> v1.0.25
+    Updating regex v1.10.6 -> v1.12.2
+    Updating regex-automata v0.4.7 -> v0.4.13
+    Updating regex-syntax v0.8.4 -> v0.8.8
+    Updating reqwest v0.12.7 -> v0.12.28
+    Updating rkyv v0.7.45 -> v0.7.46
+    Updating rkyv_derive v0.7.45 -> v0.7.46
+    Updating rmp v0.8.14 -> v0.8.15
+    Updating rmp-serde v1.3.0 -> v1.3.1
+    Updating rmpv v1.3.0 -> v1.3.1
+    Updating roaring v0.10.6 -> v0.10.12
+    Updating robust v1.1.0 -> v1.2.0
+    Updating rust_decimal v1.36.0 -> v1.40.0
+    Updating rustc-hash v2.0.0 -> v2.1.1
+    Updating rustix v0.38.35 -> v1.1.3
+    Updating rustls v0.23.12 -> v0.23.36
+    Removing rustls-pemfile v2.1.3
+    Updating rustls-pki-types v1.8.0 -> v1.13.2
+    Updating rustls-webpki v0.102.7 -> v0.103.8
+    Updating rustversion v1.0.17 -> v1.0.22
+    Updating ryu v1.0.18 -> v1.0.22
+      Adding schemars v0.9.0
+      Adding schemars v1.2.0
+    Updating semver v1.0.23 -> v1.0.27
+    Updating serde-content v0.1.0 -> v0.1.2
+    Updating serde_json v1.0.127 -> v1.0.149
+    Updating serde_spanned v1.0.0 -> v1.0.4
+    Updating serde_with v3.9.0 -> v3.16.1
+    Updating serde_with_macros v3.9.0 -> v3.16.1
+    Updating sha2 v0.10.8 -> v0.10.9
+    Updating signal-hook-registry v1.4.2 -> v1.4.8
+    Updating simdutf8 v0.1.4 -> v0.1.5
+    Updating simple_asn1 v0.6.2 -> v0.6.3
+    Updating siphasher v0.3.11 -> v1.0.1
+    Updating slab v0.4.9 -> v0.4.11
+    Updating smallvec v1.13.2 -> v1.15.1
+    Removing socket2 v0.5.7
+    Updating spade v2.12.0 -> v2.15.0
+    Updating stable_deref_trait v1.2.0 -> v1.2.1
+    Updating stacker v0.1.17 -> v0.1.22
+    Updating string_cache v0.8.7 -> v0.8.9
+    Updating string_cache_codegen v0.5.2 -> v0.5.4
+    Updating strum v0.26.3 -> v0.27.2
+    Updating strum_macros v0.26.4 -> v0.27.2
+    Updating surrealkv v0.9.1 -> v0.9.3
+    Updating syn v2.0.87 -> v2.0.114
+    Removing syn_derive v0.1.8
+    Updating sync_wrapper v1.0.1 -> v1.0.2
+      Adding synstructure v0.13.2
+    Updating tempfile v3.12.0 -> v3.24.0
+    Removing thiserror v1.0.63
+    Removing thiserror v2.0.12
+      Adding thiserror v1.0.69
+      Adding thiserror v2.0.17
+    Removing thiserror-impl v1.0.63
+    Removing thiserror-impl v2.0.12
+      Adding thiserror-impl v1.0.69
+      Adding thiserror-impl v2.0.17
+    Updating thread_local v1.1.8 -> v1.1.9
+    Updating time v0.3.36 -> v0.3.45
+    Updating time-core v0.1.2 -> v0.1.7
+    Updating time-macros v0.2.18 -> v0.2.25
+      Adding tinystr v0.8.2
+    Updating tinyvec v1.8.0 -> v1.10.0
+    Updating tokio-rustls v0.26.0 -> v0.26.4
+    Updating tokio-util v0.7.11 -> v0.7.18
+    Updating toml v0.9.5 -> v0.9.11+spec-1.1.0
+    Removing toml_datetime v0.6.8
+    Removing toml_datetime v0.7.0
+      Adding toml_datetime v0.7.5+spec-1.1.0
+    Updating toml_edit v0.22.20 -> v0.23.10+spec-1.0.0
+    Updating tower v0.4.13 -> v0.5.3
+      Adding tower-http v0.6.8
+    Updating tracing v0.1.40 -> v0.1.44
+    Updating tracing-attributes v0.1.27 -> v0.1.31
+    Updating tracing-core v0.1.32 -> v0.1.36
+    Updating typenum v1.17.0 -> v1.19.0
+    Updating ucd-trie v0.1.6 -> v0.1.7
+    Updating ulid v1.1.3 -> v1.2.1
+    Updating unicase v2.7.0 -> v2.9.0
+    Removing unicode-bidi v0.3.15
+    Updating unicode-ident v1.0.12 -> v1.0.22
+    Updating unicode-normalization v0.1.23 -> v0.1.25
+    Updating unicode-script v0.5.6 -> v0.5.8
+    Updating unicode-security v0.1.1 -> v0.1.2
+    Updating unicode-width v0.1.13 -> v0.1.14
+    Updating unicode-xid v0.2.5 -> v0.2.6
+    Updating url v2.5.2 -> v2.5.8
+      Adding utf8_iter v1.0.4
+    Updating vart v0.9.2 -> v0.9.3
+    Removing wasi v0.11.0+wasi-snapshot-preview1
+    Removing wasi v0.14.2+wasi-0.2.4
+      Adding wasi v0.11.1+wasi-snapshot-preview1
+      Adding wasip2 v1.0.1+wasi-0.2.4
+    Updating wasm-bindgen v0.2.100 -> v0.2.108
+    Removing wasm-bindgen-backend v0.2.100
+    Updating wasm-bindgen-futures v0.4.43 -> v0.4.58
+    Updating wasm-bindgen-macro v0.2.100 -> v0.2.108
+    Updating wasm-bindgen-macro-support v0.2.100 -> v0.2.108
+    Updating wasm-bindgen-shared v0.2.100 -> v0.2.108
+    Updating wasm-streams v0.4.0 -> v0.4.2
+    Updating wasmtimer v0.2.0 -> v0.2.1
+    Updating web-sys v0.3.70 -> v0.3.85
+      Adding web_atoms v0.1.3
+    Removing webpki-roots v0.26.3
+      Adding webpki-roots v0.26.11
+      Adding webpki-roots v1.0.5
+    Updating winapi-util v0.1.9 -> v0.1.11
+    Updating windows-core v0.52.0 -> v0.62.2
+      Adding windows-implement v0.60.2
+      Adding windows-interface v0.59.3
+    Removing windows-registry v0.2.0
+    Updating windows-result v0.2.0 -> v0.4.1
+    Updating windows-strings v0.1.0 -> v0.5.1
+    Removing winnow v0.6.18
+      Adding wit-bindgen v0.46.0
+    Removing wit-bindgen-rt v0.39.0
+      Adding writeable v0.6.2
+    Updating ws_stream_wasm v0.7.4 -> v0.7.5
+      Adding yoke v0.8.1
+      Adding yoke-derive v0.8.1
+    Updating zerocopy v0.7.35 -> v0.8.33
+    Updating zerocopy-derive v0.7.35 -> v0.8.33
+      Adding zerofrom v0.1.6
+      Adding zerofrom-derive v0.1.6
+    Updating zeroize v1.8.1 -> v1.8.2
+      Adding zerotrie v0.2.3
+      Adding zerovec v0.11.5
+      Adding zerovec-derive v0.11.2
+      Adding zmij v1.0.14
+note: pass `--verbose` to see 5 unchanged dependencies behind latest
