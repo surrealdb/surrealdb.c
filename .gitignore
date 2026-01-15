@@ -40,3 +40,6 @@ Temporary Items
 /test/*.skv
 /test/*.db
 /test/*.out.dSYM
+
+# Test suite.
+/ThirdParty/
