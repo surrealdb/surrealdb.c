@@ -3,12 +3,25 @@ use std::{
     ptr::{self, slice_from_raw_parts, slice_from_raw_parts_mut},
 };
 
-use crate::value::Value;
 use surrealdb::sql;
+use super::value::Value;
 
+#[repr(C)]
 pub struct ArrayGen<T> {
     pub ptr: *mut T,
     pub len: c_int,
+}
+
+impl<T: std::fmt::Debug> std::fmt::Debug for ArrayGen<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_list().entries(self.as_slice()).finish()
+    }
+}
+
+impl<T: PartialEq> PartialEq for ArrayGen<T> {
+    fn eq(&self, other: &Self) -> bool {
+        self.as_slice() == other.as_slice()
+    }
 }
 
 impl<T> Clone for ArrayGen<T>

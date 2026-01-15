@@ -347,9 +347,10 @@ impl Surreal {
                 v => Array::from(vec![v.into()]),
             };
 
-            unsafe { res_ptr.write(res.arr) }
+            let ArrayGen { ptr, len } = res.into();
+            unsafe { res_ptr.write(ptr) }
 
-            Ok(res.len as c_int)
+            Ok(len as c_int)
         })
     }
     // set.rs

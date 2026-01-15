@@ -7,9 +7,6 @@ use std::{
     sync::atomic::{AtomicBool, Ordering},
     time::Duration,
 };
-use std::any::Any;
-use std::fmt::Debug;
-use std::future::Future;
 use std::sync::Arc;
 use arc_swap::ArcSwap;
 use surrealdb::dbs::Session;
@@ -22,7 +19,7 @@ use surrealdb::sql;
 use surrealdb_core::rpc::{RpcProtocolV1, RpcProtocolV2};
 use tokio::{runtime::Runtime, sync::RwLock};
 use tokio::sync::Semaphore;
-use crate::{array::MakeArray, opts::Options, result, stream::RpcStream, string::string_t, SR_ERROR, SR_FATAL};
+use crate::{array::MakeArray, opts::Options, stream::RpcStream, string::string_t, SR_ERROR, SR_FATAL};
 
 /// The object representing a Surreal connection
 ///

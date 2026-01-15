@@ -1,8 +1,7 @@
-use std::{ffi::CString, fmt::Debug};
+use std::fmt::Debug;
 use std::fmt::Display;
 use crate::{
     string::string_t,
-    object::Object
 };
 
 #[allow(non_camel_case_types)]

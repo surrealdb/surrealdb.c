@@ -27,6 +27,7 @@ pub enum Value {
     SR_GEOMETRY_OBJECT(sr_geometry),
     SR_VALUE_BYTES(Bytes),
     SR_VALUE_THING(Thing),
+    // TODO(Lance): Are computed objects needed?
 }
 
 impl From<sdbValue> for Value {
@@ -39,7 +40,7 @@ impl From<sdbValue> for Value {
                 sql::Number::Int(i) => Value::SR_VALUE_NUMBER(Number::SR_NUMBER_INT(i)),
                 sql::Number::Float(f) => Value::SR_VALUE_NUMBER(Number::SR_NUMBER_FLOAT(f)),
                 sql::Number::Decimal(_) => todo!(),
-                _ => todo!(),
+                _ => unimplemented!("New variants should be added above."),
             },
             sdbValue::Strand(s) => Value::SR_VALUE_STRAND(s.0.to_string_t()),
             sdbValue::Duration(d) => Value::SR_VALUE_DURATION(d.into()),
@@ -48,7 +49,7 @@ impl From<sdbValue> for Value {
             // unecssary box see: https://github.com/mozilla/cbindgen/issues/981
             sdbValue::Array(a) => Value::SR_VALUE_ARRAY(Box::new(a.into())),
             sdbValue::Object(o) => Value::SR_VALUE_OBJECT(o.into()),
-            sdbValue::Geometry(_) => todo!(),
+            sdbValue::Geometry(g) => Value::SR_GEOMETRY_OBJECT(sr_geometry::from(g)),
             sdbValue::Bytes(b) => Value::SR_VALUE_BYTES(b.into()),
             sdbValue::Thing(t) => Value::SR_VALUE_THING(t.into()),
             _ => unimplemented!("other variants shouldn't be returned"),

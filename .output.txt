@@ -1,0 +1,404 @@
+   Compiling surrealdb_c v0.1.0 (C:\Projects\tmp\surrealcpp\surrealdb.c)
+warning: unused import: `std::any::Any`
+  --> src\rpc.rs:10:5
+   |
+10 | use std::any::Any;
+   |     ^^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+warning: unused import: `std::fmt::Debug`
+  --> src\rpc.rs:11:5
+   |
+11 | use std::fmt::Debug;
+   |     ^^^^^^^^^^^^^^^
+warning: unused import: `std::future::Future`
+  --> src\rpc.rs:12:5
+   |
+12 | use std::future::Future;
+   |     ^^^^^^^^^^^^^^^^^^^
+warning: unused import: `result`
+  --> src\rpc.rs:25:46
+   |
+25 | use crate::{array::MakeArray, opts::Options, result, stream::RpcStream,...
+   |                                              ^^^^^^
+warning: unused import: `crate::geometry::sr_geometry`
+ --> src\types\array.rs:8:5
+  |
+8 | use crate::geometry::sr_geometry;
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+warning: unused import: `ffi::CString`
+ --> src\types\credentials.rs:1:11
+  |
+1 | use std::{ffi::CString, fmt::Debug};
+  |           ^^^^^^^^^^^^
+warning: unused import: `object::Object`
+ --> src\types\credentials.rs:5:5
+  |
+5 |     object::Object
+  |     ^^^^^^^^^^^^^^
+warning: unused imports: `c_double`, `c_float`, and `c_int`
+ --> src\types\geometry.rs:1:16
+  |
+1 | use std::ffi::{c_double, c_float, c_int};
+  |                ^^^^^^^^  ^^^^^^^  ^^^^^
+warning: unused import: `surrealdb::sql`
+ --> src\types\geometry.rs:3:5
+  |
+3 | use surrealdb::sql;
+  |     ^^^^^^^^^^^^^^
+warning: unused import: `crate::types::geometry::*`
+ --> src\types\value.rs:9:5
+  |
+9 | use crate::types::geometry::*;
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^
+error[E0277]: `types::array::ArrayGen<sr_g_coord>` doesn't implement `std::fmt::Debug`
+  --> src\types\geometry.rs:78:28
+   |
+76 | #[derive(Debug, Clone, PartialEq)]
+   |          ----- in this derive macro expansion
+77 | #[repr(C)]
+78 | pub struct sr_g_linestring(pub ArrayGen<sr_g_coord>);
+   |                            ^^^^^^^^^^^^^^^^^^^^^^^^ unsatisfied trait bound
+   |
+   = help: the trait `std::fmt::Debug` is not implemented for `types::array::ArrayGen<sr_g_coord>`
+   = note: add `#[derive(Debug)]` to `types::array::ArrayGen<sr_g_coord>` or manually `impl std::fmt::Debug for types::array::ArrayGen<sr_g_coord>`
+   = help: the trait `std::fmt::Debug` is implemented for `types::array::ArrayGen<sr_geometry>`
+help: consider annotating `types::array::ArrayGen<sr_g_coord>` with `#[derive(Debug)]`
+  --> src\types\array.rs:11:1
+   |
+11 + #[derive(Debug)]
+12 | pub struct ArrayGen<T> {
+   |
+error[E0369]: binary operation `==` cannot be applied to type `types::array::ArrayGen<sr_g_coord>`
+  --> src\types\geometry.rs:78:28
+   |
+76 | #[derive(Debug, Clone, PartialEq)]
+   |                        --------- in this derive macro expansion
+77 | #[repr(C)]
+78 | pub struct sr_g_linestring(pub ArrayGen<sr_g_coord>);
+   |                            ^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+note: an implementation of `PartialEq` might be missing for `types::array::ArrayGen<sr_g_coord>`
+  --> src\types\array.rs:11:1
+   |
+11 | pub struct ArrayGen<T> {
+   | ^^^^^^^^^^^^^^^^^^^^^^ must implement `PartialEq`
+help: consider annotating `types::array::ArrayGen<sr_g_coord>` with `#[derive(PartialEq)]`
+  --> src\types\array.rs:11:1
+   |
+11 + #[derive(PartialEq)]
+12 | pub struct ArrayGen<T> {
+   |
+error[E0277]: `types::array::ArrayGen<sr_g_linestring>` doesn't implement `std::fmt::Debug`
+   --> src\types\geometry.rs:103:46
+    |
+101 | ...ve(Debug, Clone, PartialEq)]
+    |       ----- in this derive macro expansion
+102 | ...(C)]
+103 | ...ruct sr_g_polygon(pub sr_g_linestring, pub ArrayGen<sr_g_linestring>);
+    |                                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ unsatisfied trait bound
+    |
+    = help: the trait `std::fmt::Debug` is not implemented for `types::array::ArrayGen<sr_g_linestring>`
+    = note: add `#[derive(Debug)]` to `types::array::ArrayGen<sr_g_linestring>` or manually `impl std::fmt::Debug for types::array::ArrayGen<sr_g_linestring>`
+    = help: the trait `std::fmt::Debug` is implemented for `types::array::ArrayGen<sr_geometry>`
+help: consider annotating `types::array::ArrayGen<sr_g_linestring>` with `#[derive(Debug)]`
+   --> src\types\array.rs:11:1
+    |
+ 11 + #[derive(Debug)]
+ 12 | pub struct ArrayGen<T> {
+    |
+error[E0369]: binary operation `==` cannot be applied to type `types::array::ArrayGen<sr_g_linestring>`
+   --> src\types\geometry.rs:103:46
+    |
+101 | ... Clone, PartialEq)]
+    |            --------- in this derive macro expansion
+102 | ...
+103 | ..._polygon(pub sr_g_linestring, pub ArrayGen<sr_g_linestring>);
+    |                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+note: an implementation of `PartialEq` might be missing for `types::array::ArrayGen<sr_g_linestring>`
+   --> src\types\array.rs:11:1
+    |
+ 11 | pub struct ArrayGen<T> {
+    | ^^^^^^^^^^^^^^^^^^^^^^ must implement `PartialEq`
+help: consider annotating `types::array::ArrayGen<sr_g_linestring>` with `#[derive(PartialEq)]`
+   --> src\types\array.rs:11:1
+    |
+ 11 + #[derive(PartialEq)]
+ 12 | pub struct ArrayGen<T> {
+    |
+error[E0277]: `types::array::ArrayGen<sr_g_point>` doesn't implement `std::fmt::Debug`
+   --> src\types\geometry.rs:117:28
+    |
+115 | #[derive(Debug, Clone, PartialEq)]
+    |          ----- in this derive macro expansion
+116 | #[repr(C)]
+117 | pub struct sr_g_multipoint(pub ArrayGen<sr_g_point>);
+    |                            ^^^^^^^^^^^^^^^^^^^^^^^^ unsatisfied trait bound
+    |
+    = help: the trait `std::fmt::Debug` is not implemented for `types::array::ArrayGen<sr_g_point>`
+    = note: add `#[derive(Debug)]` to `types::array::ArrayGen<sr_g_point>` or manually `impl std::fmt::Debug for types::array::ArrayGen<sr_g_point>`
+    = help: the trait `std::fmt::Debug` is implemented for `types::array::ArrayGen<sr_geometry>`
+help: consider annotating `types::array::ArrayGen<sr_g_point>` with `#[derive(Debug)]`
+   --> src\types\array.rs:11:1
+    |
+ 11 + #[derive(Debug)]
+ 12 | pub struct ArrayGen<T> {
+    |
+error[E0369]: binary operation `==` cannot be applied to type `types::array::ArrayGen<sr_g_point>`
+   --> src\types\geometry.rs:117:28
+    |
+115 | #[derive(Debug, Clone, PartialEq)]
+    |                        --------- in this derive macro expansion
+116 | #[repr(C)]
+117 | pub struct sr_g_multipoint(pub ArrayGen<sr_g_point>);
+    |                            ^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+note: an implementation of `PartialEq` might be missing for `types::array::ArrayGen<sr_g_point>`
+   --> src\types\array.rs:11:1
+    |
+ 11 | pub struct ArrayGen<T> {
+    | ^^^^^^^^^^^^^^^^^^^^^^ must implement `PartialEq`
+help: consider annotating `types::array::ArrayGen<sr_g_point>` with `#[derive(PartialEq)]`
+   --> src\types\array.rs:11:1
+    |
+ 11 + #[derive(PartialEq)]
+ 12 | pub struct ArrayGen<T> {
+    |
+error[E0277]: `types::array::ArrayGen<sr_g_linestring>` doesn't implement `std::fmt::Debug`
+   --> src\types\geometry.rs:134:33
+    |
+132 | #[derive(Debug, Clone, PartialEq)]
+    |          ----- in this derive macro expansion
+133 | #[repr(C)]
+134 | pub struct sr_g_multilinestring(pub ArrayGen<sr_g_linestring>);
+    |                                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ unsatisfied trait bound
+    |
+    = help: the trait `std::fmt::Debug` is not implemented for `types::array::ArrayGen<sr_g_linestring>`
+    = note: add `#[derive(Debug)]` to `types::array::ArrayGen<sr_g_linestring>` or manually `impl std::fmt::Debug for types::array::ArrayGen<sr_g_linestring>`
+    = help: the trait `std::fmt::Debug` is implemented for `types::array::ArrayGen<sr_geometry>`
+help: consider annotating `types::array::ArrayGen<sr_g_linestring>` with `#[derive(Debug)]`
+   --> src\types\array.rs:11:1
+    |
+ 11 + #[derive(Debug)]
+ 12 | pub struct ArrayGen<T> {
+    |
+error[E0369]: binary operation `==` cannot be applied to type `types::array::ArrayGen<sr_g_linestring>`
+   --> src\types\geometry.rs:134:33
+    |
+132 | #[derive(Debug, Clone, PartialEq)]
+    |                        --------- in this derive macro expansion
+133 | #[repr(C)]
+134 | pub struct sr_g_multilinestring(pub ArrayGen<sr_g_linestring>);
+    |                                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+note: an implementation of `PartialEq` might be missing for `types::array::ArrayGen<sr_g_linestring>`
+   --> src\types\array.rs:11:1
+    |
+ 11 | pub struct ArrayGen<T> {
+    | ^^^^^^^^^^^^^^^^^^^^^^ must implement `PartialEq`
+help: consider annotating `types::array::ArrayGen<sr_g_linestring>` with `#[derive(PartialEq)]`
+   --> src\types\array.rs:11:1
+    |
+ 11 + #[derive(PartialEq)]
+ 12 | pub struct ArrayGen<T> {
+    |
+error[E0277]: `types::array::ArrayGen<sr_g_polygon>` doesn't implement `std::fmt::Debug`
+   --> src\types\geometry.rs:145:30
+    |
+143 | #[derive(Debug, Clone, PartialEq)]
+    |          ----- in this derive macro expansion
+144 | #[repr(C)]
+145 | pub struct sr_g_multipolygon(pub ArrayGen<sr_g_polygon>);
+    |                              ^^^^^^^^^^^^^^^^^^^^^^^^^^ unsatisfied trait bound
+    |
+    = help: the trait `std::fmt::Debug` is not implemented for `types::array::ArrayGen<sr_g_polygon>`
+    = note: add `#[derive(Debug)]` to `types::array::ArrayGen<sr_g_polygon>` or manually `impl std::fmt::Debug for types::array::ArrayGen<sr_g_polygon>`
+    = help: the trait `std::fmt::Debug` is implemented for `types::array::ArrayGen<sr_geometry>`
+help: consider annotating `types::array::ArrayGen<sr_g_polygon>` with `#[derive(Debug)]`
+   --> src\types\array.rs:11:1
+    |
+ 11 + #[derive(Debug)]
+ 12 | pub struct ArrayGen<T> {
+    |
+error[E0369]: binary operation `==` cannot be applied to type `types::array::ArrayGen<sr_g_polygon>`
+   --> src\types\geometry.rs:145:30
+    |
+143 | #[derive(Debug, Clone, PartialEq)]
+    |                        --------- in this derive macro expansion
+144 | #[repr(C)]
+145 | pub struct sr_g_multipolygon(pub ArrayGen<sr_g_polygon>);
+    |                              ^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+note: an implementation of `PartialEq` might be missing for `types::array::ArrayGen<sr_g_polygon>`
+   --> src\types\array.rs:11:1
+    |
+ 11 | pub struct ArrayGen<T> {
+    | ^^^^^^^^^^^^^^^^^^^^^^ must implement `PartialEq`
+help: consider annotating `types::array::ArrayGen<sr_g_polygon>` with `#[derive(PartialEq)]`
+   --> src\types\array.rs:11:1
+    |
+ 11 + #[derive(PartialEq)]
+ 12 | pub struct ArrayGen<T> {
+    |
+error[E0277]: the trait bound `Vec<Geometry>: From<Array>` is not satisfied
+   --> src\types\geometry.rs:187:71
+    |
+187 | ...etry::Collection(c.into()),
+    |                       ^^^^ unsatisfied trait bound
+    |
+    = help: the trait `std::convert::From<types::array::Array>` is not implemented for `Vec<surrealdb::sql::Geometry>`
+    = help: the following other types implement trait `std::convert::From<T>`:
+              `Vec<T, A>` implements `std::convert::From<BinaryHeap<T, A>>`
+              `Vec<T, A>` implements `std::convert::From<Box<[T], A>>`
+              `Vec<T, A>` implements `std::convert::From<VecDeque<T, A>>`
+              `Vec<T>` implements `std::convert::From<&[T; N]>`
+              `Vec<T>` implements `std::convert::From<&[T]>`
+              `Vec<T>` implements `std::convert::From<&mut [T; N]>`
+              `Vec<T>` implements `std::convert::From<&mut [T]>`
+              `Vec<T>` implements `std::convert::From<Cow<'_, [T]>>`
+            and 17 others
+    = note: required for `types::array::Array` to implement `std::convert::Into<Vec<surrealdb::sql::Geometry>>`
+    = note: the full name for the type has been written to 'C:\Projects\tmp\surrealcpp\surrealdb.c\target\debug\deps\surrealdb_c-8dd5b298d3653c3d.long-type-8538475929220334226.txt'
+    = note: consider using `--verbose` to print the full type name to the console
+error[E0277]: the trait bound `sr_g_polygon: std::convert::From<geo_types::Polygon>` is not satisfied
+   --> src\types\geometry.rs:197:65
+    |
+197 |             Geometry::Polygon(p) => sr_geometry::sr_g_polygon(p.into()),
+    |                                                                 ^^^^ unsatisfied trait bound
+    |
+help: the trait `std::convert::From<geo_types::Polygon>` is not implemented for `sr_g_polygon`
+   --> src\types\geometry.rs:103:1
+    |
+103 | pub struct sr_g_polygon(pub sr_g_linestring, pub ArrayGen<sr_g_linestr...
+    | ^^^^^^^^^^^^^^^^^^^^^^^
+    = note: required for `geo_types::Polygon` to implement `std::convert::Into<sr_g_polygon>`
+error[E0277]: the trait bound `sr_g_multilinestring: From<...>` is not satisfied
+   --> src\types\geometry.rs:199:69
+    |
+199 | ...::sr_g_multiline(l.into()),
+    |                       ^^^^ unsatisfied trait bound
+    |
+help: the trait `std::convert::From<geo_types::MultiLineString>` is not implemented for `sr_g_multilinestring`
+   --> src\types\geometry.rs:134:1
+    |
+134 | pub struct sr_g_multilinestring(pub ArrayGen<sr_g_linestring>);
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    = note: required for `geo_types::MultiLineString` to implement `std::convert::Into<sr_g_multilinestring>`
+    = note: the full name for the type has been written to 'C:\Projects\tmp\surrealcpp\surrealdb.c\target\debug\deps\surrealdb_c-8dd5b298d3653c3d.long-type-6845571450813133161.txt'
+    = note: consider using `--verbose` to print the full type name to the console
+error[E0277]: the trait bound `sr_g_multipolygon: From<MultiPolygon>` is not satisfied
+   --> src\types\geometry.rs:200:75
+    |
+200 | ...r_g_multipolygon(p.into()),
+    |                       ^^^^ unsatisfied trait bound
+    |
+help: the trait `std::convert::From<geo_types::MultiPolygon>` is not implemented for `sr_g_multipolygon`
+   --> src\types\geometry.rs:145:1
+    |
+145 | pub struct sr_g_multipolygon(pub ArrayGen<sr_g_polygon>);
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    = note: required for `geo_types::MultiPolygon` to implement `std::convert::Into<sr_g_multipolygon>`
+    = note: the full name for the type has been written to 'C:\Projects\tmp\surrealcpp\surrealdb.c\target\debug\deps\surrealdb_c-8dd5b298d3653c3d.long-type-2776092086700916405.txt'
+    = note: consider using `--verbose` to print the full type name to the console
+error[E0277]: the trait bound `Array: From<Vec<Geometry>>` is not satisfied
+   --> src\types\geometry.rs:201:71
+    |
+201 | ...:sr_g_collection(c.into()),
+    |                       ^^^^ unsatisfied trait bound
+    |
+help: the trait `std::convert::From<Vec<surrealdb::sql::Geometry>>` is not implemented for `types::array::Array`
+   --> src\types\array.rs:82:1
+    |
+ 82 | pub struct Array {
+    | ^^^^^^^^^^^^^^^^
+    = help: the following other types implement trait `std::convert::From<T>`:
+              `types::array::Array` implements `std::convert::From<&surrealdb::sql::Array>`
+              `types::array::Array` implements `std::convert::From<Vec<types::value::Value>>`
+              `types::array::Array` implements `std::convert::From<surrealdb::sql::Array>`
+              `types::array::Array` implements `From<ArrayGen<Value>>`
+    = note: required for `Vec<surrealdb::sql::Geometry>` to implement `std::convert::Into<types::array::Array>`
+    = note: the full name for the type has been written to 'C:\Projects\tmp\surrealcpp\surrealdb.c\target\debug\deps\surrealdb_c-8dd5b298d3653c3d.long-type-17470614097777546710.txt'
+    = note: consider using `--verbose` to print the full type name to the console
+error[E0277]: the trait bound `Geometry: From<Value>` is not satisfied
+   --> src\types\geometry.rs:211:33
+    |
+211 |             n.push(s[i].clone().into());
+    |                                 ^^^^ unsatisfied trait bound
+    |
+    = help: the trait `std::convert::From<types::value::Value>` is not implemented for `surrealdb::sql::Geometry`
+    = help: the following other types implement trait `std::convert::From<T>`:
+              `surrealdb::sql::Geometry` implements `std::convert::From<(f64, f64)>`
+              `surrealdb::sql::Geometry` implements `std::convert::From<Vec<geo_types::LineString>>`
+              `surrealdb::sql::Geometry` implements `std::convert::From<Vec<geo_types::Point>>`
+              `surrealdb::sql::Geometry` implements `std::convert::From<Vec<geo_types::Polygon>>`
+              `surrealdb::sql::Geometry` implements `std::convert::From<Vec<surrealdb::sql::Geometry>>`
+              `surrealdb::sql::Geometry` implements `std::convert::From<[f64; 2]>`
+              `surrealdb::sql::Geometry` implements `std::convert::From<geo_types::LineString>`
+              `surrealdb::sql::Geometry` implements `std::convert::From<geo_types::MultiLineString>`
+            and 4 others
+    = note: required for `types::value::Value` to implement `std::convert::Into<surrealdb::sql::Geometry>`
+    = note: the full name for the type has been written to 'C:\Projects\tmp\surrealcpp\surrealdb.c\target\debug\deps\surrealdb_c-8dd5b298d3653c3d.long-type-12876197837395366115.txt'
+    = note: consider using `--verbose` to print the full type name to the console
+help: consider removing this method call, as the receiver has type `types::value::Value` and `types::value::Value: std::convert::From<types::value::Value>` trivially holds
+    |
+211 -             n.push(s[i].clone().into());
+211 +             n.push(s[i].into());
+    |
+error[E0277]: the trait bound `Geometry: From<&Value>` is not satisfied
+   --> src\types\geometry.rs:213:67
+    |
+213 | ...).iter().map(|c| c.into()).collect::<Vec<Geometry>>())
+    |                       ^^^^ unsatisfied trait bound
+    |
+    = help: the trait `std::convert::From<&types::value::Value>` is not implemented for `surrealdb::sql::Geometry`
+    = help: the following other types implement trait `std::convert::From<T>`:
+              `surrealdb::sql::Geometry` implements `std::convert::From<(f64, f64)>`
+              `surrealdb::sql::Geometry` implements `std::convert::From<Vec<geo_types::LineString>>`
+              `surrealdb::sql::Geometry` implements `std::convert::From<Vec<geo_types::Point>>`
+              `surrealdb::sql::Geometry` implements `std::convert::From<Vec<geo_types::Polygon>>`
+              `surrealdb::sql::Geometry` implements `std::convert::From<Vec<surrealdb::sql::Geometry>>`
+              `surrealdb::sql::Geometry` implements `std::convert::From<[f64; 2]>`
+              `surrealdb::sql::Geometry` implements `std::convert::From<geo_types::LineString>`
+              `surrealdb::sql::Geometry` implements `std::convert::From<geo_types::MultiLineString>`
+            and 4 others
+    = note: required for `&types::value::Value` to implement `std::convert::Into<surrealdb::sql::Geometry>`
+    = note: the full name for the type has been written to 'C:\Projects\tmp\surrealcpp\surrealdb.c\target\debug\deps\surrealdb_c-8dd5b298d3653c3d.long-type-16133308974520478476.txt'
+    = note: consider using `--verbose` to print the full type name to the console
+warning: unused variable: `stream_ptr`
+   --> src\rpc.rs:193:9
+    |
+193 |         stream_ptr: *mut &mut RpcStream,
+    |         ^^^^^^^^^^ help: if this is intentional, prefix it with an underscore: `_stream_ptr`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+warning: unused variable: `stream`
+   --> src\rpc.rs:196:17
+    |
+196 |             let stream = ctx
+    |                 ^^^^^^ help: if this is intentional, prefix it with an underscore: `_stream`
+warning: unreachable pattern
+   --> src\types\value.rs:126:13
+    |
+126 | ...   _ => unimplemented!("other variants shouldn't be returned"),
+    |       ^ no value can reach this
+    |
+note: multiple earlier patterns match some of the same values
+   --> src\types\value.rs:126:13
+    |
+105 | ...   Value::SR_VALUE_NONE => sdbValue::None,
+    |       -------------------- matches some of the same values
+106 | ...   Value::SR_VALUE_NULL => sdbValue::Null,
+    |       -------------------- matches some of the same values
+107 | ...   Value::SR_VALUE_BOOL(b) => sdbValue::Bool(b),
+    |       ----------------------- matches some of the same values
+108 | ...   Value::SR_VALUE_NUMBER(n) => sdbValue::Number(n.into()),
+    |       ------------------------- matches some of the same values
+...
+126 | ...   _ => unimplemented!("other variants shouldn't be returned"),
+    |       ^ ...and 9 other patterns collectively make this unreachable
+    = note: `#[warn(unreachable_patterns)]` (part of `#[warn(unused)]`) on by default
+Some errors have detailed explanations: E0277, E0369.
+For more information about an error, try `rustc --explain E0277`.
+warning: `surrealdb_c` (lib) generated 13 warnings
+error: could not compile `surrealdb_c` (lib) due to 17 previous errors; 13 warnings emitted

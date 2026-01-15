@@ -11,12 +11,6 @@
 
 #define sr_SR_FATAL -3
 
-typedef enum sr_action {
-  SR_ACTION_CREATE,
-  SR_ACTION_UPDATE,
-  SR_ACTION_DELETE,
-} sr_action;
-
 typedef enum sr_credentials_scope {
   ROOT,
   NAMESPACE,
@@ -24,15 +18,11 @@ typedef enum sr_credentials_scope {
   RECORD,
 } sr_credentials_scope;
 
-typedef struct sr_ArrayGen_sr_coord sr_ArrayGen_sr_coord;
-
-typedef struct sr_ArrayGen_sr_g_linestring sr_ArrayGen_sr_g_linestring;
-
-typedef struct sr_ArrayGen_sr_g_point sr_ArrayGen_sr_g_point;
-
-typedef struct sr_ArrayGen_sr_g_polygon sr_ArrayGen_sr_g_polygon;
-
-typedef struct sr_ArrayGen_sr_geometry sr_ArrayGen_sr_geometry;
+typedef enum sr_action {
+  SR_ACTION_CREATE,
+  SR_ACTION_UPDATE,
+  SR_ACTION_DELETE,
+} sr_action;
 
 typedef struct sr_opaque_object_internal_t sr_opaque_object_internal_t;
 
@@ -97,23 +87,38 @@ typedef struct sr_uuid_t {
   uint8_t _0[16];
 } sr_uuid_t;
 
-typedef struct sr_sr_coord {
+typedef struct sr_sr_g_coord {
   double x;
   double y;
-} sr_sr_coord;
+} sr_sr_g_coord;
 
 typedef struct sr_sr_g_point {
-  struct sr_sr_coord _0;
+  struct sr_sr_g_coord _0;
 } sr_sr_g_point;
 
+typedef struct sr_ArrayGen_sr_g_coord {
+  struct sr_sr_g_coord *ptr;
+  int len;
+} sr_ArrayGen_sr_g_coord;
+
 typedef struct sr_sr_g_linestring {
-  struct sr_ArrayGen_sr_coord _0;
+  struct sr_ArrayGen_sr_g_coord _0;
 } sr_sr_g_linestring;
+
+typedef struct sr_ArrayGen_sr_g_linestring {
+  struct sr_sr_g_linestring *ptr;
+  int len;
+} sr_ArrayGen_sr_g_linestring;
 
 typedef struct sr_sr_g_polygon {
   struct sr_sr_g_linestring _0;
   struct sr_ArrayGen_sr_g_linestring _1;
 } sr_sr_g_polygon;
+
+typedef struct sr_ArrayGen_sr_g_point {
+  struct sr_sr_g_point *ptr;
+  int len;
+} sr_ArrayGen_sr_g_point;
 
 typedef struct sr_sr_g_multipoint {
   struct sr_ArrayGen_sr_g_point _0;
@@ -123,13 +128,23 @@ typedef struct sr_sr_g_multilinestring {
   struct sr_ArrayGen_sr_g_linestring _0;
 } sr_sr_g_multilinestring;
 
+typedef struct sr_ArrayGen_sr_g_polygon {
+  struct sr_sr_g_polygon *ptr;
+  int len;
+} sr_ArrayGen_sr_g_polygon;
+
 typedef struct sr_sr_g_multipolygon {
   struct sr_ArrayGen_sr_g_polygon _0;
 } sr_sr_g_multipolygon;
 
+typedef struct sr_ArrayGen_sr_geometry {
+  struct sr_sr_geometry *ptr;
+  int len;
+} sr_ArrayGen_sr_geometry;
+
 typedef enum sr_sr_geometry_Tag {
   sr_g_point,
-  sr_g_line,
+  sr_g_linestring,
   sr_g_polygon,
   sr_g_multipoint,
   sr_g_multiline,
@@ -144,7 +159,7 @@ typedef struct sr_sr_geometry {
       struct sr_sr_g_point sr_g_point;
     };
     struct {
-      struct sr_sr_g_linestring sr_g_line;
+      struct sr_sr_g_linestring sr_g_linestring;
     };
     struct {
       struct sr_sr_g_polygon sr_g_polygon;
