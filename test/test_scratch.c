@@ -1,5 +1,7 @@
 #include <stdio.h>
+#ifdef __unix__
 #include <pthread.h>
+#endif
 #include <time.h>
 #include "../surrealdb.h"
 

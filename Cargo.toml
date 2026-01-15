@@ -29,6 +29,8 @@ ciborium = "0.2.2"
 arc-swap = "1.8.0"
 serde = { version = "1.0.228", features = ["serde_derive"] }
 geo-types = "0.7.18"
+cc = "1.0"
 
 [build-dependencies]
 cbindgen = "0.29.2"
+cc = "1.0"

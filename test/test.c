@@ -1,8 +1,20 @@
 
 #include <stdio.h>
+#ifdef __unix__
 #include <pthread.h>
+#endif
 #include <time.h>
+#include <criterion/criterion.h>
 #include "../surrealdb.h"
+
+// Simple Criterion test to verify framework integration
+// Note: Criterion's Test macro uses GCC/Clang extensions not supported by MSVC
+#ifndef _MSC_VER
+Test(basic, simple_assertion) {
+    cr_assert_eq(1 + 1, 2, "Basic arithmetic should work");
+    cr_assert_str_eq("hello", "hello", "String comparison should work");
+}
+#endif
 
 int test_version(sr_surreal_t *db);
 int test_query(sr_surreal_t *db);
