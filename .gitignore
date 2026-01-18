@@ -40,6 +40,10 @@ Temporary Items
 /test/*.skv
 /test/*.db
 /test/*.out.dSYM
+/test/bin/
+/test/build/
+/test/*.exe
+/test/*.obj
 
-# Test suite.
-/ThirdParty/
+# Build directory.
+build/
