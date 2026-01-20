@@ -45,5 +45,14 @@ Temporary Items
 /test/*.exe
 /test/*.obj
 
-# Build directory.
+# Build directories.
 build/
+cmake-build-debug/
+cmake-build-release/
+
+# Scratch files.
+Output.txt
+Output.log
+
+# ThirdPary directory.
+ThirdParty/

@@ -2,31 +2,125 @@
 skip_core_tasks = true
 reduce_output = true
 
+# ============================================================================
+# Rust Build Tasks
+# ============================================================================
+
 [tasks.build]
+description = "Build the Rust library (debug)"
 command = "cargo"
 args = ["build"]
 
 [tasks.build-release]
+description = "Build the Rust library (release)"
 command = "cargo"
 args = ["build", "--release"]
 
-[tasks.test]
+[tasks.test-rust]
+description = "Run Rust integration tests"
 dependencies = ["build"]
+command = "cargo"
+args = ["test"]
+
+# ============================================================================
+# CMake Build Tasks (Windows - uses Visual Studio/MSVC)
+# ============================================================================
+
+[tasks.cmake-configure]
+description = "Configure CMake build (debug)"
+condition = { platforms = ["windows"] }
+script_runner = "@shell"
+script = ["cmake -S . -B build -G \"Visual Studio 17 2022\" -A x64"]
+
+[tasks.cmake-configure.windows]
+script = ["cmake -S . -B build -G \"Visual Studio 17 2022\" -A x64"]
+
+[tasks.cmake-configure-release]
+description = "Configure CMake build (release)"
+condition = { platforms = ["windows"] }
+script_runner = "@shell"
+script = ["cmake -S . -B build -G \"Visual Studio 17 2022\" -A x64 -DSURREALDB_RELEASE=ON"]
+
+# ============================================================================
+# CMake Build Tasks (Unix/macOS)
+# ============================================================================
+
+[tasks.cmake-configure.linux]
+script = ["cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug"]
+
+[tasks.cmake-configure.mac]
+script = ["cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug"]
+
+[tasks.cmake-configure-release.linux]
+script = ["cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DSURREALDB_RELEASE=ON"]
+
+[tasks.cmake-configure-release.mac]
+script = ["cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DSURREALDB_RELEASE=ON"]
+
+# ============================================================================
+# CMake Build Commands
+# ============================================================================
+
+[tasks.cmake-build]
+description = "Build with CMake"
+dependencies = ["cmake-configure"]
+script_runner = "@shell"
+script = ["cmake --build build --config Debug"]
+
+[tasks.cmake-build-release]
+description = "Build with CMake (release)"
+dependencies = ["cmake-configure-release"]
+script_runner = "@shell"
+script = ["cmake --build build --config Release"]
+
+# ============================================================================
+# Test Tasks
+# ============================================================================
+
+[tasks.test]
+description = "Build and run all tests (Rust + C tests via CMake)"
+dependencies = ["cmake-build"]
+script_runner = "@shell"
 script = [
     "cargo test",
-    "test/test.exe",
+    "ctest --test-dir build --verbose --output-on-failure -C Debug"
 ]
+
+[tasks.test-c]
+description = "Build and run only C tests via CMake/CTest"
+dependencies = ["cmake-build"]
+script_runner = "@shell"
+script = ["ctest --test-dir build --verbose --output-on-failure -C Debug"]
 
 [tasks.test-scratch]
-dependencies = ["build"]
+description = "Run the scratch test executable"
+dependencies = ["cmake-build"]
+script_runner = "@shell"
+script = ["./test/bin/Debug/test_scratch.exe"]
+
+[tasks.test-scratch.linux]
+script = ["./test/bin/test_scratch"]
+
+[tasks.test-scratch.mac]
+script = ["./test/bin/test_scratch"]
+
+# ============================================================================
+# Clean Tasks
+# ============================================================================
+
+[tasks.clean]
+description = "Clean all build artifacts"
+script_runner = "@shell"
 script = [
-    "cargo test",
-    "test/test_scratch.exe",
+    "cargo clean",
+    "cmake -E rm -rf build",
+    "cmake -E rm -rf test/bin"
 ]
 
-[tasks.test-doc]
-dependencies = ["build"]
+[tasks.clean-cmake]
+description = "Clean CMake build artifacts only"
+script_runner = "@shell"
 script = [
-    "cargo test",
-    "test/doc.exe",
+    "cmake -E rm -rf build",
+    "cmake -E rm -rf test/bin"
 ]

@@ -3,7 +3,7 @@
 #include <pthread.h>
 #endif
 #include <time.h>
-#include "../surrealdb.h"
+#include "../../include/surrealdb.h"
 
 void test_query(sr_surreal_t *db);
 void test_select(sr_surreal_t *db);
