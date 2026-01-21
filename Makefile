@@ -6,11 +6,18 @@ BUILD_DIR := build
 # Unix/Linux/macOS: Use default generator (usually Make or Ninja)
 GENERATOR_FLAG :=
 
-.PHONY: configure clean
+.PHONY: all configure build test clean
+
+all: build
 
 configure:
 	cmake -S . -B $(BUILD_DIR) $(GENERATOR_FLAG)
+
+build: configure
 	cmake --build $(BUILD_DIR)
+
+test: build
+	ctest --test-dir $(BUILD_DIR) --output-on-failure
 
 clean:
 	cmake -E rm -rf $(BUILD_DIR)

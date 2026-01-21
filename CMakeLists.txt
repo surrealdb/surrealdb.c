@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21) # First version to support C23
-project(surrealdb_c VERSION 0.1.0 LANGUAGES C)
+project(surrealdb_c VERSION 0.1.0 LANGUAGES C CXX) # We add CXX here to make some IDEs happy.
 
 # ----------------------------------------------------------------------------
 # Project Configuration

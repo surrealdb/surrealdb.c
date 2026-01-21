@@ -172,6 +172,9 @@ pub enum sr_geometry {
     sr_g_multiline(sr_g_multilinestring),
     sr_g_multipolygon(sr_g_multipolygon),
     sr_g_collection(ArrayGen<sr_geometry>),
+    /// Represents a geometry type added in a newer version of SurrealDB
+    /// that this C API version doesn't yet support
+    sr_g_unimplemented,
 }
 
 impl From<sr_geometry> for Geometry {
@@ -186,6 +189,8 @@ impl From<sr_geometry> for Geometry {
             sr_geometry::sr_g_collection(c) => Geometry::Collection(
                 c.as_slice().iter().cloned().map(|g| Geometry::from(g)).collect()
             ),
+            // Unimplemented geometry converts to empty point as fallback
+            sr_geometry::sr_g_unimplemented => Geometry::Point(Point::new(0.0, 0.0)),
         }
     }
 }
@@ -202,7 +207,8 @@ impl From<Geometry> for sr_geometry {
             Geometry::Collection(c) => sr_geometry::sr_g_collection(
                 c.into_iter().map(|g| g.into()).collect::<Vec<sr_geometry>>().make_array()
             ),
-            _ => unimplemented!("New geometry variants added to SurrealDB must be added here."),
+            // New geometry variants added to SurrealDB that aren't yet supported
+            _ => sr_geometry::sr_g_unimplemented,
         }
     }
 }
@@ -211,7 +217,8 @@ impl From<Value> for sr_geometry {
     fn from(value: Value) -> Self {
         match value {
             Value::SR_GEOMETRY_OBJECT(g) => g,
-            _ => panic!("Expected SR_GEOMETRY_OBJECT, got {:?}", value),
+            // Non-geometry value passed where geometry expected - return unimplemented marker
+            _ => sr_geometry::sr_g_unimplemented,
         }
     }
 }

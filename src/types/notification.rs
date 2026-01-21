@@ -44,6 +44,9 @@ pub enum Action {
     SR_ACTION_CREATE,
     SR_ACTION_UPDATE,
     SR_ACTION_DELETE,
+    /// Represents an action type added in a newer version of SurrealDB
+    /// that this C API version doesn't yet support
+    SR_ACTION_UNIMPLEMENTED,
 }
 
 impl From<surrealdb::Action> for Action {
@@ -52,7 +55,7 @@ impl From<surrealdb::Action> for Action {
             surrealdb::Action::Create => Action::SR_ACTION_CREATE,
             surrealdb::Action::Update => Action::SR_ACTION_UPDATE,
             surrealdb::Action::Delete => Action::SR_ACTION_DELETE,
-            _ => todo!(),
+            _ => Action::SR_ACTION_UNIMPLEMENTED,
         }
     }
 }

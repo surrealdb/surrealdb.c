@@ -16,6 +16,7 @@ use surrealdb::{
     engine::any::{self, Any},
     opt::Resource,
     opt::auth,
+    opt::PatchOp,
     sql, Surreal as sdbSurreal, Value as apiValue,
 };
 use tokio::runtime::Runtime;
@@ -444,6 +445,170 @@ impl Surreal {
         })
     }
 
+    // insert_relation.rs
+    /// Insert a relation between records
+    ///
+    /// The content object must contain 'in' and 'out' fields specifying the records to relate.
+    /// Additional fields can be added as relation properties.
+    ///
+    /// # Examples
+    ///
+    /// ```c
+    /// sr_surreal_t *db;
+    /// sr_string_t err;
+    /// sr_value_t *result;
+    /// sr_object_t *content = sr_object_new();
+    /// sr_object_insert_str(content, "in", "person:john");
+    /// sr_object_insert_str(content, "out", "person:jane");
+    /// sr_object_insert_str(content, "met", "2024-01-01");
+    /// int len = sr_insert_relation(db, &err, &result, "knows", content);
+    /// if (len < 0) {
+    ///     printf("Failed to insert relation: %s", err);
+    ///     return 1;
+    /// }
+    /// sr_free_arr(result, len);
+    /// ```
+    #[export_name = "sr_insert_relation"]
+    pub extern "C" fn insert_relation(
+        db: &Surreal,
+        err_ptr: *mut string_t,
+        res_ptr: *mut *mut Value,
+        table: *const c_char,
+        content: *const Object,
+    ) -> c_int {
+        with_surreal_async(db, err_ptr, |surreal| async {
+            let table = unsafe { CStr::from_ptr(table) }.to_str()?;
+            let content = sql::Object::from(unsafe { &*content }.clone());
+
+            let res = surreal
+                .db
+                .insert(Resource::from(table))
+                .relation(content)
+                .await?;
+
+            let result = match res.into_inner() {
+                sql::Value::Array(a) => Array::from(a),
+                v => Array::from(vec![v.into()]),
+            };
+
+            let ArrayGen { ptr, len } = result.into();
+            unsafe { res_ptr.write(ptr) }
+
+            Ok(len as c_int)
+        })
+    }
+
+    // run.rs
+    /// Execute a SurrealDB function
+    ///
+    /// # Examples
+    ///
+    /// ```c
+    /// sr_surreal_t *db;
+    /// sr_string_t err;
+    /// sr_value_t *result;
+    /// sr_array_t args = ...; // create args array
+    /// if (sr_run(db, &err, &result, "fn::my_function", &args) < 0) {
+    ///     printf("Failed to run function: %s", err);
+    ///     return 1;
+    /// }
+    /// sr_free_arr(result, 1);
+    /// ```
+    #[export_name = "sr_run"]
+    pub extern "C" fn run(
+        db: &Surreal,
+        err_ptr: *mut string_t,
+        res_ptr: *mut *mut Value,
+        function_name: *const c_char,
+        args: *const Array,
+    ) -> c_int {
+        with_surreal_async(db, err_ptr, |surreal| async {
+            let function_name = unsafe { CStr::from_ptr(function_name) }.to_str()?;
+            
+            let args_vec: Vec<sql::Value> = if args.is_null() {
+                vec![]
+            } else {
+                let arr = unsafe { &*args };
+                arr.as_slice().iter().cloned().map(|v| v.into()).collect()
+            };
+
+            let res: apiValue = surreal
+                .db
+                .run(function_name)
+                .args(args_vec)
+                .await?;
+
+            let result_arr = match res.into_inner() {
+                sql::Value::Array(a) => Array::from(a),
+                v => Array::from(vec![v.into()]),
+            };
+
+            let ArrayGen { ptr, len } = result_arr.into();
+            unsafe { res_ptr.write(ptr) }
+
+            Ok(len as c_int)
+        })
+    }
+
+    // relate.rs
+    /// Create a graph relation between two records
+    ///
+    /// # Examples
+    ///
+    /// ```c
+    /// sr_surreal_t *db;
+    /// sr_string_t err;
+    /// sr_value_t *result;
+    /// sr_object_t *content = sr_object_new();
+    /// int len = sr_relate(db, &err, &result, "person:john", "knows", "person:jane", content);
+    /// if (len < 0) {
+    ///     printf("Failed to create relation: %s", err);
+    ///     return 1;
+    /// }
+    /// sr_free_arr(result, len);
+    /// ```
+    #[export_name = "sr_relate"]
+    pub extern "C" fn relate(
+        db: &Surreal,
+        err_ptr: *mut string_t,
+        res_ptr: *mut *mut Value,
+        from: *const c_char,
+        relation: *const c_char,
+        to: *const c_char,
+        content: *const Object,
+    ) -> c_int {
+        with_surreal_async(db, err_ptr, |surreal| async {
+            let from = unsafe { CStr::from_ptr(from) }.to_str()?;
+            let relation = unsafe { CStr::from_ptr(relation) }.to_str()?;
+            let to = unsafe { CStr::from_ptr(to) }.to_str()?;
+
+            let query = if content.is_null() {
+                format!("RELATE {from}->{relation}->{to}")
+            } else {
+                format!("RELATE {from}->{relation}->{to} CONTENT $content")
+            };
+
+            let mut q = surreal.db.query(&query);
+            
+            if !content.is_null() {
+                let content_obj = sql::Object::from(unsafe { &*content }.clone());
+                q = q.bind(("content", content_obj));
+            }
+
+            let mut res = q.await?;
+            
+            let result = match res.take::<apiValue>(0)?.into_inner() {
+                sql::Value::Array(a) => Array::from(a),
+                v => Array::from(vec![v.into()]),
+            };
+
+            let ArrayGen { ptr, len } = result.into();
+            unsafe { res_ptr.write(ptr) }
+
+            Ok(len as c_int)
+        })
+    }
+
     // invalidate.rs
     /// invalidate the current authentication session
     ///
@@ -558,7 +723,7 @@ impl Surreal {
     // mod.rs
 
     // patch.rs
-    /// patch records with JSON patch operations using SurrealQL
+    /// Add a value at a JSON path using JSON Patch
     ///
     /// # Examples
     ///
@@ -566,13 +731,138 @@ impl Surreal {
     /// sr_surreal_t *db;
     /// sr_string_t err;
     /// sr_value_t *patched;
-    /// // Use SurrealQL PATCH syntax in query instead
-    /// // This is a placeholder - patch operations require specific PatchOps type
-    /// // which is complex to expose through C API
-    /// // Users should use merge() or update() for similar functionality
+    /// sr_value_t value = ...; // create value to add
+    /// int len = sr_patch_add(db, &err, &patched, "person:john", "/tags/0", &value);
+    /// if (len < 0) {
+    ///     printf("Failed to patch: %s", err);
+    ///     return 1;
+    /// }
+    /// sr_free_arr(patched, len);
     /// ```
-    // Note: Patch API in SurrealDB 2.4.1 requires PatchOps type which is not easily
-    // exposed through C API. Users should use sr_merge() for similar functionality.
+    #[export_name = "sr_patch_add"]
+    pub extern "C" fn patch_add(
+        db: &Surreal,
+        err_ptr: *mut string_t,
+        res_ptr: *mut *mut Value,
+        resource: *const c_char,
+        path: *const c_char,
+        value: *const Value,
+    ) -> c_int {
+        with_surreal_async(db, err_ptr, |surreal| async {
+            let resource = unsafe { CStr::from_ptr(resource) }.to_str()?;
+            let path = unsafe { CStr::from_ptr(path) }.to_str()?;
+            let value: sql::Value = unsafe { &*value }.clone().into();
+
+            let res = surreal
+                .db
+                .update(Resource::from(resource))
+                .patch(PatchOp::add(path, value))
+                .await?;
+
+            let result = match res.into_inner() {
+                sql::Value::Array(a) => Array::from(a),
+                v => Array::from(vec![v.into()]),
+            };
+
+            let ArrayGen { ptr, len } = result.into();
+            unsafe { res_ptr.write(ptr) }
+
+            Ok(len as c_int)
+        })
+    }
+
+    /// Remove a value at a JSON path using JSON Patch
+    ///
+    /// # Examples
+    ///
+    /// ```c
+    /// sr_surreal_t *db;
+    /// sr_string_t err;
+    /// sr_value_t *patched;
+    /// int len = sr_patch_remove(db, &err, &patched, "person:john", "/temporary_field");
+    /// if (len < 0) {
+    ///     printf("Failed to patch: %s", err);
+    ///     return 1;
+    /// }
+    /// sr_free_arr(patched, len);
+    /// ```
+    #[export_name = "sr_patch_remove"]
+    pub extern "C" fn patch_remove(
+        db: &Surreal,
+        err_ptr: *mut string_t,
+        res_ptr: *mut *mut Value,
+        resource: *const c_char,
+        path: *const c_char,
+    ) -> c_int {
+        with_surreal_async(db, err_ptr, |surreal| async {
+            let resource = unsafe { CStr::from_ptr(resource) }.to_str()?;
+            let path = unsafe { CStr::from_ptr(path) }.to_str()?;
+
+            let res = surreal
+                .db
+                .update(Resource::from(resource))
+                .patch(PatchOp::remove(path))
+                .await?;
+
+            let result = match res.into_inner() {
+                sql::Value::Array(a) => Array::from(a),
+                v => Array::from(vec![v.into()]),
+            };
+
+            let ArrayGen { ptr, len } = result.into();
+            unsafe { res_ptr.write(ptr) }
+
+            Ok(len as c_int)
+        })
+    }
+
+    /// Replace a value at a JSON path using JSON Patch
+    ///
+    /// # Examples
+    ///
+    /// ```c
+    /// sr_surreal_t *db;
+    /// sr_string_t err;
+    /// sr_value_t *patched;
+    /// sr_value_t value = ...; // create new value
+    /// int len = sr_patch_replace(db, &err, &patched, "person:john", "/name", &value);
+    /// if (len < 0) {
+    ///     printf("Failed to patch: %s", err);
+    ///     return 1;
+    /// }
+    /// sr_free_arr(patched, len);
+    /// ```
+    #[export_name = "sr_patch_replace"]
+    pub extern "C" fn patch_replace(
+        db: &Surreal,
+        err_ptr: *mut string_t,
+        res_ptr: *mut *mut Value,
+        resource: *const c_char,
+        path: *const c_char,
+        value: *const Value,
+    ) -> c_int {
+        with_surreal_async(db, err_ptr, |surreal| async {
+            let resource = unsafe { CStr::from_ptr(resource) }.to_str()?;
+            let path = unsafe { CStr::from_ptr(path) }.to_str()?;
+            let value: sql::Value = unsafe { &*value }.clone().into();
+
+            let res = surreal
+                .db
+                .update(Resource::from(resource))
+                .patch(PatchOp::replace(path, value))
+                .await?;
+
+            let result = match res.into_inner() {
+                sql::Value::Array(a) => Array::from(a),
+                v => Array::from(vec![v.into()]),
+            };
+
+            let ArrayGen { ptr, len } = result.into();
+            unsafe { res_ptr.write(ptr) }
+
+            Ok(len as c_int)
+        })
+    }
 
     // query.rs
     #[export_name = "sr_query"]

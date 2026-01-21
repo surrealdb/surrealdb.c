@@ -1,6 +1,9 @@
-use std::ffi::{c_double, c_float, c_int};
+use std::ffi::{c_double, c_float, c_int, CStr};
 
 use surrealdb::sql;
+use rust_decimal::Decimal;
+use crate::string::string_t;
+use crate::utils::CStringExt2;
 
 #[allow(non_camel_case_types)]
 #[derive(Debug, Clone, PartialEq)]
@@ -8,6 +11,8 @@ use surrealdb::sql;
 pub enum Number {
     SR_NUMBER_INT(i64),
     SR_NUMBER_FLOAT(f64),
+    /// Decimal stored as string representation for C compatibility
+    SR_NUMBER_DECIMAL(string_t),
 }
 
 impl From<c_int> for Number {
@@ -28,11 +33,26 @@ impl From<c_double> for Number {
     }
 }
 
+impl From<Decimal> for Number {
+    fn from(value: Decimal) -> Self {
+        Number::SR_NUMBER_DECIMAL(value.to_string().to_string_t())
+    }
+}
+
 impl From<Number> for sql::Number {
     fn from(value: Number) -> Self {
         match value {
             Number::SR_NUMBER_INT(i) => sql::Number::Int(i),
             Number::SR_NUMBER_FLOAT(f) => sql::Number::Float(f),
+            Number::SR_NUMBER_DECIMAL(s) => {
+                let cstr = unsafe { CStr::from_ptr(s.0) };
+                let decimal_str = cstr.to_string_lossy();
+                match decimal_str.parse::<Decimal>() {
+                    Ok(d) => sql::Number::Decimal(d),
+                    // Fallback to float if parsing fails
+                    Err(_) => sql::Number::Float(decimal_str.parse().unwrap_or(0.0)),
+                }
+            }
         }
     }
 }

@@ -183,14 +183,17 @@ impl SurrealRpc {
         })
     }
 
+    /// Get a stream for receiving live query notifications
+    ///
+    /// Returns a stream that can be polled for notifications using sr_rpc_stream_next
     #[export_name = "sr_surreal_rpc_notifications"]
     pub extern "C" fn notifications(
         &self,
         err_ptr: *mut string_t,
-        stream_ptr: *mut &mut RpcStream,
+        stream_ptr: *mut *mut RpcStream,
     ) -> c_int {
         with_async(self, err_ptr, |ctx| async {
-            let stream = ctx
+            let receiver = ctx
                 .inner
                 .read()
                 .await
@@ -198,7 +201,11 @@ impl SurrealRpc {
                 .notifications()
                 .ok_or("Notifications not enabled")?;
 
-            Ok(0)
+            let rpc_stream = RpcStream::new(receiver);
+            let stream_boxed = Box::new(rpc_stream);
+            unsafe { stream_ptr.write(Box::leak(stream_boxed)) };
+
+            Ok(1)
         })
     }
 
@@ -242,6 +249,7 @@ where
     }
 }
 
+#[allow(dead_code)]
 struct SurrealRpcInner {
     kvs: Datastore,
     sess: ArcSwap<Session>,

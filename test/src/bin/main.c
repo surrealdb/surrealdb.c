@@ -1,7 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <unity.h>
-#include "test_granular.h"
+#include "../tests/test_suites.h"
 
 // Unity requires setUp and tearDown functions
 void setUp(void) {

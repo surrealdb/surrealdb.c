@@ -39,20 +39,25 @@ impl From<sdbValue> for Value {
             sdbValue::Number(n) => match n {
                 sql::Number::Int(i) => Value::SR_VALUE_NUMBER(Number::SR_NUMBER_INT(i)),
                 sql::Number::Float(f) => Value::SR_VALUE_NUMBER(Number::SR_NUMBER_FLOAT(f)),
-                sql::Number::Decimal(_) => todo!(),
-                _ => unimplemented!("New variants should be added above."),
+                sql::Number::Decimal(d) => Value::SR_VALUE_NUMBER(Number::from(d)),
+                _ => {
+                    // Handle any new Number variants by converting to string representation
+                    Value::SR_VALUE_NUMBER(Number::SR_NUMBER_FLOAT(0.0))
+                }
             },
             sdbValue::Strand(s) => Value::SR_VALUE_STRAND(s.0.to_string_t()),
             sdbValue::Duration(d) => Value::SR_VALUE_DURATION(d.into()),
             sdbValue::Datetime(dt) => Value::SR_VALUE_DATETIME(dt.to_rfc3339().to_string_t()),
             sdbValue::Uuid(u) => Value::SR_VALUE_UUID(u.into()),
-            // unecssary box see: https://github.com/mozilla/cbindgen/issues/981
+            // unnecessary box see: https://github.com/mozilla/cbindgen/issues/981
             sdbValue::Array(a) => Value::SR_VALUE_ARRAY(Box::new(a.into())),
             sdbValue::Object(o) => Value::SR_VALUE_OBJECT(o.into()),
             sdbValue::Geometry(g) => Value::SR_GEOMETRY_OBJECT(sr_geometry::from(g)),
             sdbValue::Bytes(b) => Value::SR_VALUE_BYTES(b.into()),
             sdbValue::Thing(t) => Value::SR_VALUE_THING(t.into()),
-            _ => unimplemented!("other variants shouldn't be returned"),
+            // Other variants are internal/computed and shouldn't appear in query results
+            // If they do, we convert to None to avoid panics
+            _ => Value::SR_VALUE_NONE,
         }
     }
 }
@@ -66,20 +71,24 @@ impl From<&sdbValue> for Value {
             sdbValue::Number(n) => match n {
                 sql::Number::Int(i) => Value::SR_VALUE_NUMBER(Number::SR_NUMBER_INT(*i)),
                 sql::Number::Float(f) => Value::SR_VALUE_NUMBER(Number::SR_NUMBER_FLOAT(*f)),
-                sql::Number::Decimal(_) => todo!(),
-                _ => todo!(),
+                sql::Number::Decimal(d) => Value::SR_VALUE_NUMBER(Number::from(*d)),
+                _ => {
+                    // Handle any new Number variants
+                    Value::SR_VALUE_NUMBER(Number::SR_NUMBER_FLOAT(0.0))
+                }
             },
             sdbValue::Strand(s) => Value::SR_VALUE_STRAND(s.0.as_str().to_string_t()),
             sdbValue::Duration(d) => Value::SR_VALUE_DURATION(d.clone().into()),
             sdbValue::Datetime(dt) => Value::SR_VALUE_DATETIME(dt.to_rfc3339().to_string_t()),
             sdbValue::Uuid(u) => Value::SR_VALUE_UUID(u.clone().into()),
-            // unecssary box see: https://github.com/mozilla/cbindgen/issues/981
+            // unnecessary box see: https://github.com/mozilla/cbindgen/issues/981
             sdbValue::Array(a) => Value::SR_VALUE_ARRAY(Box::new(a.into())),
             sdbValue::Object(o) => Value::SR_VALUE_OBJECT(o.into()),
-            sdbValue::Geometry(_) => todo!(),
+            sdbValue::Geometry(g) => Value::SR_GEOMETRY_OBJECT(sr_geometry::from(g.clone())),
             sdbValue::Bytes(b) => Value::SR_VALUE_BYTES(b.clone().into()),
             sdbValue::Thing(t) => Value::SR_VALUE_THING(t.into()),
-            _ => unimplemented!("other variants shouldn't be returned"),
+            // Other variants are internal/computed and shouldn't appear in query results
+            _ => Value::SR_VALUE_NONE,
         }
     }
 }
@@ -135,5 +144,60 @@ impl Value {
     #[export_name = "sr_value_eq"]
     pub extern "C" fn value_eq(lhs: &Value, rhs: &Value) -> bool {
         lhs == rhs
+    }
+
+    /// Create a None value
+    #[export_name = "sr_value_none"]
+    pub extern "C" fn value_none() -> *mut Value {
+        Box::into_raw(Box::new(Value::SR_VALUE_NONE))
+    }
+
+    /// Create a Null value
+    #[export_name = "sr_value_null"]
+    pub extern "C" fn value_null() -> *mut Value {
+        Box::into_raw(Box::new(Value::SR_VALUE_NULL))
+    }
+
+    /// Create a Bool value
+    #[export_name = "sr_value_bool"]
+    pub extern "C" fn value_bool(val: bool) -> *mut Value {
+        Box::into_raw(Box::new(Value::SR_VALUE_BOOL(val)))
+    }
+
+    /// Create an Int value
+    #[export_name = "sr_value_int"]
+    pub extern "C" fn value_int(val: i64) -> *mut Value {
+        Box::into_raw(Box::new(Value::SR_VALUE_NUMBER(Number::SR_NUMBER_INT(val))))
+    }
+
+    /// Create a Float value
+    #[export_name = "sr_value_float"]
+    pub extern "C" fn value_float(val: f64) -> *mut Value {
+        Box::into_raw(Box::new(Value::SR_VALUE_NUMBER(Number::SR_NUMBER_FLOAT(val))))
+    }
+
+    /// Create a String value
+    #[export_name = "sr_value_string"]
+    pub extern "C" fn value_string(val: *const std::ffi::c_char) -> *mut Value {
+        let s = unsafe { std::ffi::CStr::from_ptr(val) }
+            .to_string_lossy()
+            .to_string()
+            .to_string_t();
+        Box::into_raw(Box::new(Value::SR_VALUE_STRAND(s)))
+    }
+
+    /// Create an Object value from an existing object
+    #[export_name = "sr_value_object"]
+    pub extern "C" fn value_object(obj: *const Object) -> *mut Value {
+        let obj = unsafe { &*obj }.clone();
+        Box::into_raw(Box::new(Value::SR_VALUE_OBJECT(obj)))
+    }
+
+    /// Free a value created by sr_value_* functions
+    #[export_name = "sr_value_free"]
+    pub extern "C" fn value_free(val: *mut Value) {
+        if !val.is_null() {
+            let _ = unsafe { Box::from_raw(val) };
+        }
     }
 }

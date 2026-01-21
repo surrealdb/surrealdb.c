@@ -22,6 +22,11 @@ typedef enum sr_action {
   SR_ACTION_CREATE,
   SR_ACTION_UPDATE,
   SR_ACTION_DELETE,
+  /**
+   * Represents an action type added in a newer version of SurrealDB
+   * that this C API version doesn't yet support
+   */
+  SR_ACTION_UNIMPLEMENTED,
 } sr_action;
 
 typedef struct sr_opaque_object_internal_t sr_opaque_object_internal_t;
@@ -64,6 +69,10 @@ typedef struct sr_object_t {
 typedef enum sr_number_t_Tag {
   SR_NUMBER_INT,
   SR_NUMBER_FLOAT,
+  /**
+   * Decimal stored as string representation for C compatibility
+   */
+  SR_NUMBER_DECIMAL,
 } sr_number_t_Tag;
 
 typedef struct sr_number_t {
@@ -74,6 +83,9 @@ typedef struct sr_number_t {
     };
     struct {
       double sr_number_float;
+    };
+    struct {
+      sr_string_t sr_number_decimal;
     };
   };
 } sr_number_t;
@@ -155,6 +167,11 @@ typedef enum sr_sr_geometry_Tag {
   sr_g_multiline,
   sr_g_multipolygon,
   sr_g_collection,
+  /**
+   * Represents a geometry type added in a newer version of SurrealDB
+   * that this C API version doesn't yet support
+   */
+  sr_g_unimplemented,
 } sr_sr_geometry_Tag;
 
 typedef struct sr_sr_geometry {
@@ -532,6 +549,85 @@ int sr_insert(const struct sr_surreal_t *db,
               const struct sr_object_t *content);
 
 /**
+ * Insert a relation between records
+ *
+ * The content object must contain 'in' and 'out' fields specifying the records to relate.
+ * Additional fields can be added as relation properties.
+ *
+ * # Examples
+ *
+ * ```c
+ * sr_surreal_t *db;
+ * sr_string_t err;
+ * sr_value_t *result;
+ * sr_object_t *content = sr_object_new();
+ * sr_object_insert_str(content, "in", "person:john");
+ * sr_object_insert_str(content, "out", "person:jane");
+ * sr_object_insert_str(content, "met", "2024-01-01");
+ * int len = sr_insert_relation(db, &err, &result, "knows", content);
+ * if (len < 0) {
+ *     printf("Failed to insert relation: %s", err);
+ *     return 1;
+ * }
+ * sr_free_arr(result, len);
+ * ```
+ */
+int sr_insert_relation(const struct sr_surreal_t *db,
+                       sr_string_t *err_ptr,
+                       struct sr_value_t **res_ptr,
+                       const char *table,
+                       const struct sr_object_t *content);
+
+/**
+ * Execute a SurrealDB function
+ *
+ * # Examples
+ *
+ * ```c
+ * sr_surreal_t *db;
+ * sr_string_t err;
+ * sr_value_t *result;
+ * sr_array_t args = ...; // create args array
+ * if (sr_run(db, &err, &result, "fn::my_function", &args) < 0) {
+ *     printf("Failed to run function: %s", err);
+ *     return 1;
+ * }
+ * sr_free_arr(result, 1);
+ * ```
+ */
+int sr_run(const struct sr_surreal_t *db,
+           sr_string_t *err_ptr,
+           struct sr_value_t **res_ptr,
+           const char *function_name,
+           const struct sr_array_t *args);
+
+/**
+ * Create a graph relation between two records
+ *
+ * # Examples
+ *
+ * ```c
+ * sr_surreal_t *db;
+ * sr_string_t err;
+ * sr_value_t *result;
+ * sr_object_t *content = sr_object_new();
+ * int len = sr_relate(db, &err, &result, "person:john", "knows", "person:jane", content);
+ * if (len < 0) {
+ *     printf("Failed to create relation: %s", err);
+ *     return 1;
+ * }
+ * sr_free_arr(result, len);
+ * ```
+ */
+int sr_relate(const struct sr_surreal_t *db,
+              sr_string_t *err_ptr,
+              struct sr_value_t **res_ptr,
+              const char *from,
+              const char *relation,
+              const char *to,
+              const struct sr_object_t *content);
+
+/**
  * invalidate the current authentication session
  *
  * # Examples
@@ -598,7 +694,7 @@ int sr_merge(const struct sr_surreal_t *db,
              const struct sr_object_t *content);
 
 /**
- * patch records with JSON patch operations using SurrealQL
+ * Add a value at a JSON path using JSON Patch
  *
  * # Examples
  *
@@ -606,12 +702,70 @@ int sr_merge(const struct sr_surreal_t *db,
  * sr_surreal_t *db;
  * sr_string_t err;
  * sr_value_t *patched;
- * // Use SurrealQL PATCH syntax in query instead
- * // This is a placeholder - patch operations require specific PatchOps type
- * // which is complex to expose through C API
- * // Users should use merge() or update() for similar functionality
+ * sr_value_t value = ...; // create value to add
+ * int len = sr_patch_add(db, &err, &patched, "person:john", "/tags/0", &value);
+ * if (len < 0) {
+ *     printf("Failed to patch: %s", err);
+ *     return 1;
+ * }
+ * sr_free_arr(patched, len);
  * ```
  */
+int sr_patch_add(const struct sr_surreal_t *db,
+                 sr_string_t *err_ptr,
+                 struct sr_value_t **res_ptr,
+                 const char *resource,
+                 const char *path,
+                 const struct sr_value_t *value);
+
+/**
+ * Remove a value at a JSON path using JSON Patch
+ *
+ * # Examples
+ *
+ * ```c
+ * sr_surreal_t *db;
+ * sr_string_t err;
+ * sr_value_t *patched;
+ * int len = sr_patch_remove(db, &err, &patched, "person:john", "/temporary_field");
+ * if (len < 0) {
+ *     printf("Failed to patch: %s", err);
+ *     return 1;
+ * }
+ * sr_free_arr(patched, len);
+ * ```
+ */
+int sr_patch_remove(const struct sr_surreal_t *db,
+                    sr_string_t *err_ptr,
+                    struct sr_value_t **res_ptr,
+                    const char *resource,
+                    const char *path);
+
+/**
+ * Replace a value at a JSON path using JSON Patch
+ *
+ * # Examples
+ *
+ * ```c
+ * sr_surreal_t *db;
+ * sr_string_t err;
+ * sr_value_t *patched;
+ * sr_value_t value = ...; // create new value
+ * int len = sr_patch_replace(db, &err, &patched, "person:john", "/name", &value);
+ * if (len < 0) {
+ *     printf("Failed to patch: %s", err);
+ *     return 1;
+ * }
+ * sr_free_arr(patched, len);
+ * ```
+ */
+int sr_patch_replace(const struct sr_surreal_t *db,
+                     sr_string_t *err_ptr,
+                     struct sr_value_t **res_ptr,
+                     const char *resource,
+                     const char *path,
+                     const struct sr_value_t *value);
+
 int sr_query(const struct sr_surreal_t *db,
              sr_string_t *err_ptr,
              struct sr_arr_res_t **res_ptr,
@@ -895,6 +1049,11 @@ int sr_surreal_rpc_execute(const struct sr_surreal_rpc_t *self,
                            const uint8_t *ptr,
                            int len);
 
+/**
+ * Get a stream for receiving live query notifications
+ *
+ * Returns a stream that can be polled for notifications using sr_rpc_stream_next
+ */
 int sr_surreal_rpc_notifications(const struct sr_surreal_rpc_t *self,
                                  sr_string_t *err_ptr,
                                  struct sr_RpcStream **stream_ptr);
@@ -938,8 +1097,59 @@ int sr_stream_next(struct sr_stream_t *self, struct sr_notification_t *notificat
 
 void sr_stream_kill(struct sr_stream_t *stream);
 
+/**
+ * Get the next notification from the stream
+ * Returns the length of the CBOR-encoded notification, or SR_CLOSED if the stream is closed
+ */
+int sr_rpc_stream_next(struct sr_RpcStream *self, uint8_t **res_ptr);
+
+/**
+ * Free an RpcStream
+ */
+void sr_rpc_stream_free(struct sr_RpcStream *stream);
+
 void sr_free_string(sr_string_t string);
 
 void sr_value_print(const struct sr_value_t *val);
 
 bool sr_value_eq(const struct sr_value_t *lhs, const struct sr_value_t *rhs);
+
+/**
+ * Create a None value
+ */
+struct sr_value_t *sr_value_none(void);
+
+/**
+ * Create a Null value
+ */
+struct sr_value_t *sr_value_null(void);
+
+/**
+ * Create a Bool value
+ */
+struct sr_value_t *sr_value_bool(bool val);
+
+/**
+ * Create an Int value
+ */
+struct sr_value_t *sr_value_int(int64_t val);
+
+/**
+ * Create a Float value
+ */
+struct sr_value_t *sr_value_float(double val);
+
+/**
+ * Create a String value
+ */
+struct sr_value_t *sr_value_string(const char *val);
+
+/**
+ * Create an Object value from an existing object
+ */
+struct sr_value_t *sr_value_object(const struct sr_object_t *obj);
+
+/**
+ * Free a value created by sr_value_* functions
+ */
+void sr_value_free(struct sr_value_t *val);

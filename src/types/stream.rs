@@ -56,6 +56,14 @@ pub struct RpcStream {
 }
 
 impl RpcStream {
+    /// Create a new RpcStream from a notification receiver
+    pub fn new(rx: Receiver<dbs::Notification>) -> Self {
+        RpcStream { rx }
+    }
+
+    /// Get the next notification from the stream
+    /// Returns the length of the CBOR-encoded notification, or SR_CLOSED if the stream is closed
+    #[export_name = "sr_rpc_stream_next"]
     pub extern "C" fn next(&mut self, res_ptr: *mut *mut u8) -> c_int {
         let not = match self.rx.recv_blocking() {
             Ok(n) => n,
@@ -75,11 +83,21 @@ impl RpcStream {
         };
 
         let mut res = Vec::new();
-        ciborium::into_writer(&cbor.0, &mut res).unwrap();
+        if ciborium::into_writer(&cbor.0, &mut res).is_err() {
+            return SR_ERROR;
+        }
         let out = res.make_array();
 
         unsafe { res_ptr.write(out.ptr) }
 
         out.len
+    }
+
+    /// Free an RpcStream
+    #[export_name = "sr_rpc_stream_free"]
+    pub extern "C" fn free(stream: *mut RpcStream) {
+        if !stream.is_null() {
+            let _ = unsafe { Box::from_raw(stream) };
+        }
     }
 }

@@ -10,36 +10,36 @@ find_package(Unity REQUIRED)
 # Put test outputs in the build tree (cleaner than writing into source/)
 set(_test_bin_dir "${CMAKE_CURRENT_BINARY_DIR}/bin")
 
-add_library(test_granular STATIC
-        src/test_granular.c
-)
-target_include_directories(test_granular PRIVATE
-        "${CMAKE_CURRENT_SOURCE_DIR}/src"
-)
-target_link_libraries(test_granular PRIVATE
-        Unity::unity
-)
+# ============================================================================
+# Test Runner Executable
+# All tests are header-only, so we just compile main.c
+# ============================================================================
 
 add_executable(test_runner
-        src/test.c
+        src/bin/main.c
 )
 target_include_directories(test_runner PRIVATE
-        "${CMAKE_CURRENT_SOURCE_DIR}/src"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/tests"
+        "${CMAKE_SOURCE_DIR}/include"
 )
 target_link_libraries(test_runner PRIVATE
-        test_granular
-        surrealdb_c
         Unity::unity
+        surrealdb_c
 )
 set_target_properties(test_runner PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY "${_test_bin_dir}"
 )
+
+# ============================================================================
+# Scratch Test Executable (for ad-hoc testing)
+# ============================================================================
 
 add_executable(test_scratch
         src/test_scratch.c
 )
 target_include_directories(test_scratch PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/src"
+        "${CMAKE_SOURCE_DIR}/include"
 )
 target_link_libraries(test_scratch PRIVATE
         surrealdb_c
@@ -47,6 +47,10 @@ target_link_libraries(test_scratch PRIVATE
 set_target_properties(test_scratch PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY "${_test_bin_dir}"
 )
+
+# ============================================================================
+# CTest Integration
+# ============================================================================
 
 enable_testing()
 add_test(NAME surrealdb_c_tests COMMAND test_runner)
