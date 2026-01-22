@@ -340,4 +340,90 @@ impl Value {
         let mp = sr_g_multipoint(points.make_array());
         Box::into_raw(Box::new(Value::SR_GEOMETRY_OBJECT(sr_geometry::sr_g_multipoint(mp))))
     }
+
+    /// Create a MultiLineString geometry value
+    /// linestrings is an array of pointers to coordinate arrays
+    /// lens is an array of lengths for each linestring
+    /// count is the number of linestrings
+    #[export_name = "sr_value_multilinestring"]
+    pub extern "C" fn value_multilinestring(
+        linestrings: *const *const crate::geometry::sr_g_coord,
+        lens: *const std::ffi::c_int,
+        count: std::ffi::c_int
+    ) -> *mut Value {
+        use crate::geometry::{sr_g_linestring, sr_g_multilinestring, sr_geometry};
+        use crate::array::MakeArray;
+        
+        if linestrings.is_null() || lens.is_null() || count <= 0 {
+            let mls = sr_g_multilinestring(Vec::<sr_g_linestring>::new().make_array());
+            return Box::into_raw(Box::new(Value::SR_GEOMETRY_OBJECT(sr_geometry::sr_g_multiline(mls))));
+        }
+        
+        let linestring_ptrs = unsafe { std::slice::from_raw_parts(linestrings, count as usize) };
+        let lengths = unsafe { std::slice::from_raw_parts(lens, count as usize) };
+        
+        let lines: Vec<sr_g_linestring> = linestring_ptrs.iter()
+            .zip(lengths.iter())
+            .map(|(&coords_ptr, &len)| {
+                if coords_ptr.is_null() || len <= 0 {
+                    sr_g_linestring(Vec::new().make_array())
+                } else {
+                    let slice = unsafe { std::slice::from_raw_parts(coords_ptr, len as usize) };
+                    sr_g_linestring(slice.to_vec().make_array())
+                }
+            })
+            .collect();
+        
+        let mls = sr_g_multilinestring(lines.make_array());
+        Box::into_raw(Box::new(Value::SR_GEOMETRY_OBJECT(sr_geometry::sr_g_multiline(mls))))
+    }
+
+    /// Create a MultiPolygon geometry value
+    /// polygons is an array of pointers to coordinate arrays (exterior rings only)
+    /// lens is an array of lengths for each polygon's exterior ring
+    /// count is the number of polygons
+    #[export_name = "sr_value_multipolygon"]
+    pub extern "C" fn value_multipolygon(
+        polygons: *const *const crate::geometry::sr_g_coord,
+        lens: *const std::ffi::c_int,
+        count: std::ffi::c_int
+    ) -> *mut Value {
+        use crate::geometry::{sr_g_linestring, sr_g_polygon, sr_g_multipolygon, sr_geometry};
+        use crate::array::MakeArray;
+        
+        if polygons.is_null() || lens.is_null() || count <= 0 {
+            let mpoly = sr_g_multipolygon(Vec::<sr_g_polygon>::new().make_array());
+            return Box::into_raw(Box::new(Value::SR_GEOMETRY_OBJECT(sr_geometry::sr_g_multipolygon(mpoly))));
+        }
+        
+        let polygon_ptrs = unsafe { std::slice::from_raw_parts(polygons, count as usize) };
+        let lengths = unsafe { std::slice::from_raw_parts(lens, count as usize) };
+        
+        let polys: Vec<sr_g_polygon> = polygon_ptrs.iter()
+            .zip(lengths.iter())
+            .map(|(&coords_ptr, &len)| {
+                let exterior = if coords_ptr.is_null() || len <= 0 {
+                    sr_g_linestring(Vec::new().make_array())
+                } else {
+                    let slice = unsafe { std::slice::from_raw_parts(coords_ptr, len as usize) };
+                    sr_g_linestring(slice.to_vec().make_array())
+                };
+                let interiors: Vec<sr_g_linestring> = Vec::new();
+                sr_g_polygon(exterior, interiors.make_array())
+            })
+            .collect();
+        
+        let mpoly = sr_g_multipolygon(polys.make_array());
+        Box::into_raw(Box::new(Value::SR_GEOMETRY_OBJECT(sr_geometry::sr_g_multipolygon(mpoly))))
+    }
+
+    /// Create a Decimal value from string representation
+    #[export_name = "sr_value_decimal"]
+    pub extern "C" fn value_decimal(val: *const std::ffi::c_char) -> *mut Value {
+        let s = unsafe { std::ffi::CStr::from_ptr(val) }
+            .to_string_lossy()
+            .to_string()
+            .to_string_t();
+        Box::into_raw(Box::new(Value::SR_VALUE_NUMBER(Number::SR_NUMBER_DECIMAL(s))))
+    }
 }

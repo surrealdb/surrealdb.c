@@ -196,4 +196,63 @@ impl Array {
     pub extern "C" fn free_arr(ptr: *mut Value, len: c_int) {
         ArrayGen { ptr, len }.free()
     }
+
+    /// Get the length of an array
+    #[export_name = "sr_array_len"]
+    pub extern "C" fn array_len(arr: *const Array) -> c_int {
+        if arr.is_null() {
+            return 0;
+        }
+        unsafe { (*arr).len }
+    }
+
+    /// Get a value at the specified index (returns NULL if out of bounds)
+    /// The returned pointer is borrowed and should NOT be freed by the caller
+    #[export_name = "sr_array_get"]
+    pub extern "C" fn array_get(arr: *const Array, index: c_int) -> *const Value {
+        if arr.is_null() {
+            return ptr::null();
+        }
+        let array = unsafe { &*arr };
+        if index < 0 || index >= array.len {
+            return ptr::null();
+        }
+        unsafe { array.arr.add(index as usize) }
+    }
+
+    /// Create a new array with the given value appended
+    /// Returns a new array - the original array is not modified
+    /// The caller is responsible for freeing the returned array
+    #[export_name = "sr_array_push"]
+    pub extern "C" fn array_push(arr: *const Array, value: *const Value) -> *mut Array {
+        if value.is_null() {
+            // If value is null, return a copy of the original or empty array
+            if arr.is_null() {
+                return Box::into_raw(Box::new(Array::empty()));
+            }
+            let array = unsafe { &*arr };
+            return Box::into_raw(Box::new(array.clone()));
+        }
+        
+        let value = unsafe { (*value).clone() };
+        
+        if arr.is_null() {
+            // Create new array with just this value
+            let vec = vec![value];
+            return Box::into_raw(Box::new(vec.into()));
+        }
+        
+        let array = unsafe { &*arr };
+        let mut vec: Vec<Value> = array.as_slice().to_vec();
+        vec.push(value);
+        Box::into_raw(Box::new(vec.into()))
+    }
+
+    /// Free an array created by sr_array_push
+    #[export_name = "sr_array_free"]
+    pub extern "C" fn array_free(arr: *mut Array) {
+        if !arr.is_null() {
+            let _ = unsafe { Box::from_raw(arr) };
+        }
+    }
 }

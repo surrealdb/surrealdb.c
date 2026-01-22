@@ -172,6 +172,35 @@ int test_sr_value_print(void);
 int test_sr_value_eq(void);
 int test_sr_print_notification(void);
 
+/* ============================================================================
+ * Additional Geometry Tests
+ * ============================================================================ */
+
+int test_sr_value_multilinestring(void);
+int test_sr_value_multipolygon(void);
+int test_sr_value_decimal(void);
+
+/* ============================================================================
+ * Array Manipulation Tests
+ * ============================================================================ */
+
+int test_sr_array_len(void);
+int test_sr_array_get(void);
+int test_sr_array_push(void);
+
+/* ============================================================================
+ * Object Iteration Tests
+ * ============================================================================ */
+
+int test_sr_object_len(void);
+int test_sr_object_keys(void);
+
+/* ============================================================================
+ * Kill Live Query Test
+ * ============================================================================ */
+
+int test_sr_kill(void);
+
 #ifdef __cplusplus
 }
 #endif

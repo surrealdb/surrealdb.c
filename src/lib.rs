@@ -629,6 +629,33 @@ impl Surreal {
         })
     }
 
+    // kill.rs
+    /// Kill a live query by its UUID string
+    ///
+    /// # Examples
+    ///
+    /// ```c
+    /// sr_surreal_t *db;
+    /// sr_string_t err;
+    /// const char *query_id = "..."; // UUID string from live query
+    /// if (sr_kill(db, &err, query_id) < 0) {
+    ///     printf("%s", err);
+    ///     return 1;
+    /// }
+    /// ```
+    #[export_name = "sr_kill"]
+    pub extern "C" fn kill(db: &Surreal, err_ptr: *mut string_t, query_id: *const c_char) -> c_int {
+        with_surreal_async(db, err_ptr, |surreal| async {
+            if query_id.is_null() {
+                return Err("query_id is null".into());
+            }
+            let uuid_str = unsafe { CStr::from_ptr(query_id) }.to_str()?;
+            let query = format!("KILL u'{}'", uuid_str);
+            surreal.db.query(query).await?;
+            Ok(0)
+        })
+    }
+
     // live.rs
     /// make a live selection
     /// if successful sets *stream_ptr to be an exclusive reference to an opaque Stream object

@@ -111,6 +111,23 @@ extern "C" {
     fn test_sr_value_print() -> c_int;
     fn test_sr_value_eq() -> c_int;
     fn test_sr_print_notification() -> c_int;
+
+    // Additional Geometry Tests
+    fn test_sr_value_multilinestring() -> c_int;
+    fn test_sr_value_multipolygon() -> c_int;
+    fn test_sr_value_decimal() -> c_int;
+
+    // Array Manipulation Tests
+    fn test_sr_array_len() -> c_int;
+    fn test_sr_array_get() -> c_int;
+    fn test_sr_array_push() -> c_int;
+
+    // Object Iteration Tests
+    fn test_sr_object_len() -> c_int;
+    fn test_sr_object_keys() -> c_int;
+
+    // Kill Live Query Test
+    fn test_sr_kill() -> c_int;
 }
 
 const TEST_PASS: c_int = 0;
@@ -280,3 +297,32 @@ c_test!(sr_free_string, test_sr_free_string);
 c_test!(sr_value_print, test_sr_value_print);
 c_test!(sr_value_eq, test_sr_value_eq);
 c_test!(sr_print_notification, test_sr_print_notification);
+
+// ============================================================================
+// Additional Geometry Tests
+// ============================================================================
+
+c_test!(sr_value_multilinestring, test_sr_value_multilinestring);
+c_test!(sr_value_multipolygon, test_sr_value_multipolygon);
+c_test!(sr_value_decimal, test_sr_value_decimal);
+
+// ============================================================================
+// Array Manipulation Tests
+// ============================================================================
+
+c_test!(sr_array_len, test_sr_array_len);
+c_test!(sr_array_get, test_sr_array_get);
+c_test!(sr_array_push, test_sr_array_push);
+
+// ============================================================================
+// Object Iteration Tests
+// ============================================================================
+
+c_test!(sr_object_len, test_sr_object_len);
+c_test!(sr_object_keys, test_sr_object_keys);
+
+// ============================================================================
+// Kill Live Query Test
+// ============================================================================
+
+c_test!(sr_kill, test_sr_kill);

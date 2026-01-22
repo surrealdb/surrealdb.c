@@ -57,6 +57,65 @@ impl Object {
     pub extern "C" fn free_object(obj: Object) {
         drop(obj)
     }
+
+    /// Get the number of key-value pairs in the object
+    #[export_name = "sr_object_len"]
+    pub extern "C" fn object_len(obj: *const Object) -> c_int {
+        if obj.is_null() {
+            return 0;
+        }
+        unsafe { (*obj).0.len() as c_int }
+    }
+
+    /// Get all keys from the object as a null-terminated array of strings
+    /// Returns the number of keys, or -1 on error
+    /// The caller must free the returned array using sr_free_string_arr
+    #[export_name = "sr_object_keys"]
+    pub extern "C" fn object_keys(obj: *const Object, keys_ptr: *mut *mut *mut c_char) -> c_int {
+        if obj.is_null() || keys_ptr.is_null() {
+            return -1;
+        }
+        
+        let object = unsafe { &*obj };
+        let keys: Vec<*mut c_char> = object.0.keys()
+            .map(|k| {
+                let cstring = std::ffi::CString::new(k.as_str()).unwrap_or_default();
+                cstring.into_raw()
+            })
+            .collect();
+        
+        let len = keys.len() as c_int;
+        
+        if len == 0 {
+            unsafe { *keys_ptr = std::ptr::null_mut(); }
+            return 0;
+        }
+        
+        // Allocate array for the pointers
+        let boxed = keys.into_boxed_slice();
+        let ptr = Box::into_raw(boxed) as *mut *mut c_char;
+        unsafe { *keys_ptr = ptr; }
+        
+        len
+    }
+
+    /// Free a string array returned by sr_object_keys
+    #[export_name = "sr_free_string_arr"]
+    pub extern "C" fn free_string_arr(arr: *mut *mut c_char, len: c_int) {
+        if arr.is_null() || len <= 0 {
+            return;
+        }
+        
+        let slice = unsafe { std::slice::from_raw_parts_mut(arr, len as usize) };
+        for ptr in slice.iter_mut() {
+            if !ptr.is_null() {
+                let _ = unsafe { std::ffi::CString::from_raw(*ptr) };
+            }
+        }
+        
+        // Free the array itself
+        let _ = unsafe { Box::from_raw(std::slice::from_raw_parts_mut(arr, len as usize) as *mut [*mut c_char]) };
+    }
 }
 
 impl From<sql::Object> for Object {

@@ -644,6 +644,23 @@ int sr_relate(const struct sr_surreal_t *db,
 int sr_invalidate(const struct sr_surreal_t *db, sr_string_t *err_ptr);
 
 /**
+ * Kill a live query by its UUID string
+ *
+ * # Examples
+ *
+ * ```c
+ * sr_surreal_t *db;
+ * sr_string_t err;
+ * const char *query_id = "..."; // UUID string from live query
+ * if (sr_kill(db, &err, query_id) < 0) {
+ *     printf("%s", err);
+ *     return 1;
+ * }
+ * ```
+ */
+int sr_kill(const struct sr_surreal_t *db, sr_string_t *err_ptr, const char *query_id);
+
+/**
  * make a live selection
  * if successful sets *stream_ptr to be an exclusive reference to an opaque Stream object
  * which can be moved across threads but not aliased
@@ -1094,6 +1111,29 @@ void sr_surreal_rpc_free(struct sr_surreal_rpc_t *ctx);
 
 void sr_free_arr(struct sr_value_t *ptr, int len);
 
+/**
+ * Get the length of an array
+ */
+int sr_array_len(const struct sr_array_t *arr);
+
+/**
+ * Get a value at the specified index (returns NULL if out of bounds)
+ * The returned pointer is borrowed and should NOT be freed by the caller
+ */
+const struct sr_value_t *sr_array_get(const struct sr_array_t *arr, int index);
+
+/**
+ * Create a new array with the given value appended
+ * Returns a new array - the original array is not modified
+ * The caller is responsible for freeing the returned array
+ */
+struct sr_array_t *sr_array_push(const struct sr_array_t *arr, const struct sr_value_t *value);
+
+/**
+ * Free an array created by sr_array_push
+ */
+void sr_array_free(struct sr_array_t *arr);
+
 void sr_free_bytes(struct sr_bytes_t bytes);
 
 void sr_free_byte_arr(uint8_t *ptr, int len);
@@ -1115,6 +1155,23 @@ void sr_object_insert_float(struct sr_object_t *obj, const char *key, float valu
 void sr_object_insert_double(struct sr_object_t *obj, const char *key, double value);
 
 void sr_free_object(struct sr_object_t obj);
+
+/**
+ * Get the number of key-value pairs in the object
+ */
+int sr_object_len(const struct sr_object_t *obj);
+
+/**
+ * Get all keys from the object as a null-terminated array of strings
+ * Returns the number of keys, or -1 on error
+ * The caller must free the returned array using sr_free_string_arr
+ */
+int sr_object_keys(const struct sr_object_t *obj, char ***keys_ptr);
+
+/**
+ * Free a string array returned by sr_object_keys
+ */
+void sr_free_string_arr(char **arr, int len);
 
 void sr_free_arr_res(struct sr_arr_res_t res);
 
@@ -1238,3 +1295,28 @@ struct sr_value_t *sr_value_polygon(const struct sr_sr_g_coord *coords, int len)
  * coords is a pointer to an array of sr_g_coord structures
  */
 struct sr_value_t *sr_value_multipoint(const struct sr_sr_g_coord *coords, int len);
+
+/**
+ * Create a MultiLineString geometry value
+ * linestrings is an array of pointers to coordinate arrays
+ * lens is an array of lengths for each linestring
+ * count is the number of linestrings
+ */
+struct sr_value_t *sr_value_multilinestring(const struct sr_sr_g_coord *const *linestrings,
+                                            const int *lens,
+                                            int count);
+
+/**
+ * Create a MultiPolygon geometry value
+ * polygons is an array of pointers to coordinate arrays (exterior rings only)
+ * lens is an array of lengths for each polygon's exterior ring
+ * count is the number of polygons
+ */
+struct sr_value_t *sr_value_multipolygon(const struct sr_sr_g_coord *const *polygons,
+                                         const int *lens,
+                                         int count);
+
+/**
+ * Create a Decimal value from string representation
+ */
+struct sr_value_t *sr_value_decimal(const char *val);

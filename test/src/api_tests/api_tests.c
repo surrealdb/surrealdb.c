@@ -1133,3 +1133,198 @@ int test_sr_print_notification(void) {
     /* Skip: requires actual notification */
     return TEST_SKIP;
 }
+
+/* ============================================================================
+ * Additional Geometry Tests
+ * ============================================================================ */
+
+int test_sr_value_multilinestring(void) {
+    /* Create two linestrings */
+    sr_sr_g_coord line1[] = {{0.0, 0.0}, {10.0, 10.0}};
+    sr_sr_g_coord line2[] = {{20.0, 20.0}, {30.0, 30.0}, {40.0, 20.0}};
+    
+    const sr_sr_g_coord *lines[] = {line1, line2};
+    int lens[] = {2, 3};
+    
+    sr_value_t *val = sr_value_multilinestring(lines, lens, 2);
+    ASSERT_NOT_NULL(val);
+    ASSERT_EQ(val->tag, SR_GEOMETRY_OBJECT);
+    ASSERT_EQ(val->sr_geometry_object.tag, sr_g_multiline);
+    ASSERT_EQ(val->sr_geometry_object.sr_g_multiline._0.len, 2);
+    sr_value_free(val);
+    return TEST_PASS;
+}
+
+int test_sr_value_multipolygon(void) {
+    /* Create two simple square polygons */
+    sr_sr_g_coord poly1[] = {{0.0, 0.0}, {10.0, 0.0}, {10.0, 10.0}, {0.0, 10.0}, {0.0, 0.0}};
+    sr_sr_g_coord poly2[] = {{20.0, 20.0}, {30.0, 20.0}, {30.0, 30.0}, {20.0, 30.0}, {20.0, 20.0}};
+    
+    const sr_sr_g_coord *polys[] = {poly1, poly2};
+    int lens[] = {5, 5};
+    
+    sr_value_t *val = sr_value_multipolygon(polys, lens, 2);
+    ASSERT_NOT_NULL(val);
+    ASSERT_EQ(val->tag, SR_GEOMETRY_OBJECT);
+    ASSERT_EQ(val->sr_geometry_object.tag, sr_g_multipolygon);
+    ASSERT_EQ(val->sr_geometry_object.sr_g_multipolygon._0.len, 2);
+    sr_value_free(val);
+    return TEST_PASS;
+}
+
+int test_sr_value_decimal(void) {
+    sr_value_t *val = sr_value_decimal("123.456789012345678901234567890");
+    ASSERT_NOT_NULL(val);
+    ASSERT_EQ(val->tag, SR_VALUE_NUMBER);
+    ASSERT_EQ(val->sr_value_number.tag, SR_NUMBER_DECIMAL);
+    sr_value_free(val);
+    return TEST_PASS;
+}
+
+/* ============================================================================
+ * Array Manipulation Tests
+ * ============================================================================ */
+
+int test_sr_array_len(void) {
+    sr_surreal_t *db;
+    if (setup_db(&db) != TEST_PASS) return TEST_FAIL;
+    
+    sr_string_t err;
+    sr_arr_res_t *results;
+    
+    /* Query that returns an array */
+    int res = sr_query(db, &err, &results, "RETURN [1, 2, 3]", NULL);
+    ASSERT_GE(res, 0);
+    
+    if (res > 0 && results[0].ok.arr != NULL) {
+        int len = sr_array_len(&results[0].ok);
+        ASSERT_EQ(len, 3);
+        sr_free_arr_res_arr(results, res);
+    }
+    
+    sr_surreal_disconnect(db);
+    return TEST_PASS;
+}
+
+int test_sr_array_get(void) {
+    sr_surreal_t *db;
+    if (setup_db(&db) != TEST_PASS) return TEST_FAIL;
+    
+    sr_string_t err;
+    sr_arr_res_t *results;
+    
+    /* Query that returns an array */
+    int res = sr_query(db, &err, &results, "RETURN [10, 20, 30]", NULL);
+    ASSERT_GE(res, 0);
+    
+    if (res > 0 && results[0].ok.arr != NULL) {
+        const sr_value_t *elem = sr_array_get(&results[0].ok, 1);
+        ASSERT_NOT_NULL(elem);
+        ASSERT_EQ(elem->tag, SR_VALUE_NUMBER);
+        
+        /* Out of bounds should return NULL */
+        const sr_value_t *oob = sr_array_get(&results[0].ok, 100);
+        ASSERT_TRUE(oob == NULL);
+        
+        sr_free_arr_res_arr(results, res);
+    }
+    
+    sr_surreal_disconnect(db);
+    return TEST_PASS;
+}
+
+int test_sr_array_push(void) {
+    sr_value_t *arr_val = sr_value_array();
+    ASSERT_NOT_NULL(arr_val);
+    ASSERT_EQ(arr_val->tag, SR_VALUE_ARRAY);
+    
+    /* Push a value to the empty array */
+    sr_value_t *int_val = sr_value_int(42);
+    sr_array_t *new_arr = sr_array_push(arr_val->sr_value_array, int_val);
+    ASSERT_NOT_NULL(new_arr);
+    ASSERT_EQ(sr_array_len(new_arr), 1);
+    
+    /* Verify the value was added */
+    const sr_value_t *elem = sr_array_get(new_arr, 0);
+    ASSERT_NOT_NULL(elem);
+    ASSERT_EQ(elem->tag, SR_VALUE_NUMBER);
+    
+    sr_array_free(new_arr);
+    sr_value_free(int_val);
+    sr_value_free(arr_val);
+    return TEST_PASS;
+}
+
+/* ============================================================================
+ * Object Iteration Tests
+ * ============================================================================ */
+
+int test_sr_object_len(void) {
+    sr_object_t obj = sr_object_new();
+    ASSERT_EQ(sr_object_len(&obj), 0);
+    
+    sr_object_insert_str(&obj, "key1", "value1");
+    ASSERT_EQ(sr_object_len(&obj), 1);
+    
+    sr_object_insert_int(&obj, "key2", 42);
+    ASSERT_EQ(sr_object_len(&obj), 2);
+    
+    sr_free_object(obj);
+    return TEST_PASS;
+}
+
+int test_sr_object_keys(void) {
+    sr_object_t obj = sr_object_new();
+    sr_object_insert_str(&obj, "alpha", "a");
+    sr_object_insert_str(&obj, "beta", "b");
+    sr_object_insert_str(&obj, "gamma", "c");
+    
+    char **keys = NULL;
+    int len = sr_object_keys(&obj, &keys);
+    ASSERT_EQ(len, 3);
+    ASSERT_NOT_NULL(keys);
+    
+    /* Keys should be in sorted order (BTreeMap) */
+    ASSERT_TRUE(strcmp(keys[0], "alpha") == 0);
+    ASSERT_TRUE(strcmp(keys[1], "beta") == 0);
+    ASSERT_TRUE(strcmp(keys[2], "gamma") == 0);
+    
+    sr_free_string_arr(keys, len);
+    sr_free_object(obj);
+    return TEST_PASS;
+}
+
+/* ============================================================================
+ * Kill Live Query Test
+ * ============================================================================ */
+
+int test_sr_kill(void) {
+    sr_surreal_t *db;
+    if (setup_db(&db) != TEST_PASS) return TEST_FAIL;
+    
+    sr_string_t err;
+    
+    /* Create a table first */
+    sr_arr_res_t *res;
+    sr_query(db, &err, &res, "CREATE test_kill SET value = 1", NULL);
+    
+    /* Start a live query */
+    sr_stream_t *stream;
+    int result = sr_select_live(db, &err, &stream, "test_kill");
+    if (result < 0) {
+        /* Live queries may not be supported in all modes */
+        sr_surreal_disconnect(db);
+        return TEST_SKIP;
+    }
+    
+    /* Kill using a fake UUID - should not crash */
+    result = sr_kill(db, &err, "00000000-0000-0000-0000-000000000000");
+    /* May fail if UUID doesn't exist, but shouldn't crash */
+    if (result < 0 && err) {
+        sr_free_string(err);
+    }
+    
+    sr_stream_kill(stream);
+    sr_surreal_disconnect(db);
+    return TEST_PASS;
+}
