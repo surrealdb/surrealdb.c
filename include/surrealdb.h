@@ -826,35 +826,40 @@ int sr_set(const struct sr_surreal_t *db,
  * Sign in utilizing the surreal authentication types.
  *
  * Used to provide credentials to a db for access permissions, either root or scoped.
+ * Returns the JWT token via token_ptr if not null.
  *
  * # Examples
  *
  * ```c
  * sr_surreal_t *db;
  * sr_string_t err;
+ * sr_string_t token;
  *
  * sr_credentials_scope scope = sr_credentials_scope::ROOT;
  * const sr_string_t user = "<user>";
  * // SHOULD NEVER BE HARDCODED
- * const sr_string_t password = "<password>;
+ * const sr_string_t password = "<password>";
  * sr_credentials creds = sr_credentials {
  *     .username = user,
  *     .password = pass,
  * };
  *
- * if (sr_signin(db, &err, &scope, &creds, nullptr) < 0) {
+ * if (sr_signin(db, &err, &token, &scope, &creds, nullptr, nullptr) < 0) {
  *     printf("Failed to authenticate credentials: %s", err);
  *     return 1;
  * }
+ * // token now contains the JWT
+ * sr_free_string(token);
  * ```
  * ```c
  * sr_surreal_t *db;
  * sr_string_t err;
+ * sr_string_t token;
  *
  * sr_credentials_scope scope = sr_credentials_scope::DATABASE;
  * const sr_string_t user = "<user>";
  * // SHOULD NEVER BE HARDCODED
- * const sr_string_t password = "<password>;
+ * const sr_string_t password = "<password>";
  * sr_credentials creds = sr_credentials {
  *     .username = user,
  *     .password = pass,
@@ -867,26 +872,40 @@ int sr_set(const struct sr_surreal_t *db,
  *     .access = nullptr,
  * };
  *
- * if (sr_signin(db, &err, &scope, &creds, &details) < 0) {
+ * if (sr_signin(db, &err, &token, &scope, &creds, &details, nullptr) < 0) {
  *     printf("Failed to authenticate credentials: %s", err);
  *     return 1;
+ * }
+ * ```
+ * For RECORD scope with custom params:
+ * ```c
+ * sr_object_t params = sr_object_new();
+ * sr_object_insert_str(&params, "email", "user@example.com");
+ * sr_object_insert_str(&params, "password", "secret");
+ * if (sr_signin(db, &err, &token, &scope, nullptr, &details, &params) < 0) {
+ *     // handle error
  * }
  * ```
  */
 int sr_signin(const struct sr_surreal_t *db,
               sr_string_t *err_ptr,
+              sr_string_t *token_ptr,
               const enum sr_credentials_scope *scope,
               const struct sr_credentials *creds,
-              const struct sr_credentials_access *details);
+              const struct sr_credentials_access *details,
+              const struct sr_object_t *params);
 
 /**
  * Sign up a new user with credentials
+ * Returns the JWT token via token_ptr if not null.
+ * Only RECORD scope is supported for signup.
  *
  * # Examples
  *
  * ```c
  * sr_surreal_t *db;
  * sr_string_t err;
+ * sr_string_t token;
  * sr_credentials_scope scope = sr_credentials_scope::RECORD;
  * const sr_string_t user = "newuser";
  * const sr_string_t password = "password123";
@@ -903,17 +922,30 @@ int sr_signin(const struct sr_surreal_t *db,
  *     .access = access,
  * };
  *
- * if (sr_signup(db, &err, &scope, &creds, &details) < 0) {
+ * if (sr_signup(db, &err, &token, &scope, &creds, &details, nullptr) < 0) {
  *     printf("Failed to sign up: %s", err);
  *     return 1;
+ * }
+ * // token now contains the JWT
+ * sr_free_string(token);
+ * ```
+ * For custom params:
+ * ```c
+ * sr_object_t params = sr_object_new();
+ * sr_object_insert_str(&params, "email", "user@example.com");
+ * sr_object_insert_str(&params, "password", "secret");
+ * if (sr_signup(db, &err, &token, &scope, nullptr, &details, &params) < 0) {
+ *     // handle error
  * }
  * ```
  */
 int sr_signup(const struct sr_surreal_t *db,
               sr_string_t *err_ptr,
+              sr_string_t *token_ptr,
               const enum sr_credentials_scope *scope,
               const struct sr_credentials *creds,
-              const struct sr_credentials_access *details);
+              const struct sr_credentials_access *details,
+              const struct sr_object_t *params);
 
 /**
  * unset a variable from the current session
@@ -1150,6 +1182,59 @@ struct sr_value_t *sr_value_string(const char *val);
 struct sr_value_t *sr_value_object(const struct sr_object_t *obj);
 
 /**
+ * Create a Duration value
+ */
+struct sr_value_t *sr_value_duration(uint64_t secs, uint32_t nanos);
+
+/**
+ * Create a Datetime value from RFC3339 string (e.g. "2024-01-15T10:30:00Z")
+ */
+struct sr_value_t *sr_value_datetime(const char *val);
+
+/**
+ * Create a UUID value from 16 bytes
+ */
+struct sr_value_t *sr_value_uuid(const uint8_t *bytes);
+
+/**
+ * Create an empty Array value
+ */
+struct sr_value_t *sr_value_array(void);
+
+/**
+ * Create a Bytes value from raw data
+ */
+struct sr_value_t *sr_value_bytes(const uint8_t *data, int len);
+
+/**
+ * Create a Thing value (record ID) from table name and string ID
+ */
+struct sr_value_t *sr_value_thing(const char *table, const char *id);
+
+/**
  * Free a value created by sr_value_* functions
  */
 void sr_value_free(struct sr_value_t *val);
+
+/**
+ * Create a Point geometry value
+ */
+struct sr_value_t *sr_value_point(double x, double y);
+
+/**
+ * Create a LineString geometry value from an array of coordinates
+ * coords is a pointer to an array of sr_g_coord structures
+ */
+struct sr_value_t *sr_value_linestring(const struct sr_sr_g_coord *coords, int len);
+
+/**
+ * Create a simple Polygon geometry value from exterior ring coordinates
+ * coords is a pointer to an array of sr_g_coord structures for the exterior ring
+ */
+struct sr_value_t *sr_value_polygon(const struct sr_sr_g_coord *coords, int len);
+
+/**
+ * Create a MultiPoint geometry value from an array of points (x,y pairs)
+ * coords is a pointer to an array of sr_g_coord structures
+ */
+struct sr_value_t *sr_value_multipoint(const struct sr_sr_g_coord *coords, int len);

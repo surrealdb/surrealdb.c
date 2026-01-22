@@ -133,8 +133,10 @@ impl From<ArrayGen<Value>> for Array {
 
 impl From<Array> for ArrayGen<Value> {
     fn from(value: Array) -> Self {
-        let Array { arr, len } = value;
-        ArrayGen { ptr: arr, len }
+        let result = ArrayGen { ptr: value.arr, len: value.len };
+        // Prevent Array's Drop from running to avoid double-free
+        std::mem::forget(value);
+        result
     }
 }
 

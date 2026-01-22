@@ -17,7 +17,12 @@ build: configure
 	cmake --build $(BUILD_DIR)
 
 test: build
+ifeq ($(OS),Windows_NT)
+	ctest --test-dir $(BUILD_DIR) --output-on-failure -C Debug
+else
 	ctest --test-dir $(BUILD_DIR) --output-on-failure
+endif
 
 clean:
 	cmake -E rm -rf $(BUILD_DIR)
+	cargo clean

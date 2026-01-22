@@ -54,6 +54,9 @@ if(UNITY_INCLUDE_DIR AND UNITY_LIBRARY)
 else()
     message(STATUS "System Unity not found, fetching from GitHub...")
     
+    # Enable Unity Fixture extension for test suites support (must be set before add_subdirectory)
+    set(UNITY_EXTENSION_FIXTURE ON CACHE BOOL "Enable Unity Fixture extension" FORCE)
+    
     # Define paths for Unity
     set(UNITY_SOURCE_DIR "${CMAKE_SOURCE_DIR}/ThirdParty/Unity")
     
@@ -80,6 +83,14 @@ else()
         add_subdirectory("${UNITY_SOURCE_DIR}" "${CMAKE_BINARY_DIR}/ThirdParty/Unity-build")
     endif()
     
+    # Suppress warnings from Unity third-party code on MSVC
+    if(TARGET unity AND MSVC)
+        target_compile_options(unity PRIVATE
+            /wd4820  # 'struct': 'n' bytes padding added
+            /wd5045  # Compiler will insert Spectre mitigation
+        )
+    endif()
+
     # Create an alias target for consistency
     if(TARGET unity AND NOT TARGET Unity::unity)
         add_library(Unity::unity ALIAS unity)

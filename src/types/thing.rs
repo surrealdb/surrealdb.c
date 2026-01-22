@@ -7,8 +7,8 @@ use crate::{array::Array, object::Object, string::string_t, utils::CStringExt2};
 #[repr(C)]
 #[derive(Debug, Clone, PartialEq)]
 pub struct Thing {
-    table: string_t,
-    id: Id,
+    pub table: string_t,
+    pub id: Id,
 }
 
 #[allow(non_camel_case_types)]

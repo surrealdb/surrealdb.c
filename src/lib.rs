@@ -9,7 +9,6 @@ use std::{
     panic::{catch_unwind, AssertUnwindSafe},
     sync::atomic::{AtomicBool, Ordering},
 };
-use serde::{Deserialize, Serialize};
 use stream::Stream;
 use string::string_t;
 use surrealdb::{
@@ -991,35 +990,40 @@ impl Surreal {
     /// Sign in utilizing the surreal authentication types.
     ///
     /// Used to provide credentials to a db for access permissions, either root or scoped.
+    /// Returns the JWT token via token_ptr if not null.
     ///
     /// # Examples
     ///
     /// ```c
     /// sr_surreal_t *db;
     /// sr_string_t err;
+    /// sr_string_t token;
     ///
     /// sr_credentials_scope scope = sr_credentials_scope::ROOT;
     /// const sr_string_t user = "<user>";
     /// // SHOULD NEVER BE HARDCODED
-    /// const sr_string_t password = "<password>;
+    /// const sr_string_t password = "<password>";
     /// sr_credentials creds = sr_credentials {
     ///     .username = user,
     ///     .password = pass,
     /// };
     ///
-    /// if (sr_signin(db, &err, &scope, &creds, nullptr) < 0) {
+    /// if (sr_signin(db, &err, &token, &scope, &creds, nullptr, nullptr) < 0) {
     ///     printf("Failed to authenticate credentials: %s", err);
     ///     return 1;
     /// }
+    /// // token now contains the JWT
+    /// sr_free_string(token);
     /// ```
     /// ```c
     /// sr_surreal_t *db;
     /// sr_string_t err;
+    /// sr_string_t token;
     ///
     /// sr_credentials_scope scope = sr_credentials_scope::DATABASE;
     /// const sr_string_t user = "<user>";
     /// // SHOULD NEVER BE HARDCODED
-    /// const sr_string_t password = "<password>;
+    /// const sr_string_t password = "<password>";
     /// sr_credentials creds = sr_credentials {
     ///     .username = user,
     ///     .password = pass,
@@ -1032,25 +1036,46 @@ impl Surreal {
     ///     .access = nullptr,
     /// };
     ///
-    /// if (sr_signin(db, &err, &scope, &creds, &details) < 0) {
+    /// if (sr_signin(db, &err, &token, &scope, &creds, &details, nullptr) < 0) {
     ///     printf("Failed to authenticate credentials: %s", err);
     ///     return 1;
+    /// }
+    /// ```
+    /// For RECORD scope with custom params:
+    /// ```c
+    /// sr_object_t params = sr_object_new();
+    /// sr_object_insert_str(&params, "email", "user@example.com");
+    /// sr_object_insert_str(&params, "password", "secret");
+    /// if (sr_signin(db, &err, &token, &scope, nullptr, &details, &params) < 0) {
+    ///     // handle error
     /// }
     /// ```
     #[export_name = "sr_signin"]
     pub extern "C" fn signin(
         db: &Surreal,
         err_ptr: *mut string_t,
+        token_ptr: *mut string_t,
         scope: &credentials_scope,
-        creds: &credentials::credentials,
-        details: *const credentials_access
+        creds: *const credentials::credentials,
+        details: *const credentials_access,
+        params: *const Object,
     ) -> c_int {
         with_surreal_async(db, err_ptr, |surreal| async {
-            let user = unsafe { CStr::from_ptr(creds.username.0).to_str()? };
-            let pass = unsafe { CStr::from_ptr(creds.password.0).to_str()? };
+            let mut user = "";
+            let mut pass = "";
+            
+            if !creds.is_null() {
+                let creds = unsafe { &*creds };
+                if !creds.username.0.is_null() {
+                    user = unsafe { CStr::from_ptr(creds.username.0).to_str()? };
+                }
+                if !creds.password.0.is_null() {
+                    pass = unsafe { CStr::from_ptr(creds.password.0).to_str()? };
+                }
+            }
 
             let mut ns = "";
-            let mut db = "";
+            let mut db_name = "";
             let mut ac = "";
 
             if !details.is_null() {
@@ -1061,7 +1086,7 @@ impl Surreal {
                 }
 
                 if !details.database.0.is_null() {
-                    db = unsafe { CStr::from_ptr(details.database.0).to_str()? };
+                    db_name = unsafe { CStr::from_ptr(details.database.0).to_str()? };
                 }
 
                 if !details.access.0.is_null() {
@@ -1069,13 +1094,14 @@ impl Surreal {
                 }
             }
 
-            match scope {
+            let token: String = match scope {
                 credentials_scope::ROOT => {
                     let login = auth::Root {
                         username: user,
                         password: pass,
                     };
-                    let _res = surreal.db.signin(login).await?;
+                    let jwt = surreal.db.signin(login).await?;
+                    jwt.into_insecure_token()
                 }
                 credentials_scope::NAMESPACE => {
                     if ns.is_empty() {
@@ -1088,57 +1114,65 @@ impl Surreal {
                         password: pass,
                     };
 
-                    let _res = surreal.db.signin(login).await?;
+                    let jwt = surreal.db.signin(login).await?;
+                    jwt.into_insecure_token()
                 }
                 credentials_scope::DATABASE => {
                     if ns.is_empty() {
                         Err("Namespace must be provided.")?
                     }
-                    if db.is_empty() {
+                    if db_name.is_empty() {
                         Err("Database must be provided.")?
                     }
 
                     let login = auth::Database {
                         namespace: ns,
-                        database: db,
+                        database: db_name,
                         username: user,
                         password: pass,
                     };
 
-                    let _res = surreal.db.signin(login).await?;
+                    let jwt = surreal.db.signin(login).await?;
+                    jwt.into_insecure_token()
                 }
                 credentials_scope::RECORD => {
                     if ns.is_empty() {
                         Err("Namespace must be provided.")?
                     }
-                    if db.is_empty() {
+                    if db_name.is_empty() {
                         Err("Database must be provided.")?
                     }
                     if ac.is_empty() {
                         Err("Access method must be provided.")?
                     }
 
-                    #[derive(Debug, Serialize, Deserialize)]
-                    struct CredsInner {
-                        username: String,
-                        password: String,
-                    }
-
-                    let creds_inner = CredsInner {
-                        username: user.to_string(),
-                        password: pass.to_string()
+                    // Use custom params if provided, otherwise use username/password from creds
+                    let record_params: sql::Object = if !params.is_null() {
+                        unsafe { &*params }.clone().into()
+                    } else {
+                        let mut obj = sql::Object::default();
+                        obj.insert("username".to_string(), sql::Value::from(user));
+                        obj.insert("password".to_string(), sql::Value::from(pass));
+                        obj
                     };
 
                     let login = auth::Record {
                         namespace: ns,
-                        database: db,
+                        database: db_name,
                         access: ac,
-                        params: creds_inner,
+                        params: record_params,
                     };
 
-                    let _res = surreal.db.signin(login).await?;
+                    let jwt = surreal.db.signin(login).await?;
+                    jwt.into_insecure_token()
                 }
             };
+            
+            // Return token if pointer provided
+            if !token_ptr.is_null() {
+                unsafe { *token_ptr = token.to_string_t(); }
+            }
+            
             Ok(0)
         })
     }
@@ -1147,12 +1181,15 @@ impl Surreal {
 
     // signup.rs
     /// Sign up a new user with credentials
+    /// Returns the JWT token via token_ptr if not null.
+    /// Only RECORD scope is supported for signup.
     ///
     /// # Examples
     ///
     /// ```c
     /// sr_surreal_t *db;
     /// sr_string_t err;
+    /// sr_string_t token;
     /// sr_credentials_scope scope = sr_credentials_scope::RECORD;
     /// const sr_string_t user = "newuser";
     /// const sr_string_t password = "password123";
@@ -1169,25 +1206,48 @@ impl Surreal {
     ///     .access = access,
     /// };
     ///
-    /// if (sr_signup(db, &err, &scope, &creds, &details) < 0) {
+    /// if (sr_signup(db, &err, &token, &scope, &creds, &details, nullptr) < 0) {
     ///     printf("Failed to sign up: %s", err);
     ///     return 1;
+    /// }
+    /// // token now contains the JWT
+    /// sr_free_string(token);
+    /// ```
+    /// For custom params:
+    /// ```c
+    /// sr_object_t params = sr_object_new();
+    /// sr_object_insert_str(&params, "email", "user@example.com");
+    /// sr_object_insert_str(&params, "password", "secret");
+    /// if (sr_signup(db, &err, &token, &scope, nullptr, &details, &params) < 0) {
+    ///     // handle error
     /// }
     /// ```
     #[export_name = "sr_signup"]
     pub extern "C" fn signup(
         db: &Surreal,
         err_ptr: *mut string_t,
+        token_ptr: *mut string_t,
         scope: &credentials_scope,
-        creds: &credentials::credentials,
-        details: *const credentials_access
+        creds: *const credentials::credentials,
+        details: *const credentials_access,
+        params: *const Object,
     ) -> c_int {
         with_surreal_async(db, err_ptr, |surreal| async {
-            let user = unsafe { CStr::from_ptr(creds.username.0).to_str()? };
-            let pass = unsafe { CStr::from_ptr(creds.password.0).to_str()? };
+            let mut user = "";
+            let mut pass = "";
+            
+            if !creds.is_null() {
+                let creds = unsafe { &*creds };
+                if !creds.username.0.is_null() {
+                    user = unsafe { CStr::from_ptr(creds.username.0).to_str()? };
+                }
+                if !creds.password.0.is_null() {
+                    pass = unsafe { CStr::from_ptr(creds.password.0).to_str()? };
+                }
+            }
 
             let mut ns = "";
-            let mut db = "";
+            let mut db_name = "";
             let mut ac = "";
 
             if !details.is_null() {
@@ -1198,7 +1258,7 @@ impl Surreal {
                 }
 
                 if !details.database.0.is_null() {
-                    db = unsafe { CStr::from_ptr(details.database.0).to_str()? };
+                    db_name = unsafe { CStr::from_ptr(details.database.0).to_str()? };
                 }
 
                 if !details.access.0.is_null() {
@@ -1206,7 +1266,7 @@ impl Surreal {
                 }
             }
 
-            match scope {
+            let token: String = match scope {
                 credentials_scope::ROOT => {
                     Err("Cannot signup as ROOT user")?
                 }
@@ -1220,34 +1280,40 @@ impl Surreal {
                     if ns.is_empty() {
                         Err("Namespace must be provided.")?
                     }
-                    if db.is_empty() {
+                    if db_name.is_empty() {
                         Err("Database must be provided.")?
                     }
                     if ac.is_empty() {
                         Err("Access method must be provided.")?
                     }
 
-                    #[derive(Debug, Serialize, Deserialize)]
-                    struct CredsInner {
-                        username: String,
-                        password: String,
-                    }
-
-                    let creds_inner = CredsInner {
-                        username: user.to_string(),
-                        password: pass.to_string()
+                    // Use custom params if provided, otherwise use username/password from creds
+                    let record_params: sql::Object = if !params.is_null() {
+                        unsafe { &*params }.clone().into()
+                    } else {
+                        let mut obj = sql::Object::default();
+                        obj.insert("username".to_string(), sql::Value::from(user));
+                        obj.insert("password".to_string(), sql::Value::from(pass));
+                        obj
                     };
 
                     let signup = auth::Record {
                         namespace: ns,
-                        database: db,
+                        database: db_name,
                         access: ac,
-                        params: creds_inner,
+                        params: record_params,
                     };
 
-                    let _res = surreal.db.signup(signup).await?;
+                    let jwt = surreal.db.signup(signup).await?;
+                    jwt.into_insecure_token()
                 }
             };
+            
+            // Return token if pointer provided
+            if !token_ptr.is_null() {
+                unsafe { *token_ptr = token.to_string_t(); }
+            }
+            
             Ok(0)
         })
     }

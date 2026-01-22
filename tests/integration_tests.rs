@@ -1,45 +1,66 @@
-use std::process::Command;
+use std::process::{Command, Stdio};
 use std::path::Path;
 use std::env;
+use std::sync::Once;
+
+static SETUP_ONCE: Once = Once::new();
+static mut SETUP_SUCCESS: bool = false;
 
 /// Setup function that configures and builds C tests using CMake
 /// This ensures Unity is downloaded, Rust library is built, and C tests are compiled
+/// Uses Once to ensure setup only runs once even when tests run in parallel
 fn setup() {
-    let project_root = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let test_dir = project_root.join("test");
-    let build_dir = test_dir.join("build");
+    SETUP_ONCE.call_once(|| {
+        let project_root = Path::new(env!("CARGO_MANIFEST_DIR"));
+        let build_dir = project_root.join("test").join("build");
+        
+        println!("Setting up C test suite with CMake...");
+        println!("Project root: {}", project_root.display());
+        println!("Build directory: {}", build_dir.display());
+        
+        // Create build directory if it doesn't exist
+        std::fs::create_dir_all(&build_dir).expect("Failed to create build directory");
+        
+        // Run CMake configure from project root (test/CMakeLists.txt is included via add_subdirectory)
+        println!("Running CMake configure...");
+        
+        // Use SKIP_RUST_BUILD since cargo test already built the Rust library
+        let configure_status = Command::new("cmake")
+            .args(&["-S", ".", "-B", "test/build", "-DSKIP_RUST_BUILD=ON"])
+            .current_dir(&project_root)
+            .stdout(Stdio::inherit())
+            .stderr(Stdio::inherit())
+            .status()
+            .expect("Failed to run cmake configure. Is CMake installed?");
+        
+        if !configure_status.success() {
+            eprintln!("CMake configure failed");
+            return;
+        }
+        println!("CMake configure completed successfully");
+        
+        // Run CMake build
+        println!("Running CMake build...");
+        let build_status = Command::new("cmake")
+            .args(&["--build", "test/build", "--config", "Debug"])
+            .current_dir(&project_root)
+            .stdout(Stdio::inherit())
+            .stderr(Stdio::inherit())
+            .status()
+            .expect("Failed to run cmake build");
+        
+        if !build_status.success() {
+            eprintln!("CMake build failed");
+            return;
+        }
+        println!("CMake build completed successfully");
+        
+        // Mark setup as successful
+        unsafe { SETUP_SUCCESS = true; }
+    });
     
-    println!("Setting up C test suite with CMake...");
-    println!("Project root: {}", project_root.display());
-    println!("Test directory: {}", test_dir.display());
-    println!("Build directory: {}", build_dir.display());
-    
-    // Create build directory if it doesn't exist
-    std::fs::create_dir_all(&build_dir).expect("Failed to create build directory");
-    
-    // Run CMake configure
-    println!("Running CMake configure...");
-    
-    // Use default CMake generator for consistency with Unity build
-    let configure_status = Command::new("cmake")
-        .args(&["-S", ".", "-B", "build"])
-        .current_dir(&test_dir)
-        .status()
-        .expect("Failed to run cmake configure. Is CMake installed?");
-    
-    assert!(configure_status.success(), "CMake configure failed");
-    println!("CMake configure completed successfully");
-    
-    // Run CMake build
-    println!("Running CMake build...");
-    let build_status = Command::new("cmake")
-        .args(&["--build", "build", "--config", "Debug"])
-        .current_dir(&test_dir)
-        .status()
-        .expect("Failed to run cmake build");
-    
-    assert!(build_status.success(), "CMake build failed");
-    println!("CMake build completed successfully");
+    // Check if setup was successful
+    assert!(unsafe { SETUP_SUCCESS }, "CMake setup failed");
 }
 
 /// Test that ensures C tests are built via CMake
@@ -49,9 +70,11 @@ fn test_build_c_tests() {
     setup();
     
     // Verify that the test executables were created
+    // When building from project root with -B test/build, outputs go to test/build/test/bin
     let project_root = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let test_runner = project_root.join("test").join("bin").join(if cfg!(windows) { "test_runner.exe" } else { "test_runner" });
-    let test_scratch = project_root.join("test").join("bin").join(if cfg!(windows) { "test_scratch.exe" } else { "test_scratch" });
+    let bin_dir = project_root.join("test").join("build").join("test").join("bin");
+    let test_runner = bin_dir.join(if cfg!(windows) { "Debug/test_runner.exe" } else { "test_runner" });
+    let test_scratch = bin_dir.join(if cfg!(windows) { "Debug/test_scratch.exe" } else { "test_scratch" });
     
     assert!(test_runner.exists(), "test_runner executable was not created at {}", test_runner.display());
     assert!(test_scratch.exists(), "test_scratch executable was not created at {}", test_scratch.display());
@@ -69,9 +92,18 @@ fn test_run_c_tests() {
     let build_dir = project_root.join("test").join("build");
     
     println!("Running C test suite via CTest...");
+    
+    // On Windows with multi-config generators (MSVC), we need to specify the configuration
+    let mut args = vec!["--verbose", "--output-on-failure"];
+    if cfg!(windows) {
+        args.extend(&["-C", "Debug"]);
+    }
+    
     let test_status = Command::new("ctest")
-        .args(&["--verbose", "--output-on-failure"])
+        .args(&args)
         .current_dir(&build_dir)
+        .stdout(Stdio::inherit())
+        .stderr(Stdio::inherit())
         .status()
         .expect("Failed to run ctest");
     

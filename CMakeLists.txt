@@ -14,6 +14,7 @@ list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 # Build options
 option(BUILD_TESTING "Build tests (requires Criterion)" ON)
 option(SURREALDB_RELEASE "Build Rust library in release mode" OFF)
+option(SKIP_RUST_BUILD "Skip building Rust library (use existing)" OFF)
 
 # ----------------------------------------------------------------------------
 # Rust profile selection
@@ -27,28 +28,13 @@ else()
     set(RUST_PROFILE "debug")
 endif()
 
-# Cargo target dir (Windows has different output layouts depending on toolchain)
-if(WIN32)
-    if(MSVC)
-        set(RUST_TARGET_TRIPLE "x86_64-pc-windows-msvc")
-        set(RUST_TARGET_FLAG --target ${RUST_TARGET_TRIPLE})
-        set(RUST_TARGET_DIR "${CMAKE_SOURCE_DIR}/target/${RUST_TARGET_TRIPLE}/${RUST_PROFILE}")
-    else()
-        set(RUST_TARGET_TRIPLE "x86_64-pc-windows-gnu")
-        set(RUST_TARGET_FLAG --target ${RUST_TARGET_TRIPLE})
-        set(RUST_TARGET_DIR "${CMAKE_SOURCE_DIR}/target/${RUST_TARGET_TRIPLE}/${RUST_PROFILE}")
-    endif()
-else()
-    set(RUST_TARGET_TRIPLE "")
-    set(RUST_TARGET_FLAG "")
-    set(RUST_TARGET_DIR "${CMAKE_SOURCE_DIR}/target/${RUST_PROFILE}")
-endif()
+# Cargo target dir - use default output directory (no --target flag)
+# This matches where `cargo build` and `cargo test` place output by default
+# Note: cargo puts static libraries in the deps subdirectory
+set(RUST_TARGET_DIR "${CMAKE_SOURCE_DIR}/target/${RUST_PROFILE}/deps")
 
 message(STATUS "Rust build profile: ${RUST_PROFILE}")
 message(STATUS "Rust target directory: ${RUST_TARGET_DIR}")
-if(RUST_TARGET_TRIPLE)
-    message(STATUS "Rust target triple: ${RUST_TARGET_TRIPLE}")
-endif()
 
 # ----------------------------------------------------------------------------
 # Rust Library Build Target
@@ -64,17 +50,22 @@ endif()
 
 set(SURREALDB_HEADER "${CMAKE_SOURCE_DIR}/include/surrealdb.h")
 
-add_custom_command(
-    OUTPUT ${SURREALDB_STATIC_LIB} ${SURREALDB_HEADER}
-    COMMAND cargo build ${RUST_BUILD_FLAG} ${RUST_TARGET_FLAG}
-    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-    COMMENT "Building Rust library (${RUST_PROFILE}) and generating C header..."
-    VERBATIM
-)
+if(NOT SKIP_RUST_BUILD)
+    add_custom_command(
+        OUTPUT ${SURREALDB_STATIC_LIB} ${SURREALDB_HEADER}
+        COMMAND cargo build ${RUST_BUILD_FLAG}
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        COMMENT "Building Rust library (${RUST_PROFILE}) and generating C header..."
+        VERBATIM
+    )
 
-add_custom_target(rust_lib ALL
-    DEPENDS ${SURREALDB_STATIC_LIB} ${SURREALDB_HEADER}
-)
+    add_custom_target(rust_lib ALL
+        DEPENDS ${SURREALDB_STATIC_LIB} ${SURREALDB_HEADER}
+    )
+else()
+    message(STATUS "Skipping Rust build (SKIP_RUST_BUILD=ON, using existing library)")
+    add_custom_target(rust_lib ALL)
+endif()
 
 add_library(surrealdb_c STATIC IMPORTED GLOBAL)
 set_target_properties(surrealdb_c PROPERTIES

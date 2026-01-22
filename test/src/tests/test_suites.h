@@ -1,21 +1,25 @@
 #ifndef TEST_SUITES_H
 #define TEST_SUITES_H
 
-// Master header that includes all test suite headers
-// All tests are header-only with static inline functions
+// Unity Fixture test group runner declarations
+// These are defined in the respective test .c files using TEST_GROUP_RUNNER macro
 
-#include "test_helpers.h"
-#include "connection_tests.h"
-#include "transaction_tests.h"
-#include "crud_tests.h"
-#include "query_tests.h"
-#include "io_tests.h"
-#include "auth_tests.h"
-#include "variable_tests.h"
-#include "rpc_tests.h"
-#include "stream_tests.h"
-#include "object_tests.h"
-#include "memory_tests.h"
-#include "utility_tests.h"
+// Note: With Unity Fixture, test groups are run via RUN_TEST_GROUP() macro
+// which automatically calls the RunTestGroup_<GroupName> function generated
+// by TEST_GROUP_RUNNER(<GroupName>) macro.
+
+// The test groups are:
+// - Connection: Connection and session management tests
+// - Transaction: Transaction (begin/commit/cancel) tests
+// - CRUD: Create, Read, Update, Delete operations
+// - Query: Query and live query tests
+// - IO: Import/Export tests
+// - Auth: Authentication (signin/signup) tests
+// - Variable: Session variable (set/unset) tests
+// - RPC: RPC functionality tests
+// - Stream: Stream handling tests
+// - Object: Object manipulation tests
+// - Memory: Memory management (free functions) tests
+// - Utility: Utility function tests
 
 #endif // TEST_SUITES_H

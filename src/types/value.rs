@@ -193,11 +193,151 @@ impl Value {
         Box::into_raw(Box::new(Value::SR_VALUE_OBJECT(obj)))
     }
 
+    /// Create a Duration value
+    #[export_name = "sr_value_duration"]
+    pub extern "C" fn value_duration(secs: u64, nanos: u32) -> *mut Value {
+        Box::into_raw(Box::new(Value::SR_VALUE_DURATION(Duration { secs, nanos })))
+    }
+
+    /// Create a Datetime value from RFC3339 string (e.g. "2024-01-15T10:30:00Z")
+    #[export_name = "sr_value_datetime"]
+    pub extern "C" fn value_datetime(val: *const std::ffi::c_char) -> *mut Value {
+        let s = unsafe { std::ffi::CStr::from_ptr(val) }
+            .to_string_lossy()
+            .to_string()
+            .to_string_t();
+        Box::into_raw(Box::new(Value::SR_VALUE_DATETIME(s)))
+    }
+
+    /// Create a UUID value from 16 bytes
+    #[export_name = "sr_value_uuid"]
+    pub extern "C" fn value_uuid(bytes: *const u8) -> *mut Value {
+        let bytes_slice = unsafe { std::slice::from_raw_parts(bytes, 16) };
+        let mut arr = [0u8; 16];
+        arr.copy_from_slice(bytes_slice);
+        Box::into_raw(Box::new(Value::SR_VALUE_UUID(Uuid(arr))))
+    }
+
+    /// Create an empty Array value
+    #[export_name = "sr_value_array"]
+    pub extern "C" fn value_array() -> *mut Value {
+        Box::into_raw(Box::new(Value::SR_VALUE_ARRAY(Box::new(Array {
+            arr: std::ptr::null_mut(),
+            len: 0,
+        }))))
+    }
+
+    /// Create a Bytes value from raw data
+    #[export_name = "sr_value_bytes"]
+    pub extern "C" fn value_bytes(data: *const u8, len: std::ffi::c_int) -> *mut Value {
+        let bytes = if data.is_null() || len <= 0 {
+            Bytes {
+                arr: std::ptr::null_mut(),
+                len: 0,
+            }
+        } else {
+            let slice = unsafe { std::slice::from_raw_parts(data, len as usize) };
+            let vec = slice.to_vec();
+            let boxed = vec.into_boxed_slice();
+            let ptr = Box::into_raw(boxed) as *mut u8;
+            Bytes { arr: ptr, len }
+        };
+        Box::into_raw(Box::new(Value::SR_VALUE_BYTES(bytes)))
+    }
+
+    /// Create a Thing value (record ID) from table name and string ID
+    #[export_name = "sr_value_thing"]
+    pub extern "C" fn value_thing(table: *const std::ffi::c_char, id: *const std::ffi::c_char) -> *mut Value {
+        let table_str = unsafe { std::ffi::CStr::from_ptr(table) }
+            .to_string_lossy()
+            .to_string()
+            .to_string_t();
+        let id_str = unsafe { std::ffi::CStr::from_ptr(id) }
+            .to_string_lossy()
+            .to_string()
+            .to_string_t();
+        Box::into_raw(Box::new(Value::SR_VALUE_THING(Thing {
+            table: table_str,
+            id: crate::thing::Id::SR_ID_STRING(id_str),
+        })))
+    }
+
     /// Free a value created by sr_value_* functions
     #[export_name = "sr_value_free"]
     pub extern "C" fn value_free(val: *mut Value) {
         if !val.is_null() {
             let _ = unsafe { Box::from_raw(val) };
         }
+    }
+
+    /// Create a Point geometry value
+    #[export_name = "sr_value_point"]
+    pub extern "C" fn value_point(x: f64, y: f64) -> *mut Value {
+        use crate::geometry::{sr_g_coord, sr_g_point, sr_geometry};
+        let point = sr_g_point(sr_g_coord { x, y });
+        Box::into_raw(Box::new(Value::SR_GEOMETRY_OBJECT(sr_geometry::sr_g_point(point))))
+    }
+
+    /// Create a LineString geometry value from an array of coordinates
+    /// coords is a pointer to an array of sr_g_coord structures
+    #[export_name = "sr_value_linestring"]
+    pub extern "C" fn value_linestring(coords: *const crate::geometry::sr_g_coord, len: std::ffi::c_int) -> *mut Value {
+        use crate::geometry::{sr_g_linestring, sr_geometry};
+        use crate::array::MakeArray;
+        
+        if coords.is_null() || len <= 0 {
+            // Return empty linestring
+            let ls = sr_g_linestring(Vec::new().make_array());
+            return Box::into_raw(Box::new(Value::SR_GEOMETRY_OBJECT(sr_geometry::sr_g_linestring(ls))));
+        }
+        
+        let slice = unsafe { std::slice::from_raw_parts(coords, len as usize) };
+        let vec: Vec<crate::geometry::sr_g_coord> = slice.to_vec();
+        let ls = sr_g_linestring(vec.make_array());
+        Box::into_raw(Box::new(Value::SR_GEOMETRY_OBJECT(sr_geometry::sr_g_linestring(ls))))
+    }
+
+    /// Create a simple Polygon geometry value from exterior ring coordinates
+    /// coords is a pointer to an array of sr_g_coord structures for the exterior ring
+    #[export_name = "sr_value_polygon"]
+    pub extern "C" fn value_polygon(coords: *const crate::geometry::sr_g_coord, len: std::ffi::c_int) -> *mut Value {
+        use crate::geometry::{sr_g_linestring, sr_g_polygon, sr_geometry};
+        use crate::array::MakeArray;
+        
+        if coords.is_null() || len <= 0 {
+            // Return empty polygon
+            let exterior = sr_g_linestring(Vec::new().make_array());
+            let interiors: Vec<sr_g_linestring> = Vec::new();
+            let poly = sr_g_polygon(exterior, interiors.make_array());
+            return Box::into_raw(Box::new(Value::SR_GEOMETRY_OBJECT(sr_geometry::sr_g_polygon(poly))));
+        }
+        
+        let slice = unsafe { std::slice::from_raw_parts(coords, len as usize) };
+        let vec: Vec<crate::geometry::sr_g_coord> = slice.to_vec();
+        let exterior = sr_g_linestring(vec.make_array());
+        let interiors: Vec<sr_g_linestring> = Vec::new();
+        let poly = sr_g_polygon(exterior, interiors.make_array());
+        Box::into_raw(Box::new(Value::SR_GEOMETRY_OBJECT(sr_geometry::sr_g_polygon(poly))))
+    }
+
+    /// Create a MultiPoint geometry value from an array of points (x,y pairs)
+    /// coords is a pointer to an array of sr_g_coord structures
+    #[export_name = "sr_value_multipoint"]
+    pub extern "C" fn value_multipoint(coords: *const crate::geometry::sr_g_coord, len: std::ffi::c_int) -> *mut Value {
+        use crate::geometry::{sr_g_coord, sr_g_point, sr_g_multipoint, sr_geometry};
+        use crate::array::MakeArray;
+        
+        if coords.is_null() || len <= 0 {
+            // Return empty multipoint
+            let mp = sr_g_multipoint(Vec::<sr_g_point>::new().make_array());
+            return Box::into_raw(Box::new(Value::SR_GEOMETRY_OBJECT(sr_geometry::sr_g_multipoint(mp))));
+        }
+        
+        let slice = unsafe { std::slice::from_raw_parts(coords, len as usize) };
+        let points: Vec<sr_g_point> = slice.iter()
+            .map(|c| sr_g_point(sr_g_coord { x: c.x, y: c.y }))
+            .collect();
+        let mp = sr_g_multipoint(points.make_array());
+        Box::into_raw(Box::new(Value::SR_GEOMETRY_OBJECT(sr_geometry::sr_g_multipoint(mp))))
     }
 }
