@@ -85,6 +85,70 @@ message(STATUS "SurrealDB static library: ${SURREALDB_STATIC_LIB}")
 message(STATUS "SurrealDB header: ${SURREALDB_HEADER}")
 
 # ----------------------------------------------------------------------------
+# Installation & Export
+# ----------------------------------------------------------------------------
+
+include(GNUInstallDirs)
+
+# Install the header
+install(FILES ${SURREALDB_HEADER}
+    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+)
+
+# Install the static library
+install(FILES ${SURREALDB_STATIC_LIB}
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}
+)
+
+# Create an installable target for consumers
+add_library(surrealdb_c_export INTERFACE)
+target_include_directories(surrealdb_c_export INTERFACE
+    $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>
+    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
+)
+if(WIN32 AND MSVC)
+    target_link_libraries(surrealdb_c_export INTERFACE
+        ${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_LIBDIR}/surrealdb_c.lib
+        ws2_32 userenv bcrypt ntdll pdh netapi32 iphlpapi psapi propsys runtimeobject secur32 powrprof
+    )
+else()
+    target_link_libraries(surrealdb_c_export INTERFACE
+        ${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_LIBDIR}/libsurrealdb_c.a
+    )
+endif()
+
+# Export the interface target
+install(TARGETS surrealdb_c_export
+    EXPORT surrealdb_cTargets
+)
+
+install(EXPORT surrealdb_cTargets
+    FILE surrealdb_cTargets.cmake
+    NAMESPACE surrealdb::
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/surrealdb_c
+)
+
+# Generate package config file
+include(CMakePackageConfigHelpers)
+configure_package_config_file(
+    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/surrealdb_cConfig.cmake.in"
+    "${CMAKE_CURRENT_BINARY_DIR}/surrealdb_cConfig.cmake"
+    INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/surrealdb_c
+)
+
+write_basic_package_version_file(
+    "${CMAKE_CURRENT_BINARY_DIR}/surrealdb_cConfigVersion.cmake"
+    VERSION ${PROJECT_VERSION}
+    COMPATIBILITY SameMajorVersion
+)
+
+install(FILES
+    "${CMAKE_CURRENT_BINARY_DIR}/surrealdb_cConfig.cmake"
+    "${CMAKE_CURRENT_BINARY_DIR}/surrealdb_cConfigVersion.cmake"
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/surrealdb_c
+)
+
+# ----------------------------------------------------------------------------
 # Tests
 # ----------------------------------------------------------------------------
 
