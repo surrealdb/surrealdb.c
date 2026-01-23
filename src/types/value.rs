@@ -9,25 +9,41 @@ use crate::{bytes::Bytes, string::string_t, thing::Thing, utils::CStringExt2, uu
 
 use super::duration::Duration;
 
+/// Represents a SurrealDB value
+///
+/// This enum wraps all possible value types that can be returned from SurrealDB queries
+/// or used as input parameters. Each variant corresponds to a SurrealDB data type.
 #[allow(non_camel_case_types)]
 #[repr(C)]
 #[derive(Default, Debug, Clone, PartialEq)]
 pub enum Value {
+    /// No value (absence of data)
     #[default]
     SR_VALUE_NONE,
+    /// Explicit null value
     SR_VALUE_NULL,
+    /// Boolean value (true/false)
     SR_VALUE_BOOL(bool),
+    /// Numeric value (integer, float, or decimal)
     SR_VALUE_NUMBER(Number),
+    /// String value
     SR_VALUE_STRAND(string_t),
+    /// Duration value
     SR_VALUE_DURATION(Duration),
+    /// DateTime value in RFC3339 format
     SR_VALUE_DATETIME(string_t),
+    /// UUID value
     SR_VALUE_UUID(Uuid),
+    /// Array of values
     SR_VALUE_ARRAY(Box<Array>),
+    /// Object (key-value map)
     SR_VALUE_OBJECT(Object),
+    /// Geometry object (points, lines, polygons, etc.)
     SR_GEOMETRY_OBJECT(sr_geometry),
+    /// Raw bytes
     SR_VALUE_BYTES(Bytes),
+    /// Record ID (thing)
     SR_VALUE_THING(Thing),
-    // TODO(Lance): Are computed objects needed?
 }
 
 impl From<sdbValue> for Value {
@@ -100,10 +116,8 @@ impl From<surrealdb::Value> for Value {
 }
 impl From<&surrealdb::Value> for Value {
     fn from(value: &surrealdb::Value) -> Self {
-        // TODO: change to into_inner_ref when merged
-        // SAFETY: surrealdb::Value is a transparent srapper
-        let value: &sdbValue = unsafe { std::mem::transmute(value) };
-        Self::from(value)
+        // Clone the value to safely convert without relying on internal layout assumptions
+        Self::from(value.clone())
     }
 }
 
@@ -136,11 +150,17 @@ impl From<Value> for sdbValue {
 }
 
 impl Value {
+    /// Print a value to stdout for debugging
+    ///
+    /// Outputs the debug representation of the value to standard output.
     #[export_name = "sr_value_print"]
     pub extern "C" fn print_value(val: &Value) {
         println!("{val:?}");
     }
 
+    /// Compare two values for equality
+    ///
+    /// Returns true if both values are equal, false otherwise.
     #[export_name = "sr_value_eq"]
     pub extern "C" fn value_eq(lhs: &Value, rhs: &Value) -> bool {
         lhs == rhs

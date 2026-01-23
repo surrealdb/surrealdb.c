@@ -53,8 +53,6 @@ impl SurrealRpc {
         endpoint: *const c_char,
         options: Options,
     ) -> c_int {
-        // TODO: live query support
-        // TODO: Continue standardizing for V2
         let res: Result<Result<SurrealRpc, string_t>, _> = catch_unwind(AssertUnwindSafe(|| {
             let Ok(endpoint) = (unsafe { CStr::from_ptr(endpoint).to_str() }) else {
                 return Err("Invalid UTF-8".into());
@@ -124,9 +122,16 @@ impl SurrealRpc {
         }
     }
 
-    /// execute rpc
+    /// Execute an RPC request
     ///
-    /// free result with sr_free_byte_arr
+    /// # Safety
+    ///
+    /// - `err_ptr` must be a valid pointer or null
+    /// - `res_ptr` must be a valid pointer to receive the result
+    /// - `ptr` must be a valid pointer to CBOR-encoded request data
+    /// - `len` must be the length of the data at ptr
+    ///
+    /// Free result with sr_free_byte_arr
     #[export_name = "sr_surreal_rpc_execute"]
     pub extern "C" fn execute(
         &self,
@@ -135,6 +140,18 @@ impl SurrealRpc {
         ptr: *const u8,
         len: c_int,
     ) -> c_int {
+        if res_ptr.is_null() {
+            if !err_ptr.is_null() {
+                unsafe { err_ptr.write("res_ptr is null".into()) };
+            }
+            return SR_ERROR;
+        }
+        if ptr.is_null() {
+            if !err_ptr.is_null() {
+                unsafe { err_ptr.write("ptr is null".into()) };
+            }
+            return SR_ERROR;
+        }
         with_async(self, err_ptr, |ctx| async {
             let in_bytes = slice_from_raw_parts(ptr, len as usize);
             let in_bytes = unsafe { &*in_bytes };
@@ -166,7 +183,7 @@ impl SurrealRpc {
                 in_data.params,
             ).await?;
             
-            // TODO(Lance): Handle Data::Other and/or Data::Live ??
+            // Currently only Data::Other is supported; Data::Live requires stream handling
             let result = match res {
                 Data::Other(v) => {
                     let out = cbor::res(v)?.make_array();
@@ -185,6 +202,11 @@ impl SurrealRpc {
 
     /// Get a stream for receiving live query notifications
     ///
+    /// # Safety
+    ///
+    /// - `err_ptr` must be a valid pointer or null
+    /// - `stream_ptr` must be a valid pointer to receive the stream
+    ///
     /// Returns a stream that can be polled for notifications using sr_rpc_stream_next
     #[export_name = "sr_surreal_rpc_notifications"]
     pub extern "C" fn notifications(
@@ -192,6 +214,12 @@ impl SurrealRpc {
         err_ptr: *mut string_t,
         stream_ptr: *mut *mut RpcStream,
     ) -> c_int {
+        if stream_ptr.is_null() {
+            if !err_ptr.is_null() {
+                unsafe { err_ptr.write("stream_ptr is null".into()) };
+            }
+            return SR_ERROR;
+        }
         with_async(self, err_ptr, |ctx| async {
             let receiver = ctx
                 .inner
@@ -209,8 +237,16 @@ impl SurrealRpc {
         })
     }
 
+    /// Free an RPC context
+    ///
+    /// # Safety
+    ///
+    /// - `ctx` must be a valid pointer to a SurrealRpc, or null (no-op)
     #[export_name = "sr_surreal_rpc_free"]
     pub extern "C" fn rpc_free(ctx: *mut SurrealRpc) {
+        if ctx.is_null() {
+            return;
+        }
         let boxed = unsafe { Box::from_raw(ctx) };
         drop(boxed)
     }

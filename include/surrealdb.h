@@ -31,10 +31,18 @@ typedef enum sr_action {
 
 typedef struct sr_opaque_object_internal_t sr_opaque_object_internal_t;
 
+/**
+ * Stream for receiving RPC notifications
+ *
+ * Uses synchronous blocking receives, so no async drop is required.
+ */
 typedef struct sr_RpcStream sr_RpcStream;
 
 /**
- * may be sent across threads, but must not be aliased
+ * Stream for receiving live query notifications
+ *
+ * May be sent across threads, but must not be aliased.
+ * Use `sr_stream_next` to receive notifications and `sr_stream_kill` to close.
  */
 typedef struct sr_stream_t sr_stream_t;
 
@@ -60,6 +68,12 @@ typedef struct sr_surreal_t sr_surreal_t;
  */
 typedef struct sr_surreal_rpc_t sr_surreal_rpc_t;
 
+/**
+ * A null-terminated C string type
+ *
+ * This is a wrapper around a raw C string pointer that handles memory management.
+ * Strings returned by SurrealDB functions must be freed with `sr_free_string`.
+ */
 typedef char *sr_string_t;
 
 typedef struct sr_object_t {
@@ -236,19 +250,64 @@ typedef struct sr_thing_t {
   struct sr_id_t id;
 } sr_thing_t;
 
+/**
+ * Represents a SurrealDB value
+ *
+ * This enum wraps all possible value types that can be returned from SurrealDB queries
+ * or used as input parameters. Each variant corresponds to a SurrealDB data type.
+ */
 typedef enum sr_value_t_Tag {
+  /**
+   * No value (absence of data)
+   */
   SR_VALUE_NONE,
+  /**
+   * Explicit null value
+   */
   SR_VALUE_NULL,
+  /**
+   * Boolean value (true/false)
+   */
   SR_VALUE_BOOL,
+  /**
+   * Numeric value (integer, float, or decimal)
+   */
   SR_VALUE_NUMBER,
+  /**
+   * String value
+   */
   SR_VALUE_STRAND,
+  /**
+   * Duration value
+   */
   SR_VALUE_DURATION,
+  /**
+   * DateTime value in RFC3339 format
+   */
   SR_VALUE_DATETIME,
+  /**
+   * UUID value
+   */
   SR_VALUE_UUID,
+  /**
+   * Array of values
+   */
   SR_VALUE_ARRAY,
+  /**
+   * Object (key-value map)
+   */
   SR_VALUE_OBJECT,
+  /**
+   * Geometry object (points, lines, polygons, etc.)
+   */
   SR_GEOMETRY_OBJECT,
+  /**
+   * Raw bytes
+   */
   SR_VALUE_BYTES,
+  /**
+   * Record ID (thing)
+   */
   SR_VALUE_THING,
 } sr_value_t_Tag;
 
@@ -315,9 +374,23 @@ typedef struct sr_credentials_access {
   sr_string_t access;
 } sr_credentials_access;
 
+/**
+ * Connection options for SurrealDB
+ *
+ * Configures various settings for the database connection.
+ */
 typedef struct sr_option_t {
+  /**
+   * Enable strict mode for queries
+   */
   bool strict;
+  /**
+   * Query timeout in seconds
+   */
   uint8_t query_timeout;
+  /**
+   * Transaction timeout in seconds
+   */
   uint8_t transaction_timeout;
 } sr_option_t;
 
@@ -328,9 +401,10 @@ typedef struct sr_notification_t {
 } sr_notification_t;
 
 /**
- * connects to a local, remote, or embedded database
+ * Connects to a local, remote, or embedded database
  *
- * if any function returns SR_FATAL, this must not be used (except to drop) (TODO: check this is safe) doing so will cause the program to abort
+ * If any function returns SR_FATAL, the connection is poisoned and must not be used
+ * (except to drop). Continued use will cause the program to abort.
  *
  * # Examples
  *
@@ -359,15 +433,15 @@ typedef struct sr_notification_t {
  * sr_surreal_disconnect(db);
  * ```
  */
-int sr_connect(sr_string_t *err_ptr,
-               struct sr_surreal_t **surreal_ptr,
-               const char *endpoint);
+int sr_connect(sr_string_t *err_ptr, struct sr_surreal_t **surreal_ptr, const char *endpoint);
 
 /**
- * disconnect a database connection
- * note: the Surreal object must not be used after this function has been called
- *     any object allocations will still be valid, and should be freed, using the appropriate function
- * TODO: check if Stream can be freed after disconnection because of rt
+ * Disconnect a database connection
+ *
+ * The Surreal object must not be used after this function has been called.
+ * Any object allocations will still be valid and should be freed using the appropriate function.
+ *
+ * Note: Stream objects should be killed before disconnection to ensure proper cleanup.
  *
  * # Examples
  *
@@ -380,7 +454,9 @@ int sr_connect(sr_string_t *err_ptr,
 void sr_surreal_disconnect(struct sr_surreal_t *db);
 
 /**
- * authenticate with a token
+ * Authenticate with a token
+ *
+ * Authenticates the current connection with a JWT token.
  *
  * # Examples
  *
@@ -397,7 +473,9 @@ void sr_surreal_disconnect(struct sr_surreal_t *db);
 int sr_authenticate(const struct sr_surreal_t *db, sr_string_t *err_ptr, const char *token);
 
 /**
- * begin a new transaction
+ * Begin a new transaction
+ *
+ * Starts a new database transaction.
  *
  * # Examples
  *
@@ -413,7 +491,9 @@ int sr_authenticate(const struct sr_surreal_t *db, sr_string_t *err_ptr, const c
 int sr_begin(const struct sr_surreal_t *db, sr_string_t *err_ptr);
 
 /**
- * cancel the current transaction
+ * Cancel the current transaction
+ *
+ * Cancels and rolls back the current database transaction.
  *
  * # Examples
  *
@@ -429,7 +509,9 @@ int sr_begin(const struct sr_surreal_t *db, sr_string_t *err_ptr);
 int sr_cancel(const struct sr_surreal_t *db, sr_string_t *err_ptr);
 
 /**
- * commit the current transaction
+ * Commit the current transaction
+ *
+ * Commits and finalizes the current database transaction.
  *
  * # Examples
  *
@@ -445,7 +527,9 @@ int sr_cancel(const struct sr_surreal_t *db, sr_string_t *err_ptr);
 int sr_commit(const struct sr_surreal_t *db, sr_string_t *err_ptr);
 
 /**
- * create a record
+ * Create a record
+ *
+ * Creates a new record in the specified resource with the given content.
  *
  */
 int sr_create(const struct sr_surreal_t *db,
@@ -455,7 +539,9 @@ int sr_create(const struct sr_surreal_t *db,
               const struct sr_object_t *content);
 
 /**
- * delete a record or records
+ * Delete a record or records
+ *
+ * Deletes records from the specified resource.
  *
  * # Examples
  *
@@ -477,7 +563,9 @@ int sr_delete(const struct sr_surreal_t *db,
               const char *resource);
 
 /**
- * export database data to a file
+ * Export database data to a file
+ *
+ * Exports all data from the current namespace and database to a file.
  *
  * # Examples
  *
@@ -493,7 +581,9 @@ int sr_delete(const struct sr_surreal_t *db,
 int sr_export(const struct sr_surreal_t *db, sr_string_t *err_ptr, const char *file_path);
 
 /**
- * check the health of the database server
+ * Check the health of the database server
+ *
+ * Performs a health check on the database connection.
  *
  * # Examples
  *
@@ -509,7 +599,9 @@ int sr_export(const struct sr_surreal_t *db, sr_string_t *err_ptr, const char *f
 int sr_health(const struct sr_surreal_t *db, sr_string_t *err_ptr);
 
 /**
- * import database data from a file
+ * Import database data from a file
+ *
+ * Imports data from a file into the current namespace and database.
  *
  * # Examples
  *
@@ -525,7 +617,9 @@ int sr_health(const struct sr_surreal_t *db, sr_string_t *err_ptr);
 int sr_import(const struct sr_surreal_t *db, sr_string_t *err_ptr, const char *file_path);
 
 /**
- * insert one or more records
+ * Insert one or more records
+ *
+ * Inserts records into the specified resource with the given content.
  *
  * # Examples
  *
@@ -550,6 +644,8 @@ int sr_insert(const struct sr_surreal_t *db,
 
 /**
  * Insert a relation between records
+ *
+ * Creates a relation record in a relation table.
  *
  * The content object must contain 'in' and 'out' fields specifying the records to relate.
  * Additional fields can be added as relation properties.
@@ -581,6 +677,8 @@ int sr_insert_relation(const struct sr_surreal_t *db,
 /**
  * Execute a SurrealDB function
  *
+ * Runs a custom or built-in SurrealDB function with the specified arguments.
+ *
  * # Examples
  *
  * ```c
@@ -603,6 +701,8 @@ int sr_run(const struct sr_surreal_t *db,
 
 /**
  * Create a graph relation between two records
+ *
+ * Establishes a directed relation from one record to another through a relation table.
  *
  * # Examples
  *
@@ -628,7 +728,9 @@ int sr_relate(const struct sr_surreal_t *db,
               const struct sr_object_t *content);
 
 /**
- * invalidate the current authentication session
+ * Invalidate the current authentication session
+ *
+ * Clears the current authentication for the connection.
  *
  * # Examples
  *
@@ -646,6 +748,8 @@ int sr_invalidate(const struct sr_surreal_t *db, sr_string_t *err_ptr);
 /**
  * Kill a live query by its UUID string
  *
+ * Terminates an active live query subscription.
+ *
  * # Examples
  *
  * ```c
@@ -661,7 +765,9 @@ int sr_invalidate(const struct sr_surreal_t *db, sr_string_t *err_ptr);
 int sr_kill(const struct sr_surreal_t *db, sr_string_t *err_ptr, const char *query_id);
 
 /**
- * make a live selection
+ * Make a live selection
+ *
+ * Creates a live query subscription that streams changes.
  * if successful sets *stream_ptr to be an exclusive reference to an opaque Stream object
  * which can be moved across threads but not aliased
  *
@@ -687,7 +793,9 @@ int sr_select_live(const struct sr_surreal_t *db,
                    const char *resource);
 
 /**
- * merge data into existing records
+ * Merge data into existing records
+ *
+ * Merges the provided content into existing records, preserving unmodified fields.
  *
  * # Examples
  *
@@ -712,6 +820,8 @@ int sr_merge(const struct sr_surreal_t *db,
 
 /**
  * Add a value at a JSON path using JSON Patch
+ *
+ * Applies a JSON Patch add operation to the specified resource.
  *
  * # Examples
  *
@@ -790,7 +900,9 @@ int sr_query(const struct sr_surreal_t *db,
              const struct sr_object_t *vars);
 
 /**
- * select a resource
+ * Select a resource
+ *
+ * Selects records from the specified resource (table or record ID).
  *
  * can be used to select everything from a table or a single record
  * writes values to *res_ptr, and returns the number of values
@@ -820,7 +932,9 @@ int sr_select(const struct sr_surreal_t *db,
               const char *resource);
 
 /**
- * set a variable for the current session
+ * Set a variable for the current session
+ *
+ * Defines a session variable that can be referenced in queries.
  *
  * # Examples
  *
@@ -840,7 +954,9 @@ int sr_set(const struct sr_surreal_t *db,
            const struct sr_value_t *value);
 
 /**
- * Sign in utilizing the surreal authentication types.
+ * Sign in utilizing the surreal authentication types
+ *
+ * Authenticates with the database using the provided credentials.
  *
  * Used to provide credentials to a db for access permissions, either root or scoped.
  * Returns the JWT token via token_ptr if not null.
@@ -914,6 +1030,8 @@ int sr_signin(const struct sr_surreal_t *db,
 
 /**
  * Sign up a new user with credentials
+ *
+ * Registers a new user account with the database.
  * Returns the JWT token via token_ptr if not null.
  * Only RECORD scope is supported for signup.
  *
@@ -965,7 +1083,9 @@ int sr_signup(const struct sr_surreal_t *db,
               const struct sr_object_t *params);
 
 /**
- * unset a variable from the current session
+ * Unset a variable from the current session
+ *
+ * Removes a previously defined session variable.
  *
  * # Examples
  *
@@ -981,7 +1101,9 @@ int sr_signup(const struct sr_surreal_t *db,
 int sr_unset(const struct sr_surreal_t *db, sr_string_t *err_ptr, const char *key);
 
 /**
- * update records with new content
+ * Update records with new content
+ *
+ * Replaces the content of existing records with new data.
  *
  * # Examples
  *
@@ -1005,7 +1127,9 @@ int sr_update(const struct sr_surreal_t *db,
               const struct sr_object_t *content);
 
 /**
- * upsert (insert or update) records
+ * Upsert (insert or update) records
+ *
+ * Creates records if they don't exist, or updates them if they do.
  *
  * # Examples
  *
@@ -1029,7 +1153,9 @@ int sr_upsert(const struct sr_surreal_t *db,
               const struct sr_object_t *content);
 
 /**
- * select database
+ * Select database
+ *
+ * Sets the database to use for subsequent operations.
  * NOTE: namespace must be selected first with sr_use_ns
  *
  * # Examples
@@ -1046,7 +1172,9 @@ int sr_upsert(const struct sr_surreal_t *db,
 int sr_use_db(const struct sr_surreal_t *db, sr_string_t *err_ptr, const char *query);
 
 /**
- * select namespace
+ * Select namespace
+ *
+ * Sets the namespace to use for subsequent operations.
  * NOTE: database must be selected before use with sr_use_db
  *
  * # Examples
@@ -1063,7 +1191,9 @@ int sr_use_db(const struct sr_surreal_t *db, sr_string_t *err_ptr, const char *q
 int sr_use_ns(const struct sr_surreal_t *db, sr_string_t *err_ptr, const char *query);
 
 /**
- * returns the db version
+ * Returns the database version
+ *
+ * Retrieves the version string of the connected SurrealDB server.
  * NOTE: version is allocated in Surreal and must be freed with sr_free_string
  * # Examples
  * ```c
@@ -1178,12 +1308,18 @@ void sr_free_arr_res(struct sr_arr_res_t res);
 void sr_free_arr_res_arr(struct sr_arr_res_t *ptr, int len);
 
 /**
- * blocks until next item is recieved on stream
+ * Blocks until next item is received on stream
  * will return 1 and write notification to notification_ptr is recieved
  * will return SR_NONE if the stream is closed
  */
 int sr_stream_next(struct sr_stream_t *self, struct sr_notification_t *notification_ptr);
 
+/**
+ * Kill and free a stream
+ *
+ * Closes the stream and releases all associated resources.
+ * The stream must not be used after calling this function.
+ */
 void sr_stream_kill(struct sr_stream_t *stream);
 
 /**
@@ -1197,10 +1333,26 @@ int sr_rpc_stream_next(struct sr_RpcStream *self, uint8_t **res_ptr);
  */
 void sr_rpc_stream_free(struct sr_RpcStream *stream);
 
+/**
+ * Free a string allocated by SurrealDB
+ *
+ * This function must be called to free strings returned by SurrealDB functions
+ * to avoid memory leaks.
+ */
 void sr_free_string(sr_string_t string);
 
+/**
+ * Print a value to stdout for debugging
+ *
+ * Outputs the debug representation of the value to standard output.
+ */
 void sr_value_print(const struct sr_value_t *val);
 
+/**
+ * Compare two values for equality
+ *
+ * Returns true if both values are equal, false otherwise.
+ */
 bool sr_value_eq(const struct sr_value_t *lhs, const struct sr_value_t *rhs);
 
 /**

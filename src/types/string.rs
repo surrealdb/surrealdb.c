@@ -6,6 +6,10 @@ use std::{
 
 use crate::utils::CStringExt2;
 
+/// A null-terminated C string type
+///
+/// This is a wrapper around a raw C string pointer that handles memory management.
+/// Strings returned by SurrealDB functions must be freed with `sr_free_string`.
 #[repr(transparent)]
 #[allow(non_camel_case_types)]
 pub struct string_t(pub *mut c_char);
@@ -77,12 +81,10 @@ impl PartialEq for string_t {
     }
 }
 
-// pub fn ptr_to_str(ptr: *const c_char) -> &'static str {
-//     let cstr = unsafe { CStr::from_ptr(ptr) };
-//     // // TODO(raphaeldarley): remove panic because of ub, or check its always caught
-//     cstr.to_str().unwrap()
-// }
-
+/// Free a string allocated by SurrealDB
+///
+/// This function must be called to free strings returned by SurrealDB functions
+/// to avoid memory leaks.
 #[export_name = "sr_free_string"]
 pub extern "C" fn free_string(string: string_t) {
     drop(string)

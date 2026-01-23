@@ -32,6 +32,28 @@ pub const SR_CLOSED: c_int = -1;
 pub const SR_ERROR: c_int = -2;
 pub const SR_FATAL: c_int = -3;
 
+/// Safely write an error message to an error pointer
+/// 
+/// If `err_ptr` is null, the error is silently ignored.
+#[inline]
+fn write_error(err_ptr: *mut string_t, msg: impl Into<string_t>) {
+    if !err_ptr.is_null() {
+        unsafe { err_ptr.write(msg.into()) };
+    }
+}
+
+/// Macro to validate that a pointer is not null
+/// 
+/// If the pointer is null, writes an error message and returns SR_ERROR.
+macro_rules! check_null {
+    ($ptr:expr, $err_ptr:expr, $msg:expr) => {
+        if $ptr.is_null() {
+            write_error($err_ptr, $msg);
+            return SR_ERROR;
+        }
+    };
+}
+
 /// The object representing a Surreal connection
 ///
 /// It is safe to be referenced from multiple threads
@@ -46,9 +68,16 @@ pub struct Surreal {
 }
 
 impl Surreal {
-    /// connects to a local, remote, or embedded database
+    /// Connects to a local, remote, or embedded database
     ///
-    /// if any function returns SR_FATAL, this must not be used (except to drop) (TODO: check this is safe) doing so will cause the program to abort
+    /// If any function returns SR_FATAL, the connection is poisoned and must not be used
+    /// (except to drop). Continued use will cause the program to abort.
+    ///
+    /// # Safety
+    ///
+    /// - `err_ptr` must be a valid pointer or null (errors ignored if null)
+    /// - `surreal_ptr` must be a valid pointer to receive the connection handle
+    /// - `endpoint` must be a valid null-terminated UTF-8 string
     ///
     /// # Examples
     ///
@@ -82,7 +111,9 @@ impl Surreal {
         surreal_ptr: *mut *mut Surreal,
         endpoint: *const c_char,
     ) -> c_int {
-        // TODO: wrap in catch unwind
+        check_null!(surreal_ptr, err_ptr, "surreal_ptr is null");
+        check_null!(endpoint, err_ptr, "endpoint is null");
+
         let res: Result<Result<Surreal, string_t>, _> = catch_unwind(AssertUnwindSafe(|| {
             let Ok(endpoint) = (unsafe { CStr::from_ptr(endpoint).to_str() }) else {
                 return Err("invalid utf8".into());
@@ -132,10 +163,12 @@ impl Surreal {
         }
     }
 
-    /// disconnect a database connection
-    /// note: the Surreal object must not be used after this function has been called
-    ///     any object allocations will still be valid, and should be freed, using the appropriate function
-    /// TODO: check if Stream can be freed after disconnection because of rt
+    /// Disconnect a database connection
+    ///
+    /// The Surreal object must not be used after this function has been called.
+    /// Any object allocations will still be valid and should be freed using the appropriate function.
+    ///
+    /// Note: Stream objects should be killed before disconnection to ensure proper cleanup.
     ///
     /// # Examples
     ///
@@ -149,8 +182,15 @@ impl Surreal {
         catch_unwind(AssertUnwindSafe(|| drop(unsafe { Box::from_raw(db) }))).ok();
     }
 
-    // authenticate.rs
-    /// authenticate with a token
+    /// Authenticate with a token
+    ///
+    /// Authenticates the current connection with a JWT token.
+    ///
+    /// # Safety
+    ///
+    /// - `db` must be a valid pointer to a Surreal connection
+    /// - `err_ptr` must be a valid pointer or null
+    /// - `token` must be a valid null-terminated UTF-8 string
     ///
     /// # Examples
     ///
@@ -169,6 +209,7 @@ impl Surreal {
         err_ptr: *mut string_t,
         token: *const c_char,
     ) -> c_int {
+        check_null!(token, err_ptr, "token is null");
         with_surreal_async(db, err_ptr, |surreal| async {
             let token = unsafe { CStr::from_ptr(token) }.to_str()?;
             surreal.db.authenticate(token).await?;
@@ -176,8 +217,9 @@ impl Surreal {
         })
     }
 
-    // begin.rs
-    /// begin a new transaction
+    /// Begin a new transaction
+    ///
+    /// Starts a new database transaction.
     ///
     /// # Examples
     ///
@@ -197,8 +239,9 @@ impl Surreal {
         })
     }
 
-    // cancel.rs
-    /// cancel the current transaction
+    /// Cancel the current transaction
+    ///
+    /// Cancels and rolls back the current database transaction.
     ///
     /// # Examples
     ///
@@ -218,8 +261,9 @@ impl Surreal {
         })
     }
 
-    // commit.rs
-    /// commit the current transaction
+    /// Commit the current transaction
+    ///
+    /// Commits and finalizes the current database transaction.
     ///
     /// # Examples
     ///
@@ -239,12 +283,17 @@ impl Surreal {
         })
     }
 
-    // content.rs
-
-    // create.rs
-
-    /// create a record
+    /// Create a record
     ///
+    /// Creates a new record in the specified resource with the given content.
+    ///
+    /// # Safety
+    ///
+    /// - `db` must be a valid pointer to a Surreal connection
+    /// - `err_ptr` must be a valid pointer or null
+    /// - `res_ptr` may be null (result will be discarded)
+    /// - `resource` must be a valid null-terminated UTF-8 string
+    /// - `content` must be a valid pointer to an Object
     #[export_name = "sr_create"]
     pub extern "C" fn create(
         db: &Surreal,
@@ -253,6 +302,8 @@ impl Surreal {
         resource: *const c_char,
         content: *const Object,
     ) -> c_int {
+        check_null!(resource, err_ptr, "resource is null");
+        check_null!(content, err_ptr, "content is null");
         with_surreal_async(db, err_ptr, |surreal| async {
             let resource = unsafe { CStr::from_ptr(resource) }.to_str()?;
             let content = sql::Object::from(unsafe { &*content }.clone());
@@ -281,8 +332,16 @@ impl Surreal {
         })
     }
 
-    // delete.rs
-    /// delete a record or records
+    /// Delete a record or records
+    ///
+    /// Deletes records from the specified resource.
+    ///
+    /// # Safety
+    ///
+    /// - `db` must be a valid pointer to a Surreal connection
+    /// - `err_ptr` must be a valid pointer or null
+    /// - `res_ptr` must be a valid pointer to receive the result array
+    /// - `resource` must be a valid null-terminated UTF-8 string
     ///
     /// # Examples
     ///
@@ -304,6 +363,8 @@ impl Surreal {
         res_ptr: *mut *mut Value,
         resource: *const c_char,
     ) -> c_int {
+        check_null!(res_ptr, err_ptr, "res_ptr is null");
+        check_null!(resource, err_ptr, "resource is null");
         with_surreal_async(db, err_ptr, |surreal| async {
             let resource = unsafe { CStr::from_ptr(resource) }.to_str()?;
 
@@ -324,8 +385,15 @@ impl Surreal {
         })
     }
 
-    // export.rs
-    /// export database data to a file
+    /// Export database data to a file
+    ///
+    /// Exports all data from the current namespace and database to a file.
+    ///
+    /// # Safety
+    ///
+    /// - `db` must be a valid pointer to a Surreal connection
+    /// - `err_ptr` must be a valid pointer or null
+    /// - `file_path` must be a valid null-terminated UTF-8 string
     ///
     /// # Examples
     ///
@@ -343,6 +411,7 @@ impl Surreal {
         err_ptr: *mut string_t,
         file_path: *const c_char,
     ) -> c_int {
+        check_null!(file_path, err_ptr, "file_path is null");
         with_surreal_async(db, err_ptr, |surreal| async {
             let file_path = unsafe { CStr::from_ptr(file_path) }.to_str()?;
             surreal.db.export(file_path).await?;
@@ -350,8 +419,9 @@ impl Surreal {
         })
     }
 
-    // health.rs
-    /// check the health of the database server
+    /// Check the health of the database server
+    ///
+    /// Performs a health check on the database connection.
     ///
     /// # Examples
     ///
@@ -371,8 +441,15 @@ impl Surreal {
         })
     }
 
-    // import.rs
-    /// import database data from a file
+    /// Import database data from a file
+    ///
+    /// Imports data from a file into the current namespace and database.
+    ///
+    /// # Safety
+    ///
+    /// - `db` must be a valid pointer to a Surreal connection
+    /// - `err_ptr` must be a valid pointer or null
+    /// - `file_path` must be a valid null-terminated UTF-8 string
     ///
     /// # Examples
     ///
@@ -390,6 +467,7 @@ impl Surreal {
         err_ptr: *mut string_t,
         file_path: *const c_char,
     ) -> c_int {
+        check_null!(file_path, err_ptr, "file_path is null");
         with_surreal_async(db, err_ptr, |surreal| async {
             let file_path = unsafe { CStr::from_ptr(file_path) }.to_str()?;
             surreal.db.import(file_path).await?;
@@ -397,8 +475,17 @@ impl Surreal {
         })
     }
 
-    // insert.rs
-    /// insert one or more records
+    /// Insert one or more records
+    ///
+    /// Inserts records into the specified resource with the given content.
+    ///
+    /// # Safety
+    ///
+    /// - `db` must be a valid pointer to a Surreal connection
+    /// - `err_ptr` must be a valid pointer or null
+    /// - `res_ptr` must be a valid pointer to receive the result array
+    /// - `resource` must be a valid null-terminated UTF-8 string
+    /// - `content` must be a valid pointer to an Object
     ///
     /// # Examples
     ///
@@ -422,6 +509,9 @@ impl Surreal {
         resource: *const c_char,
         content: *const Object,
     ) -> c_int {
+        check_null!(res_ptr, err_ptr, "res_ptr is null");
+        check_null!(resource, err_ptr, "resource is null");
+        check_null!(content, err_ptr, "content is null");
         with_surreal_async(db, err_ptr, |surreal| async {
             let resource = unsafe { CStr::from_ptr(resource) }.to_str()?;
             let content = sql::Object::from(unsafe { &*content }.clone());
@@ -444,11 +534,20 @@ impl Surreal {
         })
     }
 
-    // insert_relation.rs
     /// Insert a relation between records
+    ///
+    /// Creates a relation record in a relation table.
     ///
     /// The content object must contain 'in' and 'out' fields specifying the records to relate.
     /// Additional fields can be added as relation properties.
+    ///
+    /// # Safety
+    ///
+    /// - `db` must be a valid pointer to a Surreal connection
+    /// - `err_ptr` must be a valid pointer or null
+    /// - `res_ptr` must be a valid pointer to receive the result array
+    /// - `table` must be a valid null-terminated UTF-8 string
+    /// - `content` must be a valid pointer to an Object
     ///
     /// # Examples
     ///
@@ -475,6 +574,9 @@ impl Surreal {
         table: *const c_char,
         content: *const Object,
     ) -> c_int {
+        check_null!(res_ptr, err_ptr, "res_ptr is null");
+        check_null!(table, err_ptr, "table is null");
+        check_null!(content, err_ptr, "content is null");
         with_surreal_async(db, err_ptr, |surreal| async {
             let table = unsafe { CStr::from_ptr(table) }.to_str()?;
             let content = sql::Object::from(unsafe { &*content }.clone());
@@ -497,8 +599,17 @@ impl Surreal {
         })
     }
 
-    // run.rs
     /// Execute a SurrealDB function
+    ///
+    /// Runs a custom or built-in SurrealDB function with the specified arguments.
+    ///
+    /// # Safety
+    ///
+    /// - `db` must be a valid pointer to a Surreal connection
+    /// - `err_ptr` must be a valid pointer or null
+    /// - `res_ptr` must be a valid pointer to receive the result array
+    /// - `function_name` must be a valid null-terminated UTF-8 string
+    /// - `args` may be null (empty arguments)
     ///
     /// # Examples
     ///
@@ -521,6 +632,8 @@ impl Surreal {
         function_name: *const c_char,
         args: *const Array,
     ) -> c_int {
+        check_null!(res_ptr, err_ptr, "res_ptr is null");
+        check_null!(function_name, err_ptr, "function_name is null");
         with_surreal_async(db, err_ptr, |surreal| async {
             let function_name = unsafe { CStr::from_ptr(function_name) }.to_str()?;
             
@@ -549,8 +662,19 @@ impl Surreal {
         })
     }
 
-    // relate.rs
     /// Create a graph relation between two records
+    ///
+    /// Establishes a directed relation from one record to another through a relation table.
+    ///
+    /// # Safety
+    ///
+    /// - `db` must be a valid pointer to a Surreal connection
+    /// - `err_ptr` must be a valid pointer or null
+    /// - `res_ptr` must be a valid pointer to receive the result array
+    /// - `from` must be a valid null-terminated UTF-8 string
+    /// - `relation` must be a valid null-terminated UTF-8 string
+    /// - `to` must be a valid null-terminated UTF-8 string
+    /// - `content` may be null (no content will be added)
     ///
     /// # Examples
     ///
@@ -576,6 +700,10 @@ impl Surreal {
         to: *const c_char,
         content: *const Object,
     ) -> c_int {
+        check_null!(res_ptr, err_ptr, "res_ptr is null");
+        check_null!(from, err_ptr, "from is null");
+        check_null!(relation, err_ptr, "relation is null");
+        check_null!(to, err_ptr, "to is null");
         with_surreal_async(db, err_ptr, |surreal| async {
             let from = unsafe { CStr::from_ptr(from) }.to_str()?;
             let relation = unsafe { CStr::from_ptr(relation) }.to_str()?;
@@ -608,8 +736,9 @@ impl Surreal {
         })
     }
 
-    // invalidate.rs
-    /// invalidate the current authentication session
+    /// Invalidate the current authentication session
+    ///
+    /// Clears the current authentication for the connection.
     ///
     /// # Examples
     ///
@@ -629,8 +758,15 @@ impl Surreal {
         })
     }
 
-    // kill.rs
     /// Kill a live query by its UUID string
+    ///
+    /// Terminates an active live query subscription.
+    ///
+    /// # Safety
+    ///
+    /// - `db` must be a valid pointer to a Surreal connection
+    /// - `err_ptr` must be a valid pointer or null
+    /// - `query_id` must be a valid null-terminated UTF-8 string
     ///
     /// # Examples
     ///
@@ -645,10 +781,8 @@ impl Surreal {
     /// ```
     #[export_name = "sr_kill"]
     pub extern "C" fn kill(db: &Surreal, err_ptr: *mut string_t, query_id: *const c_char) -> c_int {
+        check_null!(query_id, err_ptr, "query_id is null");
         with_surreal_async(db, err_ptr, |surreal| async {
-            if query_id.is_null() {
-                return Err("query_id is null".into());
-            }
             let uuid_str = unsafe { CStr::from_ptr(query_id) }.to_str()?;
             let query = format!("KILL u'{}'", uuid_str);
             surreal.db.query(query).await?;
@@ -656,10 +790,18 @@ impl Surreal {
         })
     }
 
-    // live.rs
-    /// make a live selection
+    /// Make a live selection
+    ///
+    /// Creates a live query subscription that streams changes.
     /// if successful sets *stream_ptr to be an exclusive reference to an opaque Stream object
     /// which can be moved across threads but not aliased
+    ///
+    /// # Safety
+    ///
+    /// - `db` must be a valid pointer to a Surreal connection
+    /// - `err_ptr` must be a valid pointer or null
+    /// - `stream_ptr` must be a valid pointer to receive the stream
+    /// - `resource` must be a valid null-terminated UTF-8 string
     ///
     /// # Examples
     ///
@@ -683,6 +825,8 @@ impl Surreal {
         stream_ptr: *mut &mut Stream,
         resource: *const c_char,
     ) -> c_int {
+        check_null!(stream_ptr, err_ptr, "stream_ptr is null");
+        check_null!(resource, err_ptr, "resource is null");
         use surrealdb::method::Stream as sdbStream;
         with_surreal_async(db, err_ptr, |surreal| async {
             let resource = unsafe { CStr::from_ptr(resource) }.to_str()?;
@@ -699,8 +843,17 @@ impl Surreal {
         })
     }
 
-    // merge.rs
-    /// merge data into existing records
+    /// Merge data into existing records
+    ///
+    /// Merges the provided content into existing records, preserving unmodified fields.
+    ///
+    /// # Safety
+    ///
+    /// - `db` must be a valid pointer to a Surreal connection
+    /// - `err_ptr` must be a valid pointer or null
+    /// - `res_ptr` must be a valid pointer to receive the result array
+    /// - `resource` must be a valid null-terminated UTF-8 string
+    /// - `content` must be a valid pointer to an Object
     ///
     /// # Examples
     ///
@@ -724,6 +877,9 @@ impl Surreal {
         resource: *const c_char,
         content: *const Object,
     ) -> c_int {
+        check_null!(res_ptr, err_ptr, "res_ptr is null");
+        check_null!(resource, err_ptr, "resource is null");
+        check_null!(content, err_ptr, "content is null");
         with_surreal_async(db, err_ptr, |surreal| async {
             let resource = unsafe { CStr::from_ptr(resource) }.to_str()?;
             let content = sql::Object::from(unsafe { &*content }.clone());
@@ -746,10 +902,18 @@ impl Surreal {
         })
     }
 
-    // mod.rs
-
-    // patch.rs
     /// Add a value at a JSON path using JSON Patch
+    ///
+    /// Applies a JSON Patch add operation to the specified resource.
+    ///
+    /// # Safety
+    ///
+    /// - `db` must be a valid pointer to a Surreal connection
+    /// - `err_ptr` must be a valid pointer or null
+    /// - `res_ptr` must be a valid pointer to receive the result array
+    /// - `resource` must be a valid null-terminated UTF-8 string
+    /// - `path` must be a valid null-terminated UTF-8 string
+    /// - `value` must be a valid pointer to a Value
     ///
     /// # Examples
     ///
@@ -774,6 +938,10 @@ impl Surreal {
         path: *const c_char,
         value: *const Value,
     ) -> c_int {
+        check_null!(res_ptr, err_ptr, "res_ptr is null");
+        check_null!(resource, err_ptr, "resource is null");
+        check_null!(path, err_ptr, "path is null");
+        check_null!(value, err_ptr, "value is null");
         with_surreal_async(db, err_ptr, |surreal| async {
             let resource = unsafe { CStr::from_ptr(resource) }.to_str()?;
             let path = unsafe { CStr::from_ptr(path) }.to_str()?;
@@ -799,6 +967,14 @@ impl Surreal {
 
     /// Remove a value at a JSON path using JSON Patch
     ///
+    /// # Safety
+    ///
+    /// - `db` must be a valid pointer to a Surreal connection
+    /// - `err_ptr` must be a valid pointer or null
+    /// - `res_ptr` must be a valid pointer to receive the result array
+    /// - `resource` must be a valid null-terminated UTF-8 string
+    /// - `path` must be a valid null-terminated UTF-8 string
+    ///
     /// # Examples
     ///
     /// ```c
@@ -820,6 +996,9 @@ impl Surreal {
         resource: *const c_char,
         path: *const c_char,
     ) -> c_int {
+        check_null!(res_ptr, err_ptr, "res_ptr is null");
+        check_null!(resource, err_ptr, "resource is null");
+        check_null!(path, err_ptr, "path is null");
         with_surreal_async(db, err_ptr, |surreal| async {
             let resource = unsafe { CStr::from_ptr(resource) }.to_str()?;
             let path = unsafe { CStr::from_ptr(path) }.to_str()?;
@@ -844,6 +1023,15 @@ impl Surreal {
 
     /// Replace a value at a JSON path using JSON Patch
     ///
+    /// # Safety
+    ///
+    /// - `db` must be a valid pointer to a Surreal connection
+    /// - `err_ptr` must be a valid pointer or null
+    /// - `res_ptr` must be a valid pointer to receive the result array
+    /// - `resource` must be a valid null-terminated UTF-8 string
+    /// - `path` must be a valid null-terminated UTF-8 string
+    /// - `value` must be a valid pointer to a Value
+    ///
     /// # Examples
     ///
     /// ```c
@@ -867,6 +1055,10 @@ impl Surreal {
         path: *const c_char,
         value: *const Value,
     ) -> c_int {
+        check_null!(res_ptr, err_ptr, "res_ptr is null");
+        check_null!(resource, err_ptr, "resource is null");
+        check_null!(path, err_ptr, "path is null");
+        check_null!(value, err_ptr, "value is null");
         with_surreal_async(db, err_ptr, |surreal| async {
             let resource = unsafe { CStr::from_ptr(resource) }.to_str()?;
             let path = unsafe { CStr::from_ptr(path) }.to_str()?;
@@ -890,7 +1082,15 @@ impl Surreal {
         })
     }
 
-    // query.rs
+    /// Execute a SurrealQL query
+    ///
+    /// # Safety
+    ///
+    /// - `db` must be a valid pointer to a Surreal connection
+    /// - `err_ptr` must be a valid pointer or null
+    /// - `res_ptr` must be a valid pointer to receive the result array
+    /// - `query` must be a valid null-terminated UTF-8 string
+    /// - `vars` may be null (no variables bound)
     #[export_name = "sr_query"]
     pub extern "C" fn query(
         db: &Surreal,
@@ -899,6 +1099,8 @@ impl Surreal {
         query: *const c_char,
         vars: *const Object,
     ) -> c_int {
+        check_null!(res_ptr, err_ptr, "res_ptr is null");
+        check_null!(query, err_ptr, "query is null");
         with_surreal_async(db, err_ptr, |surreal| async {
             let query = unsafe { CStr::from_ptr(query) }.to_str()?;
             let vars: sql::Object = match vars.is_null() {
@@ -933,12 +1135,20 @@ impl Surreal {
         })
     }
 
-    // select.rs
-    /// select a resource
+    /// Select a resource
+    ///
+    /// Selects records from the specified resource (table or record ID).
     ///
     /// can be used to select everything from a table or a single record
     /// writes values to *res_ptr, and returns the number of values
     /// result values are allocated by Surreal and must be freed with sr_free_arr
+    ///
+    /// # Safety
+    ///
+    /// - `db` must be a valid pointer to a Surreal connection
+    /// - `err_ptr` must be a valid pointer or null
+    /// - `res_ptr` must be a valid pointer to receive the result array
+    /// - `resource` must be a valid null-terminated UTF-8 string
     ///
     /// # Examples
     ///
@@ -964,6 +1174,8 @@ impl Surreal {
         res_ptr: *mut *mut Value,
         resource: *const c_char,
     ) -> c_int {
+        check_null!(res_ptr, err_ptr, "res_ptr is null");
+        check_null!(resource, err_ptr, "resource is null");
         with_surreal_async(db, err_ptr, |surreal| async {
             let resource = unsafe { CStr::from_ptr(resource) }.to_str()?;
 
@@ -983,8 +1195,16 @@ impl Surreal {
             Ok(len as c_int)
         })
     }
-    // set.rs
-    /// set a variable for the current session
+    /// Set a variable for the current session
+    ///
+    /// Defines a session variable that can be referenced in queries.
+    ///
+    /// # Safety
+    ///
+    /// - `db` must be a valid pointer to a Surreal connection
+    /// - `err_ptr` must be a valid pointer or null
+    /// - `key` must be a valid null-terminated UTF-8 string
+    /// - `value` must be a valid pointer to a Value
     ///
     /// # Examples
     ///
@@ -1004,6 +1224,8 @@ impl Surreal {
         key: *const c_char,
         value: *const Value,
     ) -> c_int {
+        check_null!(key, err_ptr, "key is null");
+        check_null!(value, err_ptr, "value is null");
         with_surreal_async(db, err_ptr, |surreal| async {
             let key = unsafe { CStr::from_ptr(key) }.to_str()?;
             let value: sql::Value = unsafe { &*value }.clone().into();
@@ -1013,8 +1235,9 @@ impl Surreal {
         })
     }
 
-    // signin.rs
-    /// Sign in utilizing the surreal authentication types.
+    /// Sign in utilizing the surreal authentication types
+    ///
+    /// Authenticates with the database using the provided credentials.
     ///
     /// Used to provide credentials to a db for access permissions, either root or scoped.
     /// Returns the JWT token via token_ptr if not null.
@@ -1206,8 +1429,9 @@ impl Surreal {
 
 
 
-    // signup.rs
     /// Sign up a new user with credentials
+    ///
+    /// Registers a new user account with the database.
     /// Returns the JWT token via token_ptr if not null.
     /// Only RECORD scope is supported for signup.
     ///
@@ -1345,8 +1569,15 @@ impl Surreal {
         })
     }
 
-    // unset.rs
-    /// unset a variable from the current session
+    /// Unset a variable from the current session
+    ///
+    /// Removes a previously defined session variable.
+    ///
+    /// # Safety
+    ///
+    /// - `db` must be a valid pointer to a Surreal connection
+    /// - `err_ptr` must be a valid pointer or null
+    /// - `key` must be a valid null-terminated UTF-8 string
     ///
     /// # Examples
     ///
@@ -1364,6 +1595,7 @@ impl Surreal {
         err_ptr: *mut string_t,
         key: *const c_char,
     ) -> c_int {
+        check_null!(key, err_ptr, "key is null");
         with_surreal_async(db, err_ptr, |surreal| async {
             let key = unsafe { CStr::from_ptr(key) }.to_str()?;
             surreal.db.unset(key).await?;
@@ -1371,8 +1603,17 @@ impl Surreal {
         })
     }
 
-    // update.rs
-    /// update records with new content
+    /// Update records with new content
+    ///
+    /// Replaces the content of existing records with new data.
+    ///
+    /// # Safety
+    ///
+    /// - `db` must be a valid pointer to a Surreal connection
+    /// - `err_ptr` must be a valid pointer or null
+    /// - `res_ptr` must be a valid pointer to receive the result array
+    /// - `resource` must be a valid null-terminated UTF-8 string
+    /// - `content` must be a valid pointer to an Object
     ///
     /// # Examples
     ///
@@ -1396,6 +1637,9 @@ impl Surreal {
         resource: *const c_char,
         content: *const Object,
     ) -> c_int {
+        check_null!(res_ptr, err_ptr, "res_ptr is null");
+        check_null!(resource, err_ptr, "resource is null");
+        check_null!(content, err_ptr, "content is null");
         with_surreal_async(db, err_ptr, |surreal| async {
             let resource = unsafe { CStr::from_ptr(resource) }.to_str()?;
             let content = sql::Object::from(unsafe { &*content }.clone());
@@ -1418,8 +1662,17 @@ impl Surreal {
         })
     }
 
-    // upsert.rs
-    /// upsert (insert or update) records
+    /// Upsert (insert or update) records
+    ///
+    /// Creates records if they don't exist, or updates them if they do.
+    ///
+    /// # Safety
+    ///
+    /// - `db` must be a valid pointer to a Surreal connection
+    /// - `err_ptr` must be a valid pointer or null
+    /// - `res_ptr` must be a valid pointer to receive the result array
+    /// - `resource` must be a valid null-terminated UTF-8 string
+    /// - `content` must be a valid pointer to an Object
     ///
     /// # Examples
     ///
@@ -1443,6 +1696,9 @@ impl Surreal {
         resource: *const c_char,
         content: *const Object,
     ) -> c_int {
+        check_null!(res_ptr, err_ptr, "res_ptr is null");
+        check_null!(resource, err_ptr, "resource is null");
+        check_null!(content, err_ptr, "content is null");
         with_surreal_async(db, err_ptr, |surreal| async {
             let resource = unsafe { CStr::from_ptr(resource) }.to_str()?;
             let content = sql::Object::from(unsafe { &*content }.clone());
@@ -1465,9 +1721,16 @@ impl Surreal {
         })
     }
 
-    // use_db.rs
-    /// select database
+    /// Select database
+    ///
+    /// Sets the database to use for subsequent operations.
     /// NOTE: namespace must be selected first with sr_use_ns
+    ///
+    /// # Safety
+    ///
+    /// - `db` must be a valid pointer to a Surreal connection
+    /// - `err_ptr` must be a valid pointer or null
+    /// - `db_name` must be a valid null-terminated UTF-8 string
     ///
     /// # Examples
     /// ```c
@@ -1480,18 +1743,27 @@ impl Surreal {
     /// }
     /// ```
     #[export_name = "sr_use_db"]
-    pub extern "C" fn use_db(db: &Surreal, err_ptr: *mut string_t, query: *const c_char) -> c_int {
+    pub extern "C" fn use_db(db: &Surreal, err_ptr: *mut string_t, db_name: *const c_char) -> c_int {
+        check_null!(db_name, err_ptr, "db_name is null");
         with_surreal_async(db, err_ptr, |surreal| async {
-            let db_name = unsafe { CStr::from_ptr(query) }.to_str()?;
+            let db_name = unsafe { CStr::from_ptr(db_name) }.to_str()?;
 
             surreal.db.use_db(db_name).await?;
 
             Ok(0)
         })
     }
-    // use_ns.rs
-    /// select namespace
+
+    /// Select namespace
+    ///
+    /// Sets the namespace to use for subsequent operations.
     /// NOTE: database must be selected before use with sr_use_db
+    ///
+    /// # Safety
+    ///
+    /// - `db` must be a valid pointer to a Surreal connection
+    /// - `err_ptr` must be a valid pointer or null
+    /// - `ns_name` must be a valid null-terminated UTF-8 string
     ///
     /// # Examples
     /// ```c
@@ -1504,21 +1776,28 @@ impl Surreal {
     /// }
     /// ```
     #[export_name = "sr_use_ns"]
-    pub extern "C" fn use_ns(db: &Surreal, err_ptr: *mut string_t, query: *const c_char) -> c_int {
-        let out = with_surreal_async(db, err_ptr, |surreal| async {
-            let ns_name = unsafe { CStr::from_ptr(query) }.to_str()?;
+    pub extern "C" fn use_ns(db: &Surreal, err_ptr: *mut string_t, ns_name: *const c_char) -> c_int {
+        check_null!(ns_name, err_ptr, "ns_name is null");
+        with_surreal_async(db, err_ptr, |surreal| async {
+            let ns_name = unsafe { CStr::from_ptr(ns_name) }.to_str()?;
 
             surreal.db.use_ns(ns_name).await?;
 
             Ok(0)
-        });
-        out
+        })
     }
 
-    // version.rs
-
-    /// returns the db version
+    /// Returns the database version
+    ///
+    /// Retrieves the version string of the connected SurrealDB server.
     /// NOTE: version is allocated in Surreal and must be freed with sr_free_string
+    ///
+    /// # Safety
+    ///
+    /// - `db` must be a valid pointer to a Surreal connection
+    /// - `err_ptr` must be a valid pointer or null
+    /// - `res_ptr` must be a valid pointer to receive the version string
+    ///
     /// # Examples
     /// ```c
     /// sr_surreal_t *db;
@@ -1539,6 +1818,7 @@ impl Surreal {
         err_ptr: *mut string_t,
         res_ptr: *mut string_t,
     ) -> c_int {
+        check_null!(res_ptr, err_ptr, "res_ptr is null");
         with_surreal_async(db, err_ptr, |surreal| async {
             let res = surreal.db.version().await?;
             let res_string = res.to_string();
@@ -1547,7 +1827,7 @@ impl Surreal {
 
             unsafe { res_ptr.write(res_str) }
 
-            return Ok(len as c_int);
+            Ok(len as c_int)
         })
     }
 }

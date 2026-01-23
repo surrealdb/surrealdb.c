@@ -13,7 +13,10 @@ use crate::{notification::Notification, SR_CLOSED, SR_NONE};
 
 use super::array::MakeArray;
 
-/// may be sent across threads, but must not be aliased
+/// Stream for receiving live query notifications
+///
+/// May be sent across threads, but must not be aliased.
+/// Use `sr_stream_next` to receive notifications and `sr_stream_kill` to close.
 pub struct Stream {
     inner: sdbStream<apiValue>,
     rt: Handle,
@@ -26,9 +29,7 @@ impl Stream {
 }
 
 impl Stream {
-    // TODO: add try catch here, and add poison?
-
-    /// blocks until next item is recieved on stream
+    /// Blocks until next item is received on stream
     /// will return 1 and write notification to notification_ptr is recieved
     /// will return SR_NONE if the stream is closed
     #[export_name = "sr_stream_next"]
@@ -42,6 +43,10 @@ impl Stream {
         }
     }
 
+    /// Kill and free a stream
+    ///
+    /// Closes the stream and releases all associated resources.
+    /// The stream must not be used after calling this function.
     #[export_name = "sr_stream_kill"]
     pub extern "C" fn kill(stream: *mut Stream) {
         let boxed = unsafe { Box::from_raw(stream) };
@@ -50,7 +55,9 @@ impl Stream {
     }
 }
 
-// TODO: check if this needs to be dropped async
+/// Stream for receiving RPC notifications
+///
+/// Uses synchronous blocking receives, so no async drop is required.
 pub struct RpcStream {
     rx: Receiver<dbs::Notification>,
 }

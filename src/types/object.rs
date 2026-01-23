@@ -9,50 +9,113 @@ use crate::{utils::CStringExt2, value::Value};
 
 use crate::types::number::Number;
 
+/// A key-value object type for SurrealDB
+///
+/// Contains string keys mapped to Value instances.
 #[repr(C)]
 #[derive(Debug, Clone, PartialEq)]
 pub struct Object(Box<BTreeMap<String, Value>>);
 
 impl Object {
+    /// Get a value by key from the object
+    ///
+    /// # Safety
+    ///
+    /// - `obj` must be a valid reference to an Object
+    /// - `key` must be a valid null-terminated UTF-8 string
     #[export_name = "sr_object_get"]
     pub extern "C" fn get(obj: &Object, key: *const c_char) -> Option<&Value> {
+        if key.is_null() {
+            return None;
+        }
         let key = unsafe { CStr::from_ptr(key) }.to_string_lossy();
         obj.0.get(key.as_ref())
     }
 
+    /// Create a new empty object
     #[export_name = "sr_object_new"]
     pub extern "C" fn new() -> Object {
         let boxed = Box::new(BTreeMap::new());
         Object(boxed)
     }
 
+    /// Insert a key-value pair into the object
+    ///
+    /// # Safety
+    ///
+    /// - `obj` must be a valid pointer to an Object
+    /// - `key` must be a valid null-terminated UTF-8 string
+    /// - `value` must be a valid reference to a Value
+    ///
+    /// If any pointer is null, the function returns without modification.
     #[export_name = "sr_object_insert"]
     pub extern "C" fn insert(obj: *mut Object, key: *const c_char, value: &Value) {
+        if obj.is_null() || key.is_null() {
+            return;
+        }
         let obj = unsafe { &mut *obj };
         let key = unsafe { CStr::from_ptr(key) }.to_string_lossy().to_string();
         obj.0.insert(key, value.clone());
     }
 
+    /// Insert a string value into the object
+    ///
+    /// # Safety
+    ///
+    /// - `obj` must be a valid pointer to an Object
+    /// - `key` must be a valid null-terminated UTF-8 string
+    /// - `value` must be a valid null-terminated UTF-8 string
     #[export_name = "sr_object_insert_str"]
     pub extern "C" fn insert_str(obj: *mut Object, key: *const c_char, value: *const c_char) {
+        if obj.is_null() || key.is_null() || value.is_null() {
+            return;
+        }
         Self::insert(obj, key, &Value::SR_VALUE_STRAND(value.to_string_t()));
     }
 
+    /// Insert an integer value into the object
+    ///
+    /// # Safety
+    ///
+    /// - `obj` must be a valid pointer to an Object
+    /// - `key` must be a valid null-terminated UTF-8 string
     #[export_name = "sr_object_insert_int"]
     pub extern "C" fn insert_int(obj: *mut Object, key: *const c_char, value: c_int) {
+        if obj.is_null() || key.is_null() {
+            return;
+        }
         Self::insert(obj, key, &Value::SR_VALUE_NUMBER(Number::from(value)));
     }
 
+    /// Insert a float value into the object
+    ///
+    /// # Safety
+    ///
+    /// - `obj` must be a valid pointer to an Object
+    /// - `key` must be a valid null-terminated UTF-8 string
     #[export_name = "sr_object_insert_float"]
     pub extern "C" fn insert_float(obj: *mut Object, key: *const c_char, value: c_float) {
+        if obj.is_null() || key.is_null() {
+            return;
+        }
         Self::insert(obj, key, &Value::SR_VALUE_NUMBER(Number::from(value)));
     }
 
+    /// Insert a double value into the object
+    ///
+    /// # Safety
+    ///
+    /// - `obj` must be a valid pointer to an Object
+    /// - `key` must be a valid null-terminated UTF-8 string
     #[export_name = "sr_object_insert_double"]
     pub extern "C" fn insert_double(obj: *mut Object, key: *const c_char, value: c_double) {
+        if obj.is_null() || key.is_null() {
+            return;
+        }
         Self::insert(obj, key, &Value::SR_VALUE_NUMBER(Number::from(value)));
     }
 
+    /// Free an object
     #[export_name = "sr_free_object"]
     pub extern "C" fn free_object(obj: Object) {
         drop(obj)
