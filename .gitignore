@@ -53,6 +53,7 @@ cmake-build-release/
 # Scratch files.
 Output.txt
 Output.log
+.output.txt
 
 # ThirdPary directory.
 ThirdParty/
