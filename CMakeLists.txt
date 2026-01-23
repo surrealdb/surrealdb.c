@@ -74,6 +74,10 @@ set_target_properties(surrealdb_c PROPERTIES
 )
 add_dependencies(surrealdb_c rust_lib)
 
+# Create namespaced alias for use by subdirectories (matches installed target name)
+# This allows examples and tests to use surrealdb::surrealdb_c just like external consumers
+add_library(surrealdb::surrealdb_c ALIAS surrealdb_c)
+
 # Windows system libraries required by the Rust library
 if(WIN32)
     set_target_properties(surrealdb_c PROPERTIES
@@ -155,7 +159,7 @@ install(FILES
 if(BUILD_TESTING)
     enable_testing()
     list(PREPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/cmake")
-    add_subdirectory(test)
+    add_subdirectory(c_test)
 endif()
 
 # ----------------------------------------------------------------------------

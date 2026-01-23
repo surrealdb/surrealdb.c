@@ -96,13 +96,13 @@ script = ["ctest --test-dir build --verbose --output-on-failure -C Debug"]
 description = "Run the scratch test executable"
 dependencies = ["cmake-build"]
 script_runner = "@shell"
-script = ["./test/bin/Debug/test_scratch.exe"]
+script = ["./c_test/bin/Debug/test_scratch.exe"]
 
 [tasks.test-scratch.linux]
-script = ["./test/bin/test_scratch"]
+script = ["./c_test/bin/test_scratch"]
 
 [tasks.test-scratch.mac]
-script = ["./test/bin/test_scratch"]
+script = ["./c_test/bin/test_scratch"]
 
 # ============================================================================
 # Clean Tasks
@@ -114,7 +114,7 @@ script_runner = "@shell"
 script = [
     "cargo clean",
     "cmake -E rm -rf build",
-    "cmake -E rm -rf test/bin"
+    "cmake -E rm -rf c_test/bin"
 ]
 
 [tasks.clean-cmake]
@@ -122,5 +122,5 @@ description = "Clean CMake build artifacts only"
 script_runner = "@shell"
 script = [
     "cmake -E rm -rf build",
-    "cmake -E rm -rf test/bin"
+    "cmake -E rm -rf c_test/bin"
 ]

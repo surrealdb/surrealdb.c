@@ -76,6 +76,11 @@ typedef struct sr_surreal_rpc_t sr_surreal_rpc_t;
  */
 typedef char *sr_string_t;
 
+/**
+ * A key-value object type for SurrealDB
+ *
+ * Contains string keys mapped to Value instances.
+ */
 typedef struct sr_object_t {
   struct sr_opaque_object_internal_t *_0;
 } sr_object_t;
@@ -406,6 +411,12 @@ typedef struct sr_notification_t {
  * If any function returns SR_FATAL, the connection is poisoned and must not be used
  * (except to drop). Continued use will cause the program to abort.
  *
+ * # Safety
+ *
+ * - `err_ptr` must be a valid pointer or null (errors ignored if null)
+ * - `surreal_ptr` must be a valid pointer to receive the connection handle
+ * - `endpoint` must be a valid null-terminated UTF-8 string
+ *
  * # Examples
  *
  * ```c
@@ -457,6 +468,12 @@ void sr_surreal_disconnect(struct sr_surreal_t *db);
  * Authenticate with a token
  *
  * Authenticates the current connection with a JWT token.
+ *
+ * # Safety
+ *
+ * - `db` must be a valid pointer to a Surreal connection
+ * - `err_ptr` must be a valid pointer or null
+ * - `token` must be a valid null-terminated UTF-8 string
  *
  * # Examples
  *
@@ -530,7 +547,16 @@ int sr_commit(const struct sr_surreal_t *db, sr_string_t *err_ptr);
  * Create a record
  *
  * Creates a new record in the specified resource with the given content.
+ * The resource can be a table name (e.g., "user") for auto-generated IDs,
+ * or a specific record ID (e.g., "user:john").
  *
+ * # Safety
+ *
+ * - `db` must be a valid pointer to a Surreal connection
+ * - `err_ptr` must be a valid pointer or null
+ * - `res_ptr` may be null (result will be discarded)
+ * - `resource` must be a valid null-terminated UTF-8 string
+ * - `content` must be a valid pointer to an Object
  */
 int sr_create(const struct sr_surreal_t *db,
               sr_string_t *err_ptr,
@@ -542,6 +568,13 @@ int sr_create(const struct sr_surreal_t *db,
  * Delete a record or records
  *
  * Deletes records from the specified resource.
+ *
+ * # Safety
+ *
+ * - `db` must be a valid pointer to a Surreal connection
+ * - `err_ptr` must be a valid pointer or null
+ * - `res_ptr` must be a valid pointer to receive the result array
+ * - `resource` must be a valid null-terminated UTF-8 string
  *
  * # Examples
  *
@@ -566,6 +599,12 @@ int sr_delete(const struct sr_surreal_t *db,
  * Export database data to a file
  *
  * Exports all data from the current namespace and database to a file.
+ *
+ * # Safety
+ *
+ * - `db` must be a valid pointer to a Surreal connection
+ * - `err_ptr` must be a valid pointer or null
+ * - `file_path` must be a valid null-terminated UTF-8 string
  *
  * # Examples
  *
@@ -603,6 +642,12 @@ int sr_health(const struct sr_surreal_t *db, sr_string_t *err_ptr);
  *
  * Imports data from a file into the current namespace and database.
  *
+ * # Safety
+ *
+ * - `db` must be a valid pointer to a Surreal connection
+ * - `err_ptr` must be a valid pointer or null
+ * - `file_path` must be a valid null-terminated UTF-8 string
+ *
  * # Examples
  *
  * ```c
@@ -620,6 +665,14 @@ int sr_import(const struct sr_surreal_t *db, sr_string_t *err_ptr, const char *f
  * Insert one or more records
  *
  * Inserts records into the specified resource with the given content.
+ *
+ * # Safety
+ *
+ * - `db` must be a valid pointer to a Surreal connection
+ * - `err_ptr` must be a valid pointer or null
+ * - `res_ptr` must be a valid pointer to receive the result array
+ * - `resource` must be a valid null-terminated UTF-8 string
+ * - `content` must be a valid pointer to an Object
  *
  * # Examples
  *
@@ -650,6 +703,14 @@ int sr_insert(const struct sr_surreal_t *db,
  * The content object must contain 'in' and 'out' fields specifying the records to relate.
  * Additional fields can be added as relation properties.
  *
+ * # Safety
+ *
+ * - `db` must be a valid pointer to a Surreal connection
+ * - `err_ptr` must be a valid pointer or null
+ * - `res_ptr` must be a valid pointer to receive the result array
+ * - `table` must be a valid null-terminated UTF-8 string
+ * - `content` must be a valid pointer to an Object
+ *
  * # Examples
  *
  * ```c
@@ -679,6 +740,14 @@ int sr_insert_relation(const struct sr_surreal_t *db,
  *
  * Runs a custom or built-in SurrealDB function with the specified arguments.
  *
+ * # Safety
+ *
+ * - `db` must be a valid pointer to a Surreal connection
+ * - `err_ptr` must be a valid pointer or null
+ * - `res_ptr` must be a valid pointer to receive the result array
+ * - `function_name` must be a valid null-terminated UTF-8 string
+ * - `args` may be null (empty arguments)
+ *
  * # Examples
  *
  * ```c
@@ -703,6 +772,16 @@ int sr_run(const struct sr_surreal_t *db,
  * Create a graph relation between two records
  *
  * Establishes a directed relation from one record to another through a relation table.
+ *
+ * # Safety
+ *
+ * - `db` must be a valid pointer to a Surreal connection
+ * - `err_ptr` must be a valid pointer or null
+ * - `res_ptr` must be a valid pointer to receive the result array
+ * - `from` must be a valid null-terminated UTF-8 string
+ * - `relation` must be a valid null-terminated UTF-8 string
+ * - `to` must be a valid null-terminated UTF-8 string
+ * - `content` may be null (no content will be added)
  *
  * # Examples
  *
@@ -750,6 +829,12 @@ int sr_invalidate(const struct sr_surreal_t *db, sr_string_t *err_ptr);
  *
  * Terminates an active live query subscription.
  *
+ * # Safety
+ *
+ * - `db` must be a valid pointer to a Surreal connection
+ * - `err_ptr` must be a valid pointer or null
+ * - `query_id` must be a valid null-terminated UTF-8 string
+ *
  * # Examples
  *
  * ```c
@@ -770,6 +855,13 @@ int sr_kill(const struct sr_surreal_t *db, sr_string_t *err_ptr, const char *que
  * Creates a live query subscription that streams changes.
  * if successful sets *stream_ptr to be an exclusive reference to an opaque Stream object
  * which can be moved across threads but not aliased
+ *
+ * # Safety
+ *
+ * - `db` must be a valid pointer to a Surreal connection
+ * - `err_ptr` must be a valid pointer or null
+ * - `stream_ptr` must be a valid pointer to receive the stream
+ * - `resource` must be a valid null-terminated UTF-8 string
  *
  * # Examples
  *
@@ -797,6 +889,14 @@ int sr_select_live(const struct sr_surreal_t *db,
  *
  * Merges the provided content into existing records, preserving unmodified fields.
  *
+ * # Safety
+ *
+ * - `db` must be a valid pointer to a Surreal connection
+ * - `err_ptr` must be a valid pointer or null
+ * - `res_ptr` must be a valid pointer to receive the result array
+ * - `resource` must be a valid null-terminated UTF-8 string
+ * - `content` must be a valid pointer to an Object
+ *
  * # Examples
  *
  * ```c
@@ -823,6 +923,15 @@ int sr_merge(const struct sr_surreal_t *db,
  *
  * Applies a JSON Patch add operation to the specified resource.
  *
+ * # Safety
+ *
+ * - `db` must be a valid pointer to a Surreal connection
+ * - `err_ptr` must be a valid pointer or null
+ * - `res_ptr` must be a valid pointer to receive the result array
+ * - `resource` must be a valid null-terminated UTF-8 string
+ * - `path` must be a valid null-terminated UTF-8 string
+ * - `value` must be a valid pointer to a Value
+ *
  * # Examples
  *
  * ```c
@@ -848,6 +957,14 @@ int sr_patch_add(const struct sr_surreal_t *db,
 /**
  * Remove a value at a JSON path using JSON Patch
  *
+ * # Safety
+ *
+ * - `db` must be a valid pointer to a Surreal connection
+ * - `err_ptr` must be a valid pointer or null
+ * - `res_ptr` must be a valid pointer to receive the result array
+ * - `resource` must be a valid null-terminated UTF-8 string
+ * - `path` must be a valid null-terminated UTF-8 string
+ *
  * # Examples
  *
  * ```c
@@ -871,6 +988,15 @@ int sr_patch_remove(const struct sr_surreal_t *db,
 /**
  * Replace a value at a JSON path using JSON Patch
  *
+ * # Safety
+ *
+ * - `db` must be a valid pointer to a Surreal connection
+ * - `err_ptr` must be a valid pointer or null
+ * - `res_ptr` must be a valid pointer to receive the result array
+ * - `resource` must be a valid null-terminated UTF-8 string
+ * - `path` must be a valid null-terminated UTF-8 string
+ * - `value` must be a valid pointer to a Value
+ *
  * # Examples
  *
  * ```c
@@ -893,6 +1019,17 @@ int sr_patch_replace(const struct sr_surreal_t *db,
                      const char *path,
                      const struct sr_value_t *value);
 
+/**
+ * Execute a SurrealQL query
+ *
+ * # Safety
+ *
+ * - `db` must be a valid pointer to a Surreal connection
+ * - `err_ptr` must be a valid pointer or null
+ * - `res_ptr` must be a valid pointer to receive the result array
+ * - `query` must be a valid null-terminated UTF-8 string
+ * - `vars` may be null (no variables bound)
+ */
 int sr_query(const struct sr_surreal_t *db,
              sr_string_t *err_ptr,
              struct sr_arr_res_t **res_ptr,
@@ -907,6 +1044,13 @@ int sr_query(const struct sr_surreal_t *db,
  * can be used to select everything from a table or a single record
  * writes values to *res_ptr, and returns the number of values
  * result values are allocated by Surreal and must be freed with sr_free_arr
+ *
+ * # Safety
+ *
+ * - `db` must be a valid pointer to a Surreal connection
+ * - `err_ptr` must be a valid pointer or null
+ * - `res_ptr` must be a valid pointer to receive the result array
+ * - `resource` must be a valid null-terminated UTF-8 string
  *
  * # Examples
  *
@@ -935,6 +1079,13 @@ int sr_select(const struct sr_surreal_t *db,
  * Set a variable for the current session
  *
  * Defines a session variable that can be referenced in queries.
+ *
+ * # Safety
+ *
+ * - `db` must be a valid pointer to a Surreal connection
+ * - `err_ptr` must be a valid pointer or null
+ * - `key` must be a valid null-terminated UTF-8 string
+ * - `value` must be a valid pointer to a Value
  *
  * # Examples
  *
@@ -1087,6 +1238,12 @@ int sr_signup(const struct sr_surreal_t *db,
  *
  * Removes a previously defined session variable.
  *
+ * # Safety
+ *
+ * - `db` must be a valid pointer to a Surreal connection
+ * - `err_ptr` must be a valid pointer or null
+ * - `key` must be a valid null-terminated UTF-8 string
+ *
  * # Examples
  *
  * ```c
@@ -1104,6 +1261,14 @@ int sr_unset(const struct sr_surreal_t *db, sr_string_t *err_ptr, const char *ke
  * Update records with new content
  *
  * Replaces the content of existing records with new data.
+ *
+ * # Safety
+ *
+ * - `db` must be a valid pointer to a Surreal connection
+ * - `err_ptr` must be a valid pointer or null
+ * - `res_ptr` must be a valid pointer to receive the result array
+ * - `resource` must be a valid null-terminated UTF-8 string
+ * - `content` must be a valid pointer to an Object
  *
  * # Examples
  *
@@ -1130,6 +1295,14 @@ int sr_update(const struct sr_surreal_t *db,
  * Upsert (insert or update) records
  *
  * Creates records if they don't exist, or updates them if they do.
+ *
+ * # Safety
+ *
+ * - `db` must be a valid pointer to a Surreal connection
+ * - `err_ptr` must be a valid pointer or null
+ * - `res_ptr` must be a valid pointer to receive the result array
+ * - `resource` must be a valid null-terminated UTF-8 string
+ * - `content` must be a valid pointer to an Object
  *
  * # Examples
  *
@@ -1158,6 +1331,12 @@ int sr_upsert(const struct sr_surreal_t *db,
  * Sets the database to use for subsequent operations.
  * NOTE: namespace must be selected first with sr_use_ns
  *
+ * # Safety
+ *
+ * - `db` must be a valid pointer to a Surreal connection
+ * - `err_ptr` must be a valid pointer or null
+ * - `db_name` must be a valid null-terminated UTF-8 string
+ *
  * # Examples
  * ```c
  * sr_surreal_t *db;
@@ -1169,13 +1348,19 @@ int sr_upsert(const struct sr_surreal_t *db,
  * }
  * ```
  */
-int sr_use_db(const struct sr_surreal_t *db, sr_string_t *err_ptr, const char *query);
+int sr_use_db(const struct sr_surreal_t *db, sr_string_t *err_ptr, const char *db_name);
 
 /**
  * Select namespace
  *
  * Sets the namespace to use for subsequent operations.
  * NOTE: database must be selected before use with sr_use_db
+ *
+ * # Safety
+ *
+ * - `db` must be a valid pointer to a Surreal connection
+ * - `err_ptr` must be a valid pointer or null
+ * - `ns_name` must be a valid null-terminated UTF-8 string
  *
  * # Examples
  * ```c
@@ -1188,13 +1373,20 @@ int sr_use_db(const struct sr_surreal_t *db, sr_string_t *err_ptr, const char *q
  * }
  * ```
  */
-int sr_use_ns(const struct sr_surreal_t *db, sr_string_t *err_ptr, const char *query);
+int sr_use_ns(const struct sr_surreal_t *db, sr_string_t *err_ptr, const char *ns_name);
 
 /**
  * Returns the database version
  *
  * Retrieves the version string of the connected SurrealDB server.
  * NOTE: version is allocated in Surreal and must be freed with sr_free_string
+ *
+ * # Safety
+ *
+ * - `db` must be a valid pointer to a Surreal connection
+ * - `err_ptr` must be a valid pointer or null
+ * - `res_ptr` must be a valid pointer to receive the version string
+ *
  * # Examples
  * ```c
  * sr_surreal_t *db;
@@ -1218,9 +1410,16 @@ int sr_surreal_rpc_new(sr_string_t *err_ptr,
                        struct sr_option_t options);
 
 /**
- * execute rpc
+ * Execute an RPC request
  *
- * free result with sr_free_byte_arr
+ * # Safety
+ *
+ * - `err_ptr` must be a valid pointer or null
+ * - `res_ptr` must be a valid pointer to receive the result
+ * - `ptr` must be a valid pointer to CBOR-encoded request data
+ * - `len` must be the length of the data at ptr
+ *
+ * Free result with sr_free_byte_arr
  */
 int sr_surreal_rpc_execute(const struct sr_surreal_rpc_t *self,
                            sr_string_t *err_ptr,
@@ -1231,12 +1430,24 @@ int sr_surreal_rpc_execute(const struct sr_surreal_rpc_t *self,
 /**
  * Get a stream for receiving live query notifications
  *
+ * # Safety
+ *
+ * - `err_ptr` must be a valid pointer or null
+ * - `stream_ptr` must be a valid pointer to receive the stream
+ *
  * Returns a stream that can be polled for notifications using sr_rpc_stream_next
  */
 int sr_surreal_rpc_notifications(const struct sr_surreal_rpc_t *self,
                                  sr_string_t *err_ptr,
                                  struct sr_RpcStream **stream_ptr);
 
+/**
+ * Free an RPC context
+ *
+ * # Safety
+ *
+ * - `ctx` must be a valid pointer to a SurrealRpc, or null (no-op)
+ */
 void sr_surreal_rpc_free(struct sr_surreal_rpc_t *ctx);
 
 void sr_free_arr(struct sr_value_t *ptr, int len);
@@ -1270,20 +1481,78 @@ void sr_free_byte_arr(uint8_t *ptr, int len);
 
 void sr_print_notification(const struct sr_notification_t *notification);
 
+/**
+ * Get a value by key from the object
+ *
+ * # Safety
+ *
+ * - `obj` must be a valid reference to an Object
+ * - `key` must be a valid null-terminated UTF-8 string
+ */
 const struct sr_value_t *sr_object_get(const struct sr_object_t *obj, const char *key);
 
+/**
+ * Create a new empty object
+ */
 struct sr_object_t sr_object_new(void);
 
+/**
+ * Insert a key-value pair into the object
+ *
+ * # Safety
+ *
+ * - `obj` must be a valid pointer to an Object
+ * - `key` must be a valid null-terminated UTF-8 string
+ * - `value` must be a valid reference to a Value
+ *
+ * If any pointer is null, the function returns without modification.
+ */
 void sr_object_insert(struct sr_object_t *obj, const char *key, const struct sr_value_t *value);
 
+/**
+ * Insert a string value into the object
+ *
+ * # Safety
+ *
+ * - `obj` must be a valid pointer to an Object
+ * - `key` must be a valid null-terminated UTF-8 string
+ * - `value` must be a valid null-terminated UTF-8 string
+ */
 void sr_object_insert_str(struct sr_object_t *obj, const char *key, const char *value);
 
+/**
+ * Insert an integer value into the object
+ *
+ * # Safety
+ *
+ * - `obj` must be a valid pointer to an Object
+ * - `key` must be a valid null-terminated UTF-8 string
+ */
 void sr_object_insert_int(struct sr_object_t *obj, const char *key, int value);
 
+/**
+ * Insert a float value into the object
+ *
+ * # Safety
+ *
+ * - `obj` must be a valid pointer to an Object
+ * - `key` must be a valid null-terminated UTF-8 string
+ */
 void sr_object_insert_float(struct sr_object_t *obj, const char *key, float value);
 
+/**
+ * Insert a double value into the object
+ *
+ * # Safety
+ *
+ * - `obj` must be a valid pointer to an Object
+ * - `key` must be a valid null-terminated UTF-8 string
+ */
 void sr_object_insert_double(struct sr_object_t *obj, const char *key, double value);
 
+/**
+ * Free an object
+ */
 void sr_free_object(struct sr_object_t obj);
 
 /**

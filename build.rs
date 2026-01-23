@@ -12,16 +12,16 @@ fn main() {
         .write_to_file("include/surrealdb.h");
 
     // Compile C test library for integration tests
-    let api_tests_path = Path::new(&crate_dir).join("test/src/api_tests/api_tests.c");
+    let api_tests_path = Path::new(&crate_dir).join("c_test/src/api_tests/api_tests.c");
     if api_tests_path.exists() {
         cc::Build::new()
             .file(&api_tests_path)
             .include(Path::new(&crate_dir).join("include"))
-            .include(Path::new(&crate_dir).join("test/src/api_tests"))
+            .include(Path::new(&crate_dir).join("c_test/src/api_tests"))
             .compile("api_tests");
 
         // Tell cargo to rerun if C test files change
-        println!("cargo:rerun-if-changed=test/src/api_tests/api_tests.c");
-        println!("cargo:rerun-if-changed=test/src/api_tests/api_tests.h");
+        println!("cargo:rerun-if-changed=c_test/src/api_tests/api_tests.c");
+        println!("cargo:rerun-if-changed=c_test/src/api_tests/api_tests.h");
     }
 }

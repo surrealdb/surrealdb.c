@@ -103,3 +103,9 @@ set_tests_properties(surrealdb_c_tests PROPERTIES
 
 message(STATUS "Test binaries will be output to: ${_test_bin_dir}")
 message(STATUS "Unity Fixture extension enabled for test suites")
+
+# ============================================================================
+# Examples
+# ============================================================================
+
+add_subdirectory(examples)

@@ -286,6 +286,8 @@ impl Surreal {
     /// Create a record
     ///
     /// Creates a new record in the specified resource with the given content.
+    /// The resource can be a table name (e.g., "user") for auto-generated IDs,
+    /// or a specific record ID (e.g., "user:john").
     ///
     /// # Safety
     ///
@@ -308,12 +310,22 @@ impl Surreal {
             let resource = unsafe { CStr::from_ptr(resource) }.to_str()?;
             let content = sql::Object::from(unsafe { &*content }.clone());
 
-            let res = surreal
-                .db
-                .create(Resource::from(resource))
-                .content(content)
-                .await?;
-            let obj = match res.into_inner() {
+            // Use raw query to properly handle both table names and record IDs
+            let query = format!("CREATE {} CONTENT $content", resource);
+            let mut res = surreal.db.query(&query).bind(("content", content)).await?;
+            
+            let obj = match res.take::<apiValue>(0)?.into_inner() {
+                sql::Value::Array(arr) if !arr.is_empty() => {
+                    match arr.into_iter().next().unwrap() {
+                        sql::Value::Object(o) => o,
+                        other => {
+                            return Err(format!(
+                                "Expected object as return type of create, but found: {other:?}"
+                            )
+                            .into())
+                        }
+                    }
+                }
                 sql::Value::Object(o) => o,
                 other => {
                     return Err(format!(
