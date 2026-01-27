@@ -1,10 +1,19 @@
 @PACKAGE_INIT@
 
-include("${CMAKE_CURRENT_LIST_DIR}/surrealdb_cTargets.cmake")
+set(_surrealdb_c_include_dir "${PACKAGE_PREFIX_DIR}/@SURREALDB_C_INSTALL_INCLUDEDIR@")
+set(_surrealdb_c_lib "${PACKAGE_PREFIX_DIR}/@SURREALDB_C_INSTALL_LIBRARY@")
 
-# Provide an alias for the exported target
 if(NOT TARGET surrealdb::surrealdb_c)
-    add_library(surrealdb::surrealdb_c ALIAS surrealdb::surrealdb_c_export)
+    add_library(surrealdb::surrealdb_c STATIC IMPORTED)
+    set_target_properties(surrealdb::surrealdb_c PROPERTIES
+        IMPORTED_LOCATION "${_surrealdb_c_lib}"
+        INTERFACE_INCLUDE_DIRECTORIES "${_surrealdb_c_include_dir}"
+    )
+    if(WIN32)
+        set_property(TARGET surrealdb::surrealdb_c PROPERTY
+            INTERFACE_LINK_LIBRARIES "ws2_32;userenv;bcrypt;ntdll;pdh;netapi32;iphlpapi;psapi;propsys;runtimeobject;secur32;powrprof"
+        )
+    endif()
 endif()
 
 check_required_components(surrealdb_c)

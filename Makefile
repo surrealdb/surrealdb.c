@@ -25,4 +25,4 @@ endif
 
 clean:
 	cmake -E rm -rf $(BUILD_DIR)
-	cargo clean
+	cargo clean --package surrealdb_c

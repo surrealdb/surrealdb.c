@@ -17,7 +17,7 @@ set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 # DLLs are runtime for windows.
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
-include(${CMAKE_SOURCE_DIR}/cmake/helpers.cmake)
+include(${CMAKE_CURRENT_LIST_DIR}/cmake/helpers.cmake)
 
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
 set(CMAKE_FOLDER "surrealdb.c")
@@ -34,48 +34,121 @@ include(GNUInstallDirs)
 # Rust profile selection
 # ----------------------------------------------------------------------------
 
-if(SURREALDB_RELEASE OR CMAKE_BUILD_TYPE STREQUAL "Release")
-    set(RUST_BUILD_FLAG "--release")
-    set(RUST_PROFILE "release")
-else()
-    set(RUST_BUILD_FLAG "")
-    set(RUST_PROFILE "debug")
+set(_sdb_release_configs Release RelWithDebInfo MinSizeRel)
+
+set(_sdb_is_multi_config FALSE)
+if(CMAKE_CONFIGURATION_TYPES)
+    set(_sdb_is_multi_config TRUE)
+endif()
+
+set(_sdb_force_release FALSE)
+if(SURREALDB_RELEASE)
+    set(_sdb_force_release TRUE)
 endif()
 
 # Cargo target dir - use default output directory (no --target flag)
-# This matches where `cargo build` and `cargo test` place output by default
-# Note: cargo puts static libraries in the deps subdirectory
-set(RUST_TARGET_DIR "${PROJECT_SOURCE_DIR}/target/${RUST_PROFILE}/deps")
+# This matches where `cargo build` and `cargo test` place output by default.
+# Note: cargo puts static libraries in the deps subdirectory.
+set(_sdb_rust_target_dir_debug "${PROJECT_SOURCE_DIR}/target/debug/deps")
+set(_sdb_rust_target_dir_release "${PROJECT_SOURCE_DIR}/target/release/deps")
+
+if(WIN32 AND MSVC)
+    set(_sdb_rust_lib_name "surrealdb_c.lib")
+else()
+    set(_sdb_rust_lib_name "libsurrealdb_c.a")
+endif()
+
+set(_sdb_static_lib_debug "${_sdb_rust_target_dir_debug}/${_sdb_rust_lib_name}")
+set(_sdb_static_lib_release "${_sdb_rust_target_dir_release}/${_sdb_rust_lib_name}")
+
+set(SURREALDB_HEADER "${PROJECT_SOURCE_DIR}/include/surrealdb.h")
+
+set(_sdb_rust_deps
+    "${PROJECT_SOURCE_DIR}/Cargo.toml"
+)
+if(EXISTS "${PROJECT_SOURCE_DIR}/cbindgen.toml")
+    list(APPEND _sdb_rust_deps "${PROJECT_SOURCE_DIR}/cbindgen.toml")
+endif()
+if(EXISTS "${PROJECT_SOURCE_DIR}/Cargo.lock")
+    list(APPEND _sdb_rust_deps "${PROJECT_SOURCE_DIR}/Cargo.lock")
+endif()
+if(EXISTS "${PROJECT_SOURCE_DIR}/build.rs")
+    list(APPEND _sdb_rust_deps "${PROJECT_SOURCE_DIR}/build.rs")
+endif()
+file(GLOB_RECURSE _sdb_rust_sources CONFIGURE_DEPENDS
+    "${PROJECT_SOURCE_DIR}/src/*.rs"
+)
+list(APPEND _sdb_rust_deps ${_sdb_rust_sources})
+
+if(_sdb_force_release)
+    set(RUST_PROFILE "release (forced)")
+elseif(_sdb_is_multi_config)
+    set(RUST_PROFILE "config-based (Debug=debug, Release/RelWithDebInfo/MinSizeRel=release)")
+elseif(CMAKE_BUILD_TYPE IN_LIST _sdb_release_configs)
+    set(RUST_PROFILE "release")
+else()
+    set(RUST_PROFILE "debug")
+endif()
+
+set(_sdb_static_lib "${_sdb_static_lib_debug}")
+if(_sdb_force_release OR CMAKE_BUILD_TYPE IN_LIST _sdb_release_configs)
+    set(_sdb_static_lib "${_sdb_static_lib_release}")
+endif()
 
 message(STATUS "Rust build profile: ${RUST_PROFILE}")
-message(STATUS "Rust target directory: ${RUST_TARGET_DIR}")
+message(STATUS "Rust target directory (debug): ${_sdb_rust_target_dir_debug}")
+message(STATUS "Rust target directory (release): ${_sdb_rust_target_dir_release}")
 
 # ----------------------------------------------------------------------------
 # Rust Library Build Target
 # ----------------------------------------------------------------------------
 
-if(WIN32 AND MSVC)
-    set(SURREALDB_STATIC_LIB "${RUST_TARGET_DIR}/surrealdb_c.lib")
-elseif(WIN32)
-    set(SURREALDB_STATIC_LIB "${RUST_TARGET_DIR}/libsurrealdb_c.a")
-else()
-    set(SURREALDB_STATIC_LIB "${RUST_TARGET_DIR}/libsurrealdb_c.a")
-endif()
-
-set(SURREALDB_HEADER "${PROJECT_SOURCE_DIR}/include/surrealdb.h")
-
 if(NOT SKIP_RUST_BUILD)
-    add_custom_command(
-        OUTPUT ${SURREALDB_STATIC_LIB} ${SURREALDB_HEADER}
-        COMMAND cargo build ${RUST_BUILD_FLAG}
-        WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
-        COMMENT "Building Rust library (${RUST_PROFILE}) and generating C header..."
-        VERBATIM
-    )
+    if(_sdb_is_multi_config AND NOT _sdb_force_release)
+        add_custom_command(
+            OUTPUT ${_sdb_static_lib_debug}
+            COMMAND cargo build
+            WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
+            COMMENT "Building Rust library (debug) and generating C header..."
+            DEPENDS ${_sdb_rust_deps}
+            BYPRODUCTS ${SURREALDB_HEADER}
+            VERBATIM
+        )
+        add_custom_command(
+            OUTPUT ${_sdb_static_lib_release}
+            COMMAND cargo build --release
+            WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
+            COMMENT "Building Rust library (release) and generating C header..."
+            DEPENDS ${_sdb_rust_deps}
+            BYPRODUCTS ${SURREALDB_HEADER}
+            VERBATIM
+        )
 
-    add_custom_target(rust_lib ALL
-        DEPENDS ${SURREALDB_STATIC_LIB} ${SURREALDB_HEADER}
-    )
+        add_custom_target(rust_lib ALL
+            DEPENDS
+                $<$<CONFIG:Debug>:${_sdb_static_lib_debug}>
+                $<$<OR:$<CONFIG:Release>,$<CONFIG:RelWithDebInfo>,$<CONFIG:MinSizeRel>>:${_sdb_static_lib_release}>
+        )
+    else()
+        set(_sdb_cargo_flags "")
+        if(_sdb_force_release OR CMAKE_BUILD_TYPE IN_LIST _sdb_release_configs)
+            set(_sdb_cargo_flags "--release")
+        endif()
+
+        add_custom_command(
+            OUTPUT ${_sdb_static_lib}
+            COMMAND cargo build ${_sdb_cargo_flags}
+            WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
+            COMMENT "Building Rust library (${RUST_PROFILE}) and generating C header..."
+            DEPENDS ${_sdb_rust_deps}
+            BYPRODUCTS ${SURREALDB_HEADER}
+            VERBATIM
+        )
+
+        add_custom_target(rust_lib ALL
+            DEPENDS ${_sdb_static_lib}
+        )
+    endif()
 else()
     message(STATUS "Skipping Rust build (SKIP_RUST_BUILD=ON, using existing library)")
     add_custom_target(rust_lib ALL)
@@ -86,9 +159,21 @@ add_dependencies(surrealdb.c rust_lib)
 
 add_library(surrealdb_c STATIC IMPORTED GLOBAL)
 set_target_properties(surrealdb_c PROPERTIES
-    IMPORTED_LOCATION "${SURREALDB_STATIC_LIB}"
     INTERFACE_INCLUDE_DIRECTORIES "${PROJECT_SOURCE_DIR}/include"
 )
+if(_sdb_is_multi_config AND NOT _sdb_force_release)
+    set_target_properties(surrealdb_c PROPERTIES
+        IMPORTED_LOCATION_DEBUG "${_sdb_static_lib_debug}"
+        IMPORTED_LOCATION_RELEASE "${_sdb_static_lib_release}"
+        IMPORTED_LOCATION_RELWITHDEBINFO "${_sdb_static_lib_release}"
+        IMPORTED_LOCATION_MINSIZEREL "${_sdb_static_lib_release}"
+    )
+else()
+    set(SURREALDB_STATIC_LIB "${_sdb_static_lib}")
+    set_target_properties(surrealdb_c PROPERTIES
+        IMPORTED_LOCATION "${_sdb_static_lib}"
+    )
+endif()
 add_dependencies(surrealdb_c rust_lib)
 
 # Create namespaced alias for use by subdirectories (matches installed target name)
@@ -102,14 +187,17 @@ if(WIN32)
     )
 endif()
 
-message(STATUS "SurrealDB static library: ${SURREALDB_STATIC_LIB}")
+if(_sdb_is_multi_config AND NOT _sdb_force_release)
+    message(STATUS "SurrealDB static library (debug): ${_sdb_static_lib_debug}")
+    message(STATUS "SurrealDB static library (release): ${_sdb_static_lib_release}")
+else()
+    message(STATUS "SurrealDB static library: ${_sdb_static_lib}")
+endif()
 message(STATUS "SurrealDB header: ${SURREALDB_HEADER}")
 
 # ----------------------------------------------------------------------------
-# Installation & Export
+# Installation & Package Config
 # ----------------------------------------------------------------------------
-
-include(GNUInstallDirs)
 
 # Install the header
 install(FILES ${SURREALDB_HEADER}
@@ -117,37 +205,27 @@ install(FILES ${SURREALDB_HEADER}
 )
 
 # Install the static library
-install(FILES ${SURREALDB_STATIC_LIB}
-    DESTINATION ${CMAKE_INSTALL_LIBDIR}
-)
-
-# Create an installable target for consumers
-add_library(surrealdb_c_export INTERFACE)
-target_include_directories(surrealdb_c_export INTERFACE
-    $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
-    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
-)
-if(WIN32 AND MSVC)
-    target_link_libraries(surrealdb_c_export INTERFACE
-        ${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_LIBDIR}/surrealdb_c.lib
-        ws2_32 userenv bcrypt ntdll pdh netapi32 iphlpapi psapi propsys runtimeobject secur32 powrprof
+if(_sdb_is_multi_config AND NOT _sdb_force_release)
+    install(FILES "${_sdb_static_lib_debug}"
+        DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        CONFIGURATIONS Debug
+    )
+    install(FILES "${_sdb_static_lib_release}"
+        DESTINATION ${CMAKE_INSTALL_LIBDIR}
+        CONFIGURATIONS Release RelWithDebInfo MinSizeRel
     )
 else()
-    target_link_libraries(surrealdb_c_export INTERFACE
-        ${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_LIBDIR}/libsurrealdb_c.a
+    install(FILES "${_sdb_static_lib}"
+        DESTINATION ${CMAKE_INSTALL_LIBDIR}
     )
 endif()
 
-# Export the interface target
-install(TARGETS surrealdb_c_export
-    EXPORT surrealdb_cTargets
-)
-
-install(EXPORT surrealdb_cTargets
-    FILE surrealdb_cTargets.cmake
-    NAMESPACE surrealdb::
-    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/surrealdb_c
-)
+if(WIN32 AND MSVC)
+    set(SURREALDB_C_INSTALL_LIBRARY "${CMAKE_INSTALL_LIBDIR}/surrealdb_c.lib")
+else()
+    set(SURREALDB_C_INSTALL_LIBRARY "${CMAKE_INSTALL_LIBDIR}/libsurrealdb_c.a")
+endif()
+set(SURREALDB_C_INSTALL_INCLUDEDIR "${CMAKE_INSTALL_INCLUDEDIR}")
 
 # Generate package config file
 include(CMakePackageConfigHelpers)
