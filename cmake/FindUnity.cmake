@@ -58,7 +58,7 @@ else()
     set(UNITY_EXTENSION_FIXTURE ON CACHE BOOL "Enable Unity Fixture extension" FORCE)
     
     # Define paths for Unity
-    set(UNITY_SOURCE_DIR "${CMAKE_SOURCE_DIR}/ThirdParty/Unity")
+    set(UNITY_SOURCE_DIR "${PROJECT_SOURCE_DIR}/ThirdParty/Unity")
     
     # Check if Unity is already cloned
     if(EXISTS "${UNITY_SOURCE_DIR}/CMakeLists.txt")

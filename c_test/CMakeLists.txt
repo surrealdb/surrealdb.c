@@ -3,7 +3,7 @@
 # ============================================================================
 
 # Make sure CMake can find <solution-root>/cmake/FindUnity.cmake
-list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
+list(APPEND CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake")
 
 find_package(Unity REQUIRED)
 
@@ -47,8 +47,8 @@ add_executable(test_runner
 target_include_directories(test_runner PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/src/tests"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/api_tests"
-    "${CMAKE_SOURCE_DIR}/include"
-    "${CMAKE_SOURCE_DIR}/ThirdParty/Unity/extras/fixture/src"
+    "${PROJECT_SOURCE_DIR}/include"
+    "${PROJECT_SOURCE_DIR}/ThirdParty/Unity/extras/fixture/src"
 )
 
 target_link_libraries(test_runner PRIVATE
@@ -75,7 +75,7 @@ add_executable(test_scratch
 
 target_include_directories(test_scratch PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/src"
-    "${CMAKE_SOURCE_DIR}/include"
+    "${PROJECT_SOURCE_DIR}/include"
 )
 
 target_link_libraries(test_scratch PRIVATE

@@ -8,13 +8,27 @@ project(surrealdb_c VERSION 0.1.0 LANGUAGES C CXX) # We add CXX here to make som
 set(CMAKE_C_STANDARD 23)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 
-# Make custom find modules available (FindOrBuildCriterion.cmake lives here)
+# Make custom find modules available
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
+
+# Put binary files on the top level of the build tree for convenience.
+set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
+set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
+# DLLs are runtime for windows.
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+
+include(${CMAKE_SOURCE_DIR}/cmake/helpers.cmake)
+
+set(CMAKE_INCLUDE_CURRENT_DIR ON)
+set(CMAKE_FOLDER "surrealdb.c")
 
 # Build options
 option(BUILD_TESTING "Build tests (requires Criterion)" ON)
 option(SURREALDB_RELEASE "Build Rust library in release mode" OFF)
 option(SKIP_RUST_BUILD "Skip building Rust library (use existing)" OFF)
+
+# Platform agnostic installation trees.
+include(GNUInstallDirs)
 
 # ----------------------------------------------------------------------------
 # Rust profile selection
@@ -31,7 +45,7 @@ endif()
 # Cargo target dir - use default output directory (no --target flag)
 # This matches where `cargo build` and `cargo test` place output by default
 # Note: cargo puts static libraries in the deps subdirectory
-set(RUST_TARGET_DIR "${CMAKE_SOURCE_DIR}/target/${RUST_PROFILE}/deps")
+set(RUST_TARGET_DIR "${PROJECT_SOURCE_DIR}/target/${RUST_PROFILE}/deps")
 
 message(STATUS "Rust build profile: ${RUST_PROFILE}")
 message(STATUS "Rust target directory: ${RUST_TARGET_DIR}")
@@ -48,13 +62,13 @@ else()
     set(SURREALDB_STATIC_LIB "${RUST_TARGET_DIR}/libsurrealdb_c.a")
 endif()
 
-set(SURREALDB_HEADER "${CMAKE_SOURCE_DIR}/include/surrealdb.h")
+set(SURREALDB_HEADER "${PROJECT_SOURCE_DIR}/include/surrealdb.h")
 
 if(NOT SKIP_RUST_BUILD)
     add_custom_command(
         OUTPUT ${SURREALDB_STATIC_LIB} ${SURREALDB_HEADER}
         COMMAND cargo build ${RUST_BUILD_FLAG}
-        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
         COMMENT "Building Rust library (${RUST_PROFILE}) and generating C header..."
         VERBATIM
     )
@@ -67,10 +81,13 @@ else()
     add_custom_target(rust_lib ALL)
 endif()
 
+add_custom_target(surrealdb.c SOURCES ${SURREALDB_HEADER})
+add_dependencies(surrealdb.c rust_lib)
+
 add_library(surrealdb_c STATIC IMPORTED GLOBAL)
 set_target_properties(surrealdb_c PROPERTIES
     IMPORTED_LOCATION "${SURREALDB_STATIC_LIB}"
-    INTERFACE_INCLUDE_DIRECTORIES "${CMAKE_SOURCE_DIR}/include"
+    INTERFACE_INCLUDE_DIRECTORIES "${PROJECT_SOURCE_DIR}/include"
 )
 add_dependencies(surrealdb_c rust_lib)
 
@@ -107,7 +124,7 @@ install(FILES ${SURREALDB_STATIC_LIB}
 # Create an installable target for consumers
 add_library(surrealdb_c_export INTERFACE)
 target_include_directories(surrealdb_c_export INTERFACE
-    $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>
+    $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
 )
 if(WIN32 AND MSVC)
@@ -156,10 +173,12 @@ install(FILES
 # Tests
 # ----------------------------------------------------------------------------
 
-if(BUILD_TESTING)
+if(PROJECT_IS_TOP_LEVEL AND BUILD_TESTING)
     enable_testing()
     list(PREPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_LIST_DIR}/cmake")
     add_subdirectory(c_test)
+elseif(BUILD_TESTING)
+    message(STATUS "Skipping surrealdb.c tests when used as subproject")
 endif()
 
 # ----------------------------------------------------------------------------
