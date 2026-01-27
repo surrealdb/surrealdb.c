@@ -23,7 +23,7 @@ set(CMAKE_INCLUDE_CURRENT_DIR ON)
 set(CMAKE_FOLDER "surrealdb.c")
 
 # Build options
-option(BUILD_TESTING "Build tests (requires Criterion)" ON)
+option(BUILD_TESTING "Build tests" ON)
 option(SURREALDB_RELEASE "Build Rust library in release mode" OFF)
 option(SKIP_RUST_BUILD "Skip building Rust library (use existing)" OFF)
 
