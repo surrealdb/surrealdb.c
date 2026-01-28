@@ -27,6 +27,7 @@ option(BUILD_TESTING "Build tests" ON)
 option(SURREALDB_RELEASE "Build Rust library in release mode" OFF)
 option(SKIP_RUST_BUILD "Skip building Rust library (use existing)" OFF)
 set(SURREALDB_CARGO_TARGET "" CACHE STRING "Cargo target triple to build the Rust library (optional)")
+option(SURREALDB_C_RUST_GLOB_DEPENDS "Use CONFIGURE_DEPENDS for Rust source globs" OFF)
 
 # Platform agnostic installation trees.
 include(GNUInstallDirs)
@@ -114,9 +115,17 @@ endif()
 if(EXISTS "${PROJECT_SOURCE_DIR}/build.rs")
     list(APPEND _sdb_rust_deps "${PROJECT_SOURCE_DIR}/build.rs")
 endif()
-file(GLOB_RECURSE _sdb_rust_sources CONFIGURE_DEPENDS
-    "${PROJECT_SOURCE_DIR}/src/*.rs"
-)
+if(SURREALDB_C_RUST_GLOB_DEPENDS)
+    message(STATUS "Rust source glob recheck: ON")
+    file(GLOB_RECURSE _sdb_rust_sources CONFIGURE_DEPENDS
+        "${PROJECT_SOURCE_DIR}/src/*.rs"
+    )
+else()
+    message(STATUS "Rust source glob recheck: OFF")
+    file(GLOB_RECURSE _sdb_rust_sources
+        "${PROJECT_SOURCE_DIR}/src/*.rs"
+    )
+endif()
 list(APPEND _sdb_rust_deps ${_sdb_rust_sources})
 
 if(_sdb_force_release)

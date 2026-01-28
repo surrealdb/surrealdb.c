@@ -1,4 +1,5 @@
 language = "C"
+pragma_once = true
 
 [export]
 prefix = "sr_"
