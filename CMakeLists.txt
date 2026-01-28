@@ -26,9 +26,49 @@ set(CMAKE_FOLDER "surrealdb.c")
 option(BUILD_TESTING "Build tests" ON)
 option(SURREALDB_RELEASE "Build Rust library in release mode" OFF)
 option(SKIP_RUST_BUILD "Skip building Rust library (use existing)" OFF)
+set(SURREALDB_CARGO_TARGET "" CACHE STRING "Cargo target triple to build the Rust library (optional)")
 
 # Platform agnostic installation trees.
 include(GNUInstallDirs)
+
+# ----------------------------------------------------------------------------
+# Rust target selection
+# ----------------------------------------------------------------------------
+
+set(_sdb_rust_target "")
+if(DEFINED SURREALDB_CARGO_TARGET AND NOT SURREALDB_CARGO_TARGET STREQUAL "")
+    set(_sdb_rust_target "${SURREALDB_CARGO_TARGET}")
+elseif(DEFINED ENV{CARGO_BUILD_TARGET} AND NOT "$ENV{CARGO_BUILD_TARGET}" STREQUAL "")
+    set(_sdb_rust_target "$ENV{CARGO_BUILD_TARGET}")
+elseif(MINGW)
+    if(CMAKE_SIZEOF_VOID_P EQUAL 8)
+        set(_sdb_rust_target "x86_64-pc-windows-gnu")
+    else()
+        set(_sdb_rust_target "i686-pc-windows-gnu")
+    endif()
+endif()
+
+set(_sdb_cargo_target_args "")
+set(_sdb_rust_target_root "${PROJECT_SOURCE_DIR}/target")
+if(_sdb_rust_target)
+    list(APPEND _sdb_cargo_target_args "--target" "${_sdb_rust_target}")
+    set(_sdb_rust_target_root "${_sdb_rust_target_root}/${_sdb_rust_target}")
+endif()
+
+set(_sdb_rust_uses_msvc FALSE)
+if(_sdb_rust_target)
+    if(_sdb_rust_target MATCHES "-msvc$")
+        set(_sdb_rust_uses_msvc TRUE)
+    endif()
+elseif(MSVC)
+    set(_sdb_rust_uses_msvc TRUE)
+endif()
+
+if(MSVC AND _sdb_rust_target AND NOT _sdb_rust_uses_msvc)
+    message(WARNING "Cargo target '${_sdb_rust_target}' builds GNU .a libraries; MSVC cannot link them.")
+elseif(MINGW AND _sdb_rust_target AND _sdb_rust_uses_msvc)
+    message(WARNING "Cargo target '${_sdb_rust_target}' builds MSVC .lib libraries; MinGW cannot link them.")
+endif()
 
 # ----------------------------------------------------------------------------
 # Rust profile selection
@@ -46,13 +86,12 @@ if(SURREALDB_RELEASE)
     set(_sdb_force_release TRUE)
 endif()
 
-# Cargo target dir - use default output directory (no --target flag)
-# This matches where `cargo build` and `cargo test` place output by default.
+# Cargo target dir - use default output directory (no --target flag).
 # Note: cargo puts static libraries in the deps subdirectory.
-set(_sdb_rust_target_dir_debug "${PROJECT_SOURCE_DIR}/target/debug/deps")
-set(_sdb_rust_target_dir_release "${PROJECT_SOURCE_DIR}/target/release/deps")
+set(_sdb_rust_target_dir_debug "${_sdb_rust_target_root}/debug/deps")
+set(_sdb_rust_target_dir_release "${_sdb_rust_target_root}/release/deps")
 
-if(WIN32 AND MSVC)
+if(_sdb_rust_uses_msvc)
     set(_sdb_rust_lib_name "surrealdb_c.lib")
 else()
     set(_sdb_rust_lib_name "libsurrealdb_c.a")
@@ -96,6 +135,11 @@ if(_sdb_force_release OR CMAKE_BUILD_TYPE IN_LIST _sdb_release_configs)
 endif()
 
 message(STATUS "Rust build profile: ${RUST_PROFILE}")
+if(_sdb_rust_target)
+    message(STATUS "Cargo target: ${_sdb_rust_target}")
+else()
+    message(STATUS "Cargo target: default")
+endif()
 message(STATUS "Rust target directory (debug): ${_sdb_rust_target_dir_debug}")
 message(STATUS "Rust target directory (release): ${_sdb_rust_target_dir_release}")
 
@@ -107,7 +151,7 @@ if(NOT SKIP_RUST_BUILD)
     if(_sdb_is_multi_config AND NOT _sdb_force_release)
         add_custom_command(
             OUTPUT ${_sdb_static_lib_debug}
-            COMMAND cargo build
+            COMMAND cargo build ${_sdb_cargo_target_args}
             WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
             COMMENT "Building Rust library (debug) and generating C header..."
             DEPENDS ${_sdb_rust_deps}
@@ -116,7 +160,7 @@ if(NOT SKIP_RUST_BUILD)
         )
         add_custom_command(
             OUTPUT ${_sdb_static_lib_release}
-            COMMAND cargo build --release
+            COMMAND cargo build --release ${_sdb_cargo_target_args}
             WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
             COMMENT "Building Rust library (release) and generating C header..."
             DEPENDS ${_sdb_rust_deps}
@@ -137,7 +181,7 @@ if(NOT SKIP_RUST_BUILD)
 
         add_custom_command(
             OUTPUT ${_sdb_static_lib}
-            COMMAND cargo build ${_sdb_cargo_flags}
+            COMMAND cargo build ${_sdb_cargo_flags} ${_sdb_cargo_target_args}
             WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
             COMMENT "Building Rust library (${RUST_PROFILE}) and generating C header..."
             DEPENDS ${_sdb_rust_deps}
@@ -220,7 +264,7 @@ else()
     )
 endif()
 
-if(WIN32 AND MSVC)
+if(_sdb_rust_uses_msvc)
     set(SURREALDB_C_INSTALL_LIBRARY "${CMAKE_INSTALL_LIBDIR}/surrealdb_c.lib")
 else()
     set(SURREALDB_C_INSTALL_LIBRARY "${CMAKE_INSTALL_LIBDIR}/libsurrealdb_c.a")
