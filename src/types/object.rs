@@ -16,6 +16,12 @@ use crate::value::Value;
 #[allow(clippy::box_collection)]
 pub struct Object(Box<BTreeMap<String, Value>>);
 
+impl Default for Object {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Object {
     /// Get a value by key from the object
     ///

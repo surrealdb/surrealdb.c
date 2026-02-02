@@ -54,6 +54,9 @@ if(APPLE)
         "-framework IOKit"
         objc
     )
+elseif(UNIX)
+    # Link math library required by Rust dependencies on Linux
+    target_link_libraries(saas_example PRIVATE m)
 endif()
 
 message(STATUS "Example binaries will be output to: ${_example_bin_dir}")

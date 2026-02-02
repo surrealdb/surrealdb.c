@@ -63,6 +63,9 @@ if(APPLE)
         "-framework IOKit"
         objc
     )
+elseif(UNIX)
+    # Link math library required by Rust dependencies on Linux
+    target_link_libraries(test_runner PRIVATE m)
 endif()
 
 set_target_properties(test_runner PROPERTIES
@@ -98,6 +101,9 @@ if(APPLE)
         "-framework IOKit"
         objc
     )
+elseif(UNIX)
+    # Link math library required by Rust dependencies on Linux
+    target_link_libraries(test_scratch PRIVATE m)
 endif()
 
 set_target_properties(test_scratch PROPERTIES
