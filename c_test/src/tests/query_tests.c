@@ -1,5 +1,5 @@
-#include "unity_fixture.h"
 #include "surrealdb.h"
+#include "unity_fixture.h"
 #include <stdio.h>
 #include <string.h>
 
@@ -26,7 +26,7 @@ TEST_TEAR_DOWN(Query) {
 
 TEST(Query, Query) {
     TEST_ASSERT_NOT_NULL_MESSAGE(db, "Connection should succeed");
-    
+
     sr_arr_res_t *results;
     int len = sr_query(db, &err, &results, "SELECT * FROM test_table", NULL);
     if (len < 0) {
@@ -36,7 +36,7 @@ TEST(Query, Query) {
         TEST_FAIL_MESSAGE(msg);
     }
     TEST_ASSERT_GREATER_OR_EQUAL_INT_MESSAGE(0, len, "query should succeed");
-    
+
     if (len > 0) {
         sr_free_arr_res_arr(results, len);
     }
@@ -44,7 +44,7 @@ TEST(Query, Query) {
 
 TEST(Query, SelectLive) {
     TEST_ASSERT_NOT_NULL_MESSAGE(db, "Connection should succeed");
-    
+
     sr_stream_t *stream;
     int result = sr_select_live(db, &err, &stream, "test_table");
     if (result < 0) {
@@ -55,7 +55,7 @@ TEST(Query, SelectLive) {
     }
     TEST_ASSERT_GREATER_OR_EQUAL_INT_MESSAGE(0, result, "select_live should succeed");
     TEST_ASSERT_NOT_NULL_MESSAGE(stream, "Stream should not be NULL");
-    
+
     sr_stream_kill(stream);
 }
 

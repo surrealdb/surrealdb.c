@@ -1205,9 +1205,11 @@ int sr_set(const struct sr_surreal_t *db,
  * - `token_ptr` must be a valid pointer or null
  * - `scope` must be a valid pointer to a credentials_scope
  * - `creds` must be a valid pointer to credentials or null
- * - If `creds` is not null, `creds.username` and `creds.password` must be valid null-terminated UTF-8 strings or null
+ * - If `creds` is not null, `creds.username` and `creds.password` must be valid
+ *   null-terminated UTF-8 strings or null
  * - `details` must be a valid pointer to credentials_access or null
- * - If `details` is not null, `details.namespace`, `details.database`, and `details.access` must be valid null-terminated UTF-8 strings or null
+ * - If `details` is not null, `details.namespace`, `details.database`, and `details.access`
+ *   must be valid null-terminated UTF-8 strings or null
  * - `params` must be a valid pointer to an Object or null
  */
 int sr_signin(const struct sr_surreal_t *db,
@@ -1271,9 +1273,11 @@ int sr_signin(const struct sr_surreal_t *db,
  * - `token_ptr` must be a valid pointer or null
  * - `scope` must be a valid pointer to a credentials_scope
  * - `creds` must be a valid pointer to credentials or null
- * - If `creds` is not null, `creds.username` and `creds.password` must be valid null-terminated UTF-8 strings or null
+ * - If `creds` is not null, `creds.username` and `creds.password` must be valid
+ *   null-terminated UTF-8 strings or null
  * - `details` must be a valid pointer to credentials_access or null
- * - If `details` is not null, `details.namespace`, `details.database`, and `details.access` must be valid null-terminated UTF-8 strings or null
+ * - If `details` is not null, `details.namespace`, `details.database`, and `details.access`
+ *   must be valid null-terminated UTF-8 strings or null
  * - `params` must be a valid pointer to an Object or null
  */
 int sr_signup(const struct sr_surreal_t *db,

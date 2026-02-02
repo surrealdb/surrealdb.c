@@ -1,5 +1,5 @@
-#include "unity_fixture.h"
 #include "surrealdb.h"
+#include "unity_fixture.h"
 #include <stdio.h>
 #include <string.h>
 
@@ -26,11 +26,11 @@ TEST_TEAR_DOWN(Memory) {
 
 TEST(Memory, FreeArr) {
     TEST_ASSERT_NOT_NULL_MESSAGE(db, "Connection should succeed");
-    
+
     sr_value_t *results;
     int len = sr_select(db, &err, &results, "nonexistent_table");
     TEST_ASSERT_GREATER_OR_EQUAL_INT_MESSAGE(0, len, "select should succeed");
-    
+
     if (len > 0) {
         sr_free_arr(results, len);
     }
@@ -44,7 +44,7 @@ TEST(Memory, FreeBytes) {
     sr_bytes_t bytes = {0};
     bytes.arr = NULL;
     bytes.len = 0;
-    
+
     // This should handle NULL/empty data gracefully
     sr_free_bytes(bytes);
     // Test passes if we get here without crashing
@@ -67,16 +67,17 @@ TEST(Memory, FreeObject) {
 
 TEST(Memory, FreeArrRes) {
     TEST_ASSERT_NOT_NULL_MESSAGE(db, "Connection should succeed");
-    
+
     // Run a simple query to get arr_res data
     sr_arr_res_t *results;
     int len = sr_query(db, &err, &results, "RETURN 1", NULL);
-    
+
     if (len < 0) {
-        if (err) sr_free_string(err);
+        if (err)
+            sr_free_string(err);
         TEST_FAIL_MESSAGE("Query should succeed");
     }
-    
+
     // Free individual result if we have one
     if (len > 0) {
         sr_free_arr_res(results[0]);
@@ -84,7 +85,7 @@ TEST(Memory, FreeArrRes) {
         // Just free the array pointer itself
         // Actually, let's test differently - run another query
     }
-    
+
     // Run another query to test sr_free_arr_res_arr
     len = sr_query(db, &err, &results, "RETURN [1, 2, 3]", NULL);
     if (len > 0) {
@@ -95,11 +96,11 @@ TEST(Memory, FreeArrRes) {
 
 TEST(Memory, FreeArrResArr) {
     TEST_ASSERT_NOT_NULL_MESSAGE(db, "Connection should succeed");
-    
+
     sr_arr_res_t *results;
     int len = sr_query(db, &err, &results, "SELECT * FROM test", NULL);
     TEST_ASSERT_GREATER_OR_EQUAL_INT_MESSAGE(0, len, "query should succeed");
-    
+
     if (len > 0) {
         sr_free_arr_res_arr(results, len);
     }
@@ -108,7 +109,7 @@ TEST(Memory, FreeArrResArr) {
 
 TEST(Memory, FreeString) {
     TEST_ASSERT_NOT_NULL_MESSAGE(db, "Connection should succeed");
-    
+
     sr_string_t version;
     sr_version(db, &err, &version);
     sr_free_string(version);

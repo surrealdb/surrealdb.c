@@ -8,6 +8,9 @@ project(surrealdb_c VERSION 0.1.0 LANGUAGES C CXX) # We add CXX here to make som
 set(CMAKE_C_STANDARD 23)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 
+# Generate compile_commands.json for clang tools
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
 # Make custom find modules available
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
@@ -310,6 +313,62 @@ if(PROJECT_IS_TOP_LEVEL AND BUILD_TESTING)
     add_subdirectory(c_test)
 elseif(BUILD_TESTING)
     message(STATUS "Skipping surrealdb.c tests when used as subproject")
+endif()
+
+# ----------------------------------------------------------------------------
+# Code Quality Targets
+# ----------------------------------------------------------------------------
+
+find_program(CLANG_FORMAT clang-format)
+find_program(CLANG_TIDY clang-tidy)
+
+# Collect C source and header files for formatting
+file(GLOB_RECURSE ALL_C_SOURCES
+    "${PROJECT_SOURCE_DIR}/c_test/*.c"
+    "${PROJECT_SOURCE_DIR}/c_test/*.h"
+)
+
+# Collect only .c files for clang-tidy (headers are analyzed when included)
+file(GLOB_RECURSE ALL_C_IMPL_SOURCES
+    "${PROJECT_SOURCE_DIR}/c_test/*.c"
+)
+
+if(CLANG_FORMAT)
+    # Check formatting (fails if files need formatting)
+    add_custom_target(format-check
+        COMMAND ${CLANG_FORMAT} --dry-run --Werror ${ALL_C_SOURCES}
+        WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
+        COMMENT "Checking C code formatting..."
+    )
+
+    # Auto-fix formatting
+    add_custom_target(format
+        COMMAND ${CLANG_FORMAT} -i ${ALL_C_SOURCES}
+        WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
+        COMMENT "Formatting C code..."
+    )
+endif()
+
+if(CLANG_TIDY)
+    # Note: compile_commands.json must exist (generated during CMake configure)
+    # On macOS, we need to add the SDK path for system headers
+    set(_sdb_clang_tidy_extra_args "")
+    if(APPLE)
+        execute_process(
+            COMMAND xcrun --show-sdk-path
+            OUTPUT_VARIABLE _sdb_sdk_path
+            OUTPUT_STRIP_TRAILING_WHITESPACE
+        )
+        if(_sdb_sdk_path)
+            set(_sdb_clang_tidy_extra_args "--extra-arg=-isysroot${_sdb_sdk_path}")
+        endif()
+    endif()
+
+    add_custom_target(clang-tidy
+        COMMAND ${CLANG_TIDY} -p ${CMAKE_BINARY_DIR} ${_sdb_clang_tidy_extra_args} ${ALL_C_IMPL_SOURCES}
+        WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
+        COMMENT "Running clang-tidy..."
+    )
 endif()
 
 # ----------------------------------------------------------------------------

@@ -1,0 +1,33 @@
+---
+# Clang-tidy configuration for surrealdb.c
+
+Checks: >
+  -*,
+  bugprone-*,
+  clang-analyzer-*,
+  misc-*,
+  performance-*,
+  readability-*,
+  -readability-magic-numbers,
+  -readability-identifier-length,
+  -readability-function-cognitive-complexity,
+  -readability-function-size,
+  -bugprone-easily-swappable-parameters,
+  -bugprone-macro-parentheses,
+  -misc-no-recursion,
+  -misc-include-cleaner,
+  -readability-inconsistent-declaration-parameter-name,
+  -readability-braces-around-statements,
+  -readability-uppercase-literal-suffix,
+  -readability-implicit-bool-conversion,
+  -clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling,
+  -clang-diagnostic-error
+
+WarningsAsErrors: ''
+
+# Only check headers in c_test/src, exclude ThirdParty and include/surrealdb.h
+HeaderFilterRegex: '.*/c_test/src/.*\.h$'
+
+CheckOptions:
+  - key: misc-non-private-member-variables-in-classes.IgnoreClassesWithAllMemberVariablesBeingPublic
+    value: true

@@ -1,5 +1,5 @@
-#include "unity_fixture.h"
 #include "surrealdb.h"
+#include "unity_fixture.h"
 #include <stdio.h>
 #include <string.h>
 
@@ -30,20 +30,20 @@ TEST(Connection, Disconnect) {
     sr_connect(&err, &db, "memory");
     TEST_ASSERT_NOT_NULL_MESSAGE(db, "Connection should succeed");
     sr_surreal_disconnect(db);
-    db = NULL;  // Mark as disconnected so teardown doesn't double-free
+    db = NULL; // Mark as disconnected so teardown doesn't double-free
 }
 
 TEST(Connection, Authenticate) {
     sr_string_t err;
     int result = sr_connect(&err, &db, "memory");
     TEST_ASSERT_GREATER_OR_EQUAL_INT(0, result);
-    
+
     // In-memory databases don't require authentication,
     // but we can test that sr_authenticate accepts a token format
     // First invalidate any session
     result = sr_invalidate(db, &err);
     TEST_ASSERT_GREATER_OR_EQUAL_INT_MESSAGE(0, result, "Invalidate should succeed");
-    
+
     // Try to authenticate with an invalid token - should fail gracefully
     result = sr_authenticate(db, &err, "invalid_token");
     // This should fail since the token is invalid, but shouldn't crash
@@ -57,7 +57,7 @@ TEST(Connection, Invalidate) {
     sr_string_t err;
     int result = sr_connect(&err, &db, "memory");
     TEST_ASSERT_GREATER_OR_EQUAL_INT(0, result);
-    
+
     result = sr_invalidate(db, &err);
     if (result < 0) {
         char msg[256];
@@ -72,7 +72,7 @@ TEST(Connection, UseNamespace) {
     sr_string_t err;
     int result = sr_connect(&err, &db, "memory");
     TEST_ASSERT_GREATER_OR_EQUAL_INT(0, result);
-    
+
     result = sr_use_ns(db, &err, "test_namespace");
     if (result < 0) {
         char msg[256];
@@ -87,9 +87,9 @@ TEST(Connection, UseDatabase) {
     sr_string_t err;
     int result = sr_connect(&err, &db, "memory");
     TEST_ASSERT_GREATER_OR_EQUAL_INT(0, result);
-    
+
     sr_use_ns(db, &err, "test_namespace");
-    
+
     result = sr_use_db(db, &err, "test_database");
     if (result < 0) {
         char msg[256];
@@ -105,7 +105,7 @@ TEST(Connection, Version) {
     sr_string_t version;
     int result = sr_connect(&err, &db, "memory");
     TEST_ASSERT_GREATER_OR_EQUAL_INT(0, result);
-    
+
     result = sr_version(db, &err, &version);
     if (result < 0) {
         char msg[256];
@@ -123,7 +123,7 @@ TEST(Connection, Health) {
     sr_string_t err;
     int result = sr_connect(&err, &db, "memory");
     TEST_ASSERT_GREATER_OR_EQUAL_INT(0, result);
-    
+
     result = sr_health(db, &err);
     if (result < 0) {
         char msg[256];

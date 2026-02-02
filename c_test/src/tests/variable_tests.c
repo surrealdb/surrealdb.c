@@ -1,5 +1,5 @@
-#include "unity_fixture.h"
 #include "surrealdb.h"
+#include "unity_fixture.h"
 #include <stdio.h>
 #include <string.h>
 
@@ -26,7 +26,7 @@ TEST_TEAR_DOWN(Variable) {
 
 TEST(Variable, Set) {
     TEST_ASSERT_NOT_NULL_MESSAGE(db, "Connection should succeed");
-    
+
     sr_value_t *value = sr_value_int(42);
     int result = sr_set(db, &err, "test_var", value);
     if (result < 0) {
@@ -37,17 +37,17 @@ TEST(Variable, Set) {
         TEST_FAIL_MESSAGE(msg);
     }
     TEST_ASSERT_GREATER_OR_EQUAL_INT_MESSAGE(0, result, "set should succeed");
-    
+
     sr_value_free(value);
 }
 
 TEST(Variable, Unset) {
     TEST_ASSERT_NOT_NULL_MESSAGE(db, "Connection should succeed");
-    
+
     sr_value_t *value = sr_value_int(42);
     sr_set(db, &err, "test_var", value);
     sr_value_free(value);
-    
+
     int result = sr_unset(db, &err, "test_var");
     if (result < 0) {
         char msg[256];

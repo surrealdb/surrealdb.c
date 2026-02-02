@@ -1,5 +1,5 @@
-#include "unity_fixture.h"
 #include "surrealdb.h"
+#include "unity_fixture.h"
 #include <stdio.h>
 #include <string.h>
 
@@ -26,7 +26,7 @@ TEST_TEAR_DOWN(Transaction) {
 
 TEST(Transaction, Begin) {
     TEST_ASSERT_NOT_NULL_MESSAGE(db, "Connection should succeed");
-    
+
     int result = sr_begin(db, &err);
     if (result < 0) {
         char msg[256];
@@ -35,16 +35,16 @@ TEST(Transaction, Begin) {
         TEST_FAIL_MESSAGE(msg);
     }
     TEST_ASSERT_GREATER_OR_EQUAL_INT_MESSAGE(0, result, "begin should succeed");
-    
+
     // Clean up - cancel the transaction
     sr_cancel(db, &err);
 }
 
 TEST(Transaction, Cancel) {
     TEST_ASSERT_NOT_NULL_MESSAGE(db, "Connection should succeed");
-    
+
     sr_begin(db, &err);
-    
+
     int result = sr_cancel(db, &err);
     if (result < 0) {
         char msg[256];
@@ -57,9 +57,9 @@ TEST(Transaction, Cancel) {
 
 TEST(Transaction, Commit) {
     TEST_ASSERT_NOT_NULL_MESSAGE(db, "Connection should succeed");
-    
+
     sr_begin(db, &err);
-    
+
     int result = sr_commit(db, &err);
     if (result < 0) {
         char msg[256];
