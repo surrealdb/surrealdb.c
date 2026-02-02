@@ -1,4 +1,5 @@
-use std::{ffi::c_int, ptr::slice_from_raw_parts};
+use std::ffi::c_int;
+use std::ptr::slice_from_raw_parts;
 
 use surrealdb::sql::Bytes as sdbBytes;
 
@@ -12,7 +13,7 @@ pub struct Bytes {
 }
 
 impl Bytes {
-    pub fn as_slice<'a>(&'a self) -> &'a [u8] {
+    pub fn as_slice(&self) -> &[u8] {
         if self.arr.is_null() || self.len == 0 {
             return &[];
         }
@@ -31,7 +32,11 @@ impl Bytes {
 
     #[export_name = "sr_free_byte_arr"]
     pub extern "C" fn free_byte_arr(ptr: *mut u8, len: c_int) {
-        ArrayGen { ptr: ptr, len: len }.free()
+        ArrayGen {
+            ptr,
+            len,
+        }
+        .free()
     }
 }
 
@@ -44,23 +49,35 @@ impl PartialEq for Bytes {
 impl Clone for Bytes {
     fn clone(&self) -> Self {
         Self {
-            arr: self.arr.clone(),
-            len: self.len.clone(),
+            arr: self.arr,
+            len: self.len,
         }
     }
 }
 
 impl From<ArrayGen<u8>> for Bytes {
     fn from(value: ArrayGen<u8>) -> Self {
-        let ArrayGen { ptr, len } = value;
-        Self { arr: ptr, len }
+        let ArrayGen {
+            ptr,
+            len,
+        } = value;
+        Self {
+            arr: ptr,
+            len,
+        }
     }
 }
 
 impl From<Bytes> for ArrayGen<u8> {
     fn from(value: Bytes) -> Self {
-        let Bytes { arr, len } = value;
-        Self { ptr: arr, len }
+        let Bytes {
+            arr,
+            len,
+        } = value;
+        Self {
+            ptr: arr,
+            len,
+        }
     }
 }
 

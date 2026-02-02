@@ -38,6 +38,7 @@ impl CStringExt for &str {
 }
 
 impl CStringExt for *const c_char {
+    #[allow(clippy::not_unsafe_ptr_arg_deref)]
     fn to_raw_char_ptr(self) -> *mut c_char {
         let cstr = unsafe { CStr::from_ptr(self) };
         let cstring = CString::from(cstr);

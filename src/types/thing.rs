@@ -1,8 +1,12 @@
-use std::{ffi::CString, fmt::Debug};
+use std::ffi::CString;
+use std::fmt::Debug;
 
 use surrealdb::sql;
 
-use crate::{array::Array, object::Object, string::string_t, utils::CStringExt2};
+use crate::array::Array;
+use crate::object::Object;
+use crate::string::string_t;
+use crate::utils::CStringExt2;
 
 #[repr(C)]
 #[derive(Debug, Clone, PartialEq)]
@@ -26,7 +30,8 @@ pub enum Id {
 impl From<sql::Thing> for Thing {
     fn from(value: sql::Thing) -> Self {
         // Handle null bytes gracefully - use empty string as fallback
-        let str_ptr = CString::new(value.tb).unwrap_or_else(|_| CString::new("").unwrap()).into_raw();
+        let str_ptr =
+            CString::new(value.tb).unwrap_or_else(|_| CString::new("").unwrap()).into_raw();
         let id = match value.id {
             sql::Id::Number(i) => Id::SR_ID_NUMBER(i),
             sql::Id::String(s) => Id::SR_ID_STRING(s.to_string_t()),
@@ -49,7 +54,8 @@ impl From<sql::Thing> for Thing {
 impl From<&sql::Thing> for Thing {
     fn from(value: &sql::Thing) -> Self {
         // Handle null bytes gracefully - use empty string as fallback
-        let str_ptr = CString::new(value.tb.clone()).unwrap_or_else(|_| CString::new("").unwrap()).into_raw();
+        let str_ptr =
+            CString::new(value.tb.clone()).unwrap_or_else(|_| CString::new("").unwrap()).into_raw();
         let id = match &value.id {
             sql::Id::Number(i) => Id::SR_ID_NUMBER(*i),
             sql::Id::String(s) => Id::SR_ID_STRING(s.as_str().to_string_t()),
