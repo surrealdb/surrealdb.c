@@ -34,7 +34,7 @@ impl Object {
     /// Create a new empty object
     #[export_name = "sr_object_new"]
     pub extern "C" fn new() -> Self {
-        Object(Box::new(BTreeMap::new()))
+        Object(Box::default())
     }
 
     /// Insert a key-value pair into the object

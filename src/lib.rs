@@ -1879,7 +1879,7 @@ impl Surreal {
         with_surreal_async(db, err_ptr, |surreal| async {
             let res = surreal.db.version().await?;
             let res_string = res.to_string();
-            let len = res_string.bytes().len();
+            let len = res_string.len();
             let res_str: string_t = res_string.to_string_t();
 
             unsafe { res_ptr.write(res_str) }
@@ -1932,7 +1932,7 @@ where
     }
     let _guard = db.rt.enter();
 
-    let res = match catch_unwind(AssertUnwindSafe(|| db.rt.block_on(fun(&db)))) {
+    let res = match catch_unwind(AssertUnwindSafe(|| db.rt.block_on(fun(db)))) {
         Ok(r) => r,
         Err(e) => {
             if let Some(e_str) = e.downcast_ref::<&str>() {

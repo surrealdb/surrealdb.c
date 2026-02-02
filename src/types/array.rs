@@ -184,7 +184,6 @@ impl Clone for Array {
             ptr: self.arr,
             len: self.len,
         }
-        .clone()
         .into()
     }
 }
