@@ -328,7 +328,7 @@ impl Surreal {
 
             let obj = match res.take::<apiValue>(0)?.into_inner() {
                 sql::Value::Array(arr) if !arr.is_empty() => {
-                    match arr.into_iter().next().unwrap() {
+                    match arr.into_iter().next().expect("Array is not empty, checked by guard") {
                         sql::Value::Object(o) => o,
                         other => {
                             return Err(format!(
@@ -1347,6 +1347,20 @@ impl Surreal {
     ///     // handle error
     /// }
     /// ```
+    ///
+    /// # Safety
+    ///
+    /// - `db` must be a valid pointer to a Surreal connection
+    /// - `err_ptr` must be a valid pointer or null
+    /// - `token_ptr` must be a valid pointer or null
+    /// - `scope` must be a valid pointer to a credentials_scope
+    /// - `creds` must be a valid pointer to credentials or null
+    /// - If `creds` is not null, `creds.username` and `creds.password` must be valid
+    ///   null-terminated UTF-8 strings or null
+    /// - `details` must be a valid pointer to credentials_access or null
+    /// - If `details` is not null, `details.namespace`, `details.database`, and `details.access`
+    ///   must be valid null-terminated UTF-8 strings or null
+    /// - `params` must be a valid pointer to an Object or null
     #[export_name = "sr_signin"]
     pub unsafe extern "C" fn signin(
         db: &Surreal,
@@ -1520,8 +1534,22 @@ impl Surreal {
     ///     // handle error
     /// }
     /// ```
+    ///
+    /// # Safety
+    ///
+    /// - `db` must be a valid pointer to a Surreal connection
+    /// - `err_ptr` must be a valid pointer or null
+    /// - `token_ptr` must be a valid pointer or null
+    /// - `scope` must be a valid pointer to a credentials_scope
+    /// - `creds` must be a valid pointer to credentials or null
+    /// - If `creds` is not null, `creds.username` and `creds.password` must be valid
+    ///   null-terminated UTF-8 strings or null
+    /// - `details` must be a valid pointer to credentials_access or null
+    /// - If `details` is not null, `details.namespace`, `details.database`, and `details.access`
+    ///   must be valid null-terminated UTF-8 strings or null
+    /// - `params` must be a valid pointer to an Object or null
     #[export_name = "sr_signup"]
-    pub extern "C" fn signup(
+    pub unsafe extern "C" fn signup(
         db: &Surreal,
         err_ptr: *mut string_t,
         token_ptr: *mut string_t,
@@ -1637,7 +1665,11 @@ impl Surreal {
     /// }
     /// ```
     #[export_name = "sr_unset"]
-    pub extern "C" fn unset(db: &Surreal, err_ptr: *mut string_t, key: *const c_char) -> c_int {
+    pub unsafe extern "C" fn unset(
+        db: &Surreal,
+        err_ptr: *mut string_t,
+        key: *const c_char,
+    ) -> c_int {
         check_null!(key, err_ptr, "key is null");
         with_surreal_async(db, err_ptr, |surreal| async {
             let key = unsafe { CStr::from_ptr(key) }.to_str()?;
@@ -1673,7 +1705,7 @@ impl Surreal {
     /// sr_free_arr(updated, len);
     /// ```
     #[export_name = "sr_update"]
-    pub extern "C" fn update(
+    pub unsafe extern "C" fn update(
         db: &Surreal,
         err_ptr: *mut string_t,
         res_ptr: *mut *mut Value,
@@ -1735,7 +1767,7 @@ impl Surreal {
     /// sr_free_arr(upserted, len);
     /// ```
     #[export_name = "sr_upsert"]
-    pub extern "C" fn upsert(
+    pub unsafe extern "C" fn upsert(
         db: &Surreal,
         err_ptr: *mut string_t,
         res_ptr: *mut *mut Value,
@@ -1792,7 +1824,7 @@ impl Surreal {
     /// }
     /// ```
     #[export_name = "sr_use_db"]
-    pub extern "C" fn use_db(
+    pub unsafe extern "C" fn use_db(
         db: &Surreal,
         err_ptr: *mut string_t,
         db_name: *const c_char,
@@ -1829,7 +1861,7 @@ impl Surreal {
     /// }
     /// ```
     #[export_name = "sr_use_ns"]
-    pub extern "C" fn use_ns(
+    pub unsafe extern "C" fn use_ns(
         db: &Surreal,
         err_ptr: *mut string_t,
         ns_name: *const c_char,
@@ -1870,7 +1902,7 @@ impl Surreal {
     /// sr_free_string(ver);
     /// ```
     #[export_name = "sr_version"]
-    pub extern "C" fn version(
+    pub unsafe extern "C" fn version(
         db: &Surreal,
         err_ptr: *mut string_t,
         res_ptr: *mut string_t,

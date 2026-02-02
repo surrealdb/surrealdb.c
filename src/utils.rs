@@ -24,7 +24,10 @@ where
 impl CStringExt for String {
     fn to_raw_char_ptr(self) -> *mut c_char {
         // Replace null bytes with empty string to avoid panic
-        let cstring = CString::new(self).unwrap_or_else(|_| CString::new("").unwrap());
+        let cstring = CString::new(self).unwrap_or_else(|_| {
+            // SAFETY: empty slice contains no null bytes
+            unsafe { CString::from_vec_unchecked(vec![]) }
+        });
         cstring.into_raw()
     }
 }
@@ -32,7 +35,10 @@ impl CStringExt for String {
 impl CStringExt for &str {
     fn to_raw_char_ptr(self) -> *mut c_char {
         // Replace null bytes with empty string to avoid panic
-        let cstring = CString::new(self).unwrap_or_else(|_| CString::new("").unwrap());
+        let cstring = CString::new(self).unwrap_or_else(|_| {
+            // SAFETY: empty slice contains no null bytes
+            unsafe { CString::from_vec_unchecked(vec![]) }
+        });
         cstring.into_raw()
     }
 }

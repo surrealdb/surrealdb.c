@@ -13,6 +13,7 @@ use crate::value::Value;
 /// Uses Box to ensure a fixed size for FFI compatibility.
 #[derive(Debug, Clone, PartialEq)]
 #[repr(C)]
+#[allow(clippy::box_collection)]
 pub struct Object(Box<BTreeMap<String, Value>>);
 
 impl Object {

@@ -4,7 +4,7 @@ use std::env;
 use std::path::Path;
 
 fn main() {
-    let crate_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
+    let crate_dir = env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR must be set");
 
     // Generate C header bindings
     cbindgen::generate(&crate_dir)
