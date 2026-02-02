@@ -3,12 +3,25 @@ use std::{
     ptr::{self, slice_from_raw_parts, slice_from_raw_parts_mut},
 };
 
-use crate::value::Value;
 use surrealdb::sql;
+use super::value::Value;
 
+#[repr(C)]
 pub struct ArrayGen<T> {
     pub ptr: *mut T,
     pub len: c_int,
+}
+
+impl<T: std::fmt::Debug> std::fmt::Debug for ArrayGen<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_list().entries(self.as_slice()).finish()
+    }
+}
+
+impl<T: PartialEq> PartialEq for ArrayGen<T> {
+    fn eq(&self, other: &Self) -> bool {
+        self.as_slice() == other.as_slice()
+    }
 }
 
 impl<T> Clone for ArrayGen<T>
@@ -120,8 +133,10 @@ impl From<ArrayGen<Value>> for Array {
 
 impl From<Array> for ArrayGen<Value> {
     fn from(value: Array) -> Self {
-        let Array { arr, len } = value;
-        ArrayGen { ptr: arr, len }
+        let result = ArrayGen { ptr: value.arr, len: value.len };
+        // Prevent Array's Drop from running to avoid double-free
+        std::mem::forget(value);
+        result
     }
 }
 
@@ -180,5 +195,64 @@ impl Array {
     #[export_name = "sr_free_arr"]
     pub extern "C" fn free_arr(ptr: *mut Value, len: c_int) {
         ArrayGen { ptr, len }.free()
+    }
+
+    /// Get the length of an array
+    #[export_name = "sr_array_len"]
+    pub extern "C" fn array_len(arr: *const Array) -> c_int {
+        if arr.is_null() {
+            return 0;
+        }
+        unsafe { (*arr).len }
+    }
+
+    /// Get a value at the specified index (returns NULL if out of bounds)
+    /// The returned pointer is borrowed and should NOT be freed by the caller
+    #[export_name = "sr_array_get"]
+    pub extern "C" fn array_get(arr: *const Array, index: c_int) -> *const Value {
+        if arr.is_null() {
+            return ptr::null();
+        }
+        let array = unsafe { &*arr };
+        if index < 0 || index >= array.len {
+            return ptr::null();
+        }
+        unsafe { array.arr.add(index as usize) }
+    }
+
+    /// Create a new array with the given value appended
+    /// Returns a new array - the original array is not modified
+    /// The caller is responsible for freeing the returned array
+    #[export_name = "sr_array_push"]
+    pub extern "C" fn array_push(arr: *const Array, value: *const Value) -> *mut Array {
+        if value.is_null() {
+            // If value is null, return a copy of the original or empty array
+            if arr.is_null() {
+                return Box::into_raw(Box::new(Array::empty()));
+            }
+            let array = unsafe { &*arr };
+            return Box::into_raw(Box::new(array.clone()));
+        }
+        
+        let value = unsafe { (*value).clone() };
+        
+        if arr.is_null() {
+            // Create new array with just this value
+            let vec = vec![value];
+            return Box::into_raw(Box::new(vec.into()));
+        }
+        
+        let array = unsafe { &*arr };
+        let mut vec: Vec<Value> = array.as_slice().to_vec();
+        vec.push(value);
+        Box::into_raw(Box::new(vec.into()))
+    }
+
+    /// Free an array created by sr_array_push
+    #[export_name = "sr_array_free"]
+    pub extern "C" fn array_free(arr: *mut Array) {
+        if !arr.is_null() {
+            let _ = unsafe { Box::from_raw(arr) };
+        }
     }
 }

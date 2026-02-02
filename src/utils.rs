@@ -23,14 +23,16 @@ where
 
 impl CStringExt for String {
     fn to_raw_char_ptr(self) -> *mut c_char {
-        let cstring = CString::new(self).unwrap();
+        // Replace null bytes with empty string to avoid panic
+        let cstring = CString::new(self).unwrap_or_else(|_| CString::new("").unwrap());
         cstring.into_raw()
     }
 }
 
 impl CStringExt for &str {
     fn to_raw_char_ptr(self) -> *mut c_char {
-        let cstring = CString::new(self).unwrap();
+        // Replace null bytes with empty string to avoid panic
+        let cstring = CString::new(self).unwrap_or_else(|_| CString::new("").unwrap());
         cstring.into_raw()
     }
 }

@@ -1,10 +1,9 @@
 use surrealdb::sql;
-
 #[derive(Debug, Clone, PartialEq)]
 #[repr(C)]
 pub struct Duration {
-    secs: u64,
-    nanos: u32,
+    pub secs: u64,
+    pub nanos: u32,
 }
 
 impl From<std::time::Duration> for Duration {

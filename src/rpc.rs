@@ -7,19 +7,19 @@ use std::{
     sync::atomic::{AtomicBool, Ordering},
     time::Duration,
 };
-
+use std::sync::Arc;
+use arc_swap::ArcSwap;
 use surrealdb::dbs::Session;
 use surrealdb::kvs::Datastore;
 use surrealdb::rpc::format::cbor;
-use surrealdb::rpc::method::Method;
-use surrealdb::rpc::rpc_context::RpcContext;
+use surrealdb::rpc::Method;
+use surrealdb::rpc::RpcContext;
 use surrealdb::rpc::Data;
 use surrealdb::sql;
+use surrealdb_core::rpc::{RpcProtocolV1, RpcProtocolV2};
 use tokio::{runtime::Runtime, sync::RwLock};
-
-use crate::{
-    array::MakeArray, opts::Options, stream::RpcStream, string::string_t, SR_ERROR, SR_FATAL,
-};
+use tokio::sync::Semaphore;
+use crate::{array::MakeArray, opts::Options, stream::RpcStream, string::string_t, SR_ERROR, SR_FATAL};
 
 /// The object representing a Surreal connection
 ///
@@ -53,7 +53,6 @@ impl SurrealRpc {
         endpoint: *const c_char,
         options: Options,
     ) -> c_int {
-        // TODO: live query support
         let res: Result<Result<SurrealRpc, string_t>, _> = catch_unwind(AssertUnwindSafe(|| {
             let Ok(endpoint) = (unsafe { CStr::from_ptr(endpoint).to_str() }) else {
                 return Err("Invalid UTF-8".into());
@@ -85,8 +84,9 @@ impl SurrealRpc {
 
             let inner = SurrealRpcInner {
                 kvs,
-                sess: Session::default().with_rt(true),
+                sess: ArcSwap::new(Arc::new(Session::default().with_rt(true))),
                 vars: BTreeMap::default(),
+                lock: Arc::new(Semaphore::new(1)),
             };
 
             Ok(SurrealRpc {
@@ -122,9 +122,16 @@ impl SurrealRpc {
         }
     }
 
-    /// execute rpc
+    /// Execute an RPC request
     ///
-    /// free result with sr_free_byte_arr
+    /// # Safety
+    ///
+    /// - `err_ptr` must be a valid pointer or null
+    /// - `res_ptr` must be a valid pointer to receive the result
+    /// - `ptr` must be a valid pointer to CBOR-encoded request data
+    /// - `len` must be the length of the data at ptr
+    ///
+    /// Free result with sr_free_byte_arr
     #[export_name = "sr_surreal_rpc_execute"]
     pub extern "C" fn execute(
         &self,
@@ -133,11 +140,25 @@ impl SurrealRpc {
         ptr: *const u8,
         len: c_int,
     ) -> c_int {
+        if res_ptr.is_null() {
+            if !err_ptr.is_null() {
+                unsafe { err_ptr.write("res_ptr is null".into()) };
+            }
+            return SR_ERROR;
+        }
+        if ptr.is_null() {
+            if !err_ptr.is_null() {
+                unsafe { err_ptr.write("ptr is null".into()) };
+            }
+            return SR_ERROR;
+        }
         with_async(self, err_ptr, |ctx| async {
             let in_bytes = slice_from_raw_parts(ptr, len as usize);
             let in_bytes = unsafe { &*in_bytes };
             let in_data = cbor::req(in_bytes.to_vec())?;
-            let method = Method::parse(in_data.method);
+            let method = Method::parse_case_insensitive(in_data.method.to_str());
+            //let method = Method::parse(in_data.method);
+            /*
             let res = match method.can_be_immut() {
                 true => {
                     ctx.inner
@@ -150,24 +171,57 @@ impl SurrealRpc {
                     ctx.inner
                         .write()
                         .await
-                        .execute(method, in_data.params)
-                        .await
+                        .execute(None, method, in_data.params)
+                        .await?
                 }
             }?;
-            let out = cbor::res(res)?.make_array();
-            unsafe { res_ptr.write(out.ptr) }
-            Ok(out.len)
+             */
+            let inner = &ctx.inner.write().await;
+            let res = <SurrealRpcInner as RpcProtocolV2>::execute(
+                &*inner,
+                method,
+                in_data.params,
+            ).await?;
+            
+            // Currently only Data::Other is supported; Data::Live requires stream handling
+            let result = match res {
+                Data::Other(v) => {
+                    let out = cbor::res(v)?.make_array();
+                    //let out = cbor::res(res)?.make_array();
+                    unsafe { res_ptr.write(out.ptr) }
+                    Ok(out.len)
+                }
+                _ => {
+                    Err("C SDK: RPC::execute had unimplemented response.")
+                }
+            }?;
+            
+            Ok(result)
         })
     }
 
+    /// Get a stream for receiving live query notifications
+    ///
+    /// # Safety
+    ///
+    /// - `err_ptr` must be a valid pointer or null
+    /// - `stream_ptr` must be a valid pointer to receive the stream
+    ///
+    /// Returns a stream that can be polled for notifications using sr_rpc_stream_next
     #[export_name = "sr_surreal_rpc_notifications"]
     pub extern "C" fn notifications(
         &self,
         err_ptr: *mut string_t,
-        stream_ptr: *mut &mut RpcStream,
+        stream_ptr: *mut *mut RpcStream,
     ) -> c_int {
+        if stream_ptr.is_null() {
+            if !err_ptr.is_null() {
+                unsafe { err_ptr.write("stream_ptr is null".into()) };
+            }
+            return SR_ERROR;
+        }
         with_async(self, err_ptr, |ctx| async {
-            let stream = ctx
+            let receiver = ctx
                 .inner
                 .read()
                 .await
@@ -175,12 +229,24 @@ impl SurrealRpc {
                 .notifications()
                 .ok_or("Notifications not enabled")?;
 
-            Ok(0)
+            let rpc_stream = RpcStream::new(receiver);
+            let stream_boxed = Box::new(rpc_stream);
+            unsafe { stream_ptr.write(Box::leak(stream_boxed)) };
+
+            Ok(1)
         })
     }
 
+    /// Free an RPC context
+    ///
+    /// # Safety
+    ///
+    /// - `ctx` must be a valid pointer to a SurrealRpc, or null (no-op)
     #[export_name = "sr_surreal_rpc_free"]
     pub extern "C" fn rpc_free(ctx: *mut SurrealRpc) {
+        if ctx.is_null() {
+            return;
+        }
         let boxed = unsafe { Box::from_raw(ctx) };
         drop(boxed)
     }
@@ -219,10 +285,17 @@ where
     }
 }
 
+#[allow(dead_code)]
 struct SurrealRpcInner {
     kvs: Datastore,
-    sess: Session,
+    sess: ArcSwap<Session>,
+    lock: Arc<Semaphore>,
     vars: BTreeMap<String, sql::Value>,
+}
+
+
+impl SurrealRpcInner {
+
 }
 
 impl RpcContext for SurrealRpcInner {
@@ -230,28 +303,28 @@ impl RpcContext for SurrealRpcInner {
         &self.kvs
     }
 
-    fn session(&self) -> &Session {
-        &self.sess
+    fn lock(&self) -> Arc<Semaphore> {
+        self.lock.clone()   
     }
 
-    fn session_mut(&mut self) -> &mut Session {
-        &mut self.sess
+    fn session(&self) -> Arc<Session> {
+        self.sess.load().clone()
     }
 
-    fn vars(&self) -> &std::collections::BTreeMap<String, sql::Value> {
-        &self.vars
+    fn set_session(&self, session: Arc<Session>) {
+        self.sess.store(session);
     }
-
-    fn vars_mut(&mut self) -> &mut std::collections::BTreeMap<String, sql::Value> {
-        &mut self.vars
-    }
-
     fn version_data(&self) -> Data {
         let ver_str = surrealdb_core::env::VERSION.to_string();
         ver_str.into()
     }
-
+    
     const LQ_SUPPORT: bool = true;
+
     async fn handle_live(&self, _lqid: &uuid::Uuid) {}
+
     async fn handle_kill(&self, _lqid: &uuid::Uuid) {}
 }
+
+impl RpcProtocolV1 for SurrealRpcInner{}
+impl RpcProtocolV2 for SurrealRpcInner{}

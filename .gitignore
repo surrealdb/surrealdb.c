@@ -2,6 +2,9 @@
 # OS X
 # -----------------------------------
 
+# IDE files
+.idea
+
 # Directory files
 .DS_Store
 .AppleDouble
@@ -37,3 +40,20 @@ Temporary Items
 /test/*.skv
 /test/*.db
 /test/*.out.dSYM
+/test/bin/
+/test/build/
+/test/*.exe
+/test/*.obj
+
+# Build directories.
+build/
+cmake-build-debug/
+cmake-build-release/
+
+# Scratch files.
+Output.txt
+Output.log
+.output.txt
+
+# ThirdPary directory.
+ThirdParty/
