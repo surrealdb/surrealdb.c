@@ -73,9 +73,9 @@ fn test_build_c_tests() {
     setup();
 
     // Verify that the test executables were created
-    // When building from project root with -B test/build, outputs go to test/build/test/bin
+    // When building from project root with -B test/build, outputs go to test/build/c_test/bin
     let project_root = Path::new(env!("CARGO_MANIFEST_DIR"));
-    let bin_dir = project_root.join("test").join("build").join("test").join("bin");
+    let bin_dir = project_root.join("test").join("build").join("c_test").join("bin");
     let test_runner = bin_dir.join(if cfg!(windows) {
         "Debug/test_runner.exe"
     } else {
