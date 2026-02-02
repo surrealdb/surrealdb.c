@@ -4,14 +4,12 @@ use async_channel::Receiver;
 use futures::StreamExt;
 use surrealdb::method::Stream as sdbStream;
 use surrealdb::rpc::format::cbor::Cbor;
-use surrealdb::Value as apiValue;
-use surrealdb::{dbs, sql};
+use surrealdb::{dbs, sql, Value as apiValue};
 use tokio::runtime::Handle;
 
-use crate::SR_ERROR;
-use crate::{notification::Notification, SR_CLOSED, SR_NONE};
-
 use super::array::MakeArray;
+use crate::notification::Notification;
+use crate::{SR_CLOSED, SR_ERROR, SR_NONE};
 
 /// Stream for receiving live query notifications
 ///
@@ -24,7 +22,10 @@ pub struct Stream {
 
 impl Stream {
     pub fn new(inner: sdbStream<apiValue>, rt: Handle) -> Stream {
-        Stream { inner, rt }
+        Stream {
+            inner,
+            rt,
+        }
     }
 }
 
@@ -32,8 +33,12 @@ impl Stream {
     /// Blocks until next item is received on stream
     /// will return 1 and write notification to notification_ptr is recieved
     /// will return SR_NONE if the stream is closed
+    ///
+    /// # Safety
+    ///
+    /// - `notification_ptr` must be a valid pointer to receive the notification
     #[export_name = "sr_stream_next"]
-    pub extern "C" fn next(&mut self, notification_ptr: *mut Notification) -> c_int {
+    pub unsafe extern "C" fn next(&mut self, notification_ptr: *mut Notification) -> c_int {
         match self.rt.block_on(self.inner.next()) {
             Some(n) => {
                 unsafe { notification_ptr.write(n.into()) }
@@ -47,8 +52,12 @@ impl Stream {
     ///
     /// Closes the stream and releases all associated resources.
     /// The stream must not be used after calling this function.
+    ///
+    /// # Safety
+    ///
+    /// - `stream` must be a valid pointer to a Stream
     #[export_name = "sr_stream_kill"]
-    pub extern "C" fn kill(stream: *mut Stream) {
+    pub unsafe extern "C" fn kill(stream: *mut Stream) {
         let boxed = unsafe { Box::from_raw(stream) };
         let handle = boxed.rt.clone();
         handle.block_on(async { drop(boxed) });
@@ -65,13 +74,19 @@ pub struct RpcStream {
 impl RpcStream {
     /// Create a new RpcStream from a notification receiver
     pub fn new(rx: Receiver<dbs::Notification>) -> Self {
-        RpcStream { rx }
+        RpcStream {
+            rx,
+        }
     }
 
     /// Get the next notification from the stream
     /// Returns the length of the CBOR-encoded notification, or SR_CLOSED if the stream is closed
+    ///
+    /// # Safety
+    ///
+    /// - `res_ptr` must be a valid pointer to receive the result
     #[export_name = "sr_rpc_stream_next"]
-    pub extern "C" fn next(&mut self, res_ptr: *mut *mut u8) -> c_int {
+    pub unsafe extern "C" fn next(&mut self, res_ptr: *mut *mut u8) -> c_int {
         let not = match self.rx.recv_blocking() {
             Ok(n) => n,
             Err(_) => return SR_CLOSED,
@@ -101,8 +116,12 @@ impl RpcStream {
     }
 
     /// Free an RpcStream
+    ///
+    /// # Safety
+    ///
+    /// - `stream` must be a valid pointer to an RpcStream
     #[export_name = "sr_rpc_stream_free"]
-    pub extern "C" fn free(stream: *mut RpcStream) {
+    pub unsafe extern "C" fn free(stream: *mut RpcStream) {
         if !stream.is_null() {
             let _ = unsafe { Box::from_raw(stream) };
         }

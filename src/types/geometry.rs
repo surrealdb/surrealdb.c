@@ -1,6 +1,8 @@
 use std::fmt::Debug;
+
+use geo_types::{Coord, LineString, MultiLineString, MultiPoint, MultiPolygon, Point, Polygon};
 use surrealdb::sql::Geometry;
-use geo_types::{Point, LineString, Polygon, MultiPoint, MultiLineString, MultiPolygon, Coord};
+
 use crate::array::*;
 use crate::value::Value;
 
@@ -57,9 +59,9 @@ impl From<Point<f64>> for sr_g_point {
     fn from(p: Point<f64>) -> Self {
         sr_g_point(sr_g_coord {
             x: p.x(),
-            y: p.y()
+            y: p.y(),
         })
-    } 
+    }
 }
 
 impl From<sr_g_point> for Point<f64> {
@@ -82,7 +84,7 @@ impl From<LineString<f64>> for sr_g_linestring {
 
 impl From<sr_g_linestring> for LineString<f64> {
     fn from(l: sr_g_linestring) -> Self {
-        LineString::new(l.0.as_slice().iter().map(|c| Coord::from(c)).collect())
+        LineString::new(l.0.as_slice().iter().map(Coord::from).collect())
     }
 }
 
@@ -96,17 +98,14 @@ impl From<Polygon<f64>> for sr_g_polygon {
         let (exterior, interiors) = p.into_inner();
         sr_g_polygon(
             exterior.into(),
-            interiors.into_iter().map(|l| l.into()).collect::<Vec<sr_g_linestring>>().make_array()
+            interiors.into_iter().map(|l| l.into()).collect::<Vec<sr_g_linestring>>().make_array(),
         )
     }
 }
 
 impl From<sr_g_polygon> for Polygon<f64> {
     fn from(p: sr_g_polygon) -> Self {
-        Polygon::new(
-            p.0.into(),
-            p.1.as_slice().iter().cloned().map(|l| l.into()).collect(),
-        )
+        Polygon::new(p.0.into(), p.1.as_slice().iter().cloned().map(|l| l.into()).collect())
     }
 }
 
@@ -123,7 +122,9 @@ impl From<MultiPoint<f64>> for sr_g_multipoint {
 
 impl From<sr_g_multipoint> for MultiPoint<f64> {
     fn from(m: sr_g_multipoint) -> Self {
-        MultiPoint::from(m.0.as_slice().iter().cloned().map(|p| p.into()).collect::<Vec<Point<f64>>>())
+        MultiPoint::from(
+            m.0.as_slice().iter().cloned().map(|p| p.into()).collect::<Vec<Point<f64>>>(),
+        )
     }
 }
 
@@ -134,7 +135,9 @@ pub struct sr_g_multilinestring(pub ArrayGen<sr_g_linestring>);
 
 impl From<MultiLineString<f64>> for sr_g_multilinestring {
     fn from(m: MultiLineString<f64>) -> Self {
-        sr_g_multilinestring(m.0.into_iter().map(|l| l.into()).collect::<Vec<sr_g_linestring>>().make_array())
+        sr_g_multilinestring(
+            m.0.into_iter().map(|l| l.into()).collect::<Vec<sr_g_linestring>>().make_array(),
+        )
     }
 }
 
@@ -151,7 +154,9 @@ pub struct sr_g_multipolygon(pub ArrayGen<sr_g_polygon>);
 
 impl From<MultiPolygon<f64>> for sr_g_multipolygon {
     fn from(m: MultiPolygon<f64>) -> Self {
-        sr_g_multipolygon(m.0.into_iter().map(|p| p.into()).collect::<Vec<sr_g_polygon>>().make_array())
+        sr_g_multipolygon(
+            m.0.into_iter().map(|p| p.into()).collect::<Vec<sr_g_polygon>>().make_array(),
+        )
     }
 }
 
@@ -186,9 +191,9 @@ impl From<sr_geometry> for Geometry {
             sr_geometry::sr_g_multipoint(m) => Geometry::MultiPoint(m.into()),
             sr_geometry::sr_g_multiline(l) => Geometry::MultiLine(l.into()),
             sr_geometry::sr_g_multipolygon(p) => Geometry::MultiPolygon(p.into()),
-            sr_geometry::sr_g_collection(c) => Geometry::Collection(
-                c.as_slice().iter().cloned().map(|g| Geometry::from(g)).collect()
-            ),
+            sr_geometry::sr_g_collection(c) => {
+                Geometry::Collection(c.as_slice().iter().cloned().map(Geometry::from).collect())
+            }
             // Unimplemented geometry converts to empty point as fallback
             sr_geometry::sr_g_unimplemented => Geometry::Point(Point::new(0.0, 0.0)),
         }
@@ -205,7 +210,7 @@ impl From<Geometry> for sr_geometry {
             Geometry::MultiLine(l) => sr_geometry::sr_g_multiline(l.into()),
             Geometry::MultiPolygon(p) => sr_geometry::sr_g_multipolygon(p.into()),
             Geometry::Collection(c) => sr_geometry::sr_g_collection(
-                c.into_iter().map(|g| g.into()).collect::<Vec<sr_geometry>>().make_array()
+                c.into_iter().map(|g| g.into()).collect::<Vec<sr_geometry>>().make_array(),
             ),
             // New geometry variants added to SurrealDB that aren't yet supported
             _ => sr_geometry::sr_g_unimplemented,

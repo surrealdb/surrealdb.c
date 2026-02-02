@@ -1,9 +1,10 @@
-use std::{ffi::c_int, fmt::Display};
-
-use crate::string::string_t;
-use crate::{utils::CStringExt2, SR_ERROR};
+use std::ffi::c_int;
+use std::fmt::Display;
 
 use super::array::{Array, ArrayGen};
+use crate::string::string_t;
+use crate::utils::CStringExt2;
+use crate::SR_ERROR;
 
 /// when code = 0 there is no error
 #[repr(C)]
@@ -21,11 +22,10 @@ impl SurrealError {
     }
 
     pub fn from_msg(msg: impl Display) -> Self {
-        let out = Self {
+        Self {
             code: SR_ERROR,
             msg: msg.to_string().to_string_t(),
-        };
-        out
+        }
     }
 }
 
@@ -80,5 +80,9 @@ impl ArrayResult {
 
 #[export_name = "sr_free_arr_res_arr"]
 pub extern "C" fn free_arr_res_arr(ptr: *mut ArrayResult, len: c_int) {
-    ArrayGen { ptr, len }.free()
+    ArrayGen {
+        ptr,
+        len,
+    }
+    .free()
 }

@@ -18,7 +18,7 @@ static void runAllTests(void) {
     printf("=============================================================\n");
     printf("SurrealDB C API Test Suite (Unity Fixture Framework)\n");
     printf("=============================================================\n\n");
-    
+
     RUN_TEST_GROUP(Connection);
     RUN_TEST_GROUP(Transaction);
     RUN_TEST_GROUP(CRUD);
@@ -31,10 +31,10 @@ static void runAllTests(void) {
     RUN_TEST_GROUP(Object);
     RUN_TEST_GROUP(Memory);
     RUN_TEST_GROUP(Utility);
-    
+
     printf("\n=============================================================\n");
 }
 
-int main(int argc, const char* argv[]) {
+int main(int argc, const char *argv[]) {
     return UnityMain(argc, argv, runAllTests);
 }

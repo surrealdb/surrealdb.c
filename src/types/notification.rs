@@ -1,6 +1,7 @@
-use crate::{uuid::Uuid, value::Value};
-use surrealdb::Value as apiValue;
-use surrealdb::{sql, Notification as sdbNotification};
+use surrealdb::{sql, Notification as sdbNotification, Value as apiValue};
+
+use crate::uuid::Uuid;
+use crate::value::Value;
 
 #[derive(Debug)]
 #[repr(C)]

@@ -1,7 +1,8 @@
 use std::ffi::{c_double, c_float, c_int, CStr};
 
-use surrealdb::sql;
 use rust_decimal::Decimal;
+use surrealdb::sql;
+
 use crate::string::string_t;
 use crate::utils::CStringExt2;
 
@@ -29,7 +30,7 @@ impl From<c_float> for Number {
 
 impl From<c_double> for Number {
     fn from(value: c_double) -> Self {
-        Number::SR_NUMBER_FLOAT(value as f64)
+        Number::SR_NUMBER_FLOAT(value)
     }
 }
 

@@ -47,4 +47,16 @@ if(MSVC)
     target_link_options(saas_example PRIVATE /NODEFAULTLIB:MSVCRT)
 endif()
 
+# Link macOS system frameworks required by Rust dependencies (sysinfo, iana_time_zone)
+if(APPLE)
+    target_link_libraries(saas_example PRIVATE
+        "-framework CoreFoundation"
+        "-framework IOKit"
+        objc
+    )
+elseif(UNIX)
+    # Link math library required by Rust dependencies on Linux
+    target_link_libraries(saas_example PRIVATE m)
+endif()
+
 message(STATUS "Example binaries will be output to: ${_example_bin_dir}")

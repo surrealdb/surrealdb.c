@@ -1,8 +1,6 @@
-use std::{
-    ffi::{c_char, CStr, CString},
-    fmt::{Debug, Display},
-    ptr,
-};
+use std::ffi::{c_char, CStr, CString};
+use std::fmt::{Debug, Display};
+use std::ptr;
 
 use crate::utils::CStringExt2;
 
@@ -51,7 +49,7 @@ impl Clone for string_t {
     fn clone(&self) -> Self {
         let ptr = self.0;
         if ptr.is_null() {
-            return string_t(ptr::null_mut());
+            string_t(ptr::null_mut())
         } else {
             let cstr = unsafe { CStr::from_ptr(ptr) };
             let cstring = CString::from(cstr);

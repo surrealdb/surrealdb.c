@@ -1,0 +1,165 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # Rust formatting check using nightly toolchain
+  fmt:
+    name: Rust Format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust nightly
+        uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: rustfmt
+
+      - name: Check formatting
+        run: cargo +nightly fmt --all --check
+
+  # Rust linting with clippy
+  clippy:
+    name: Clippy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-clippy-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-clippy-
+
+      - name: Run clippy
+        run: cargo clippy --all-features -- -D warnings
+
+  # C code formatting check
+  clang-format:
+    name: C Format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install clang-format
+        run: sudo apt-get update && sudo apt-get install -y clang-format cmake
+
+      - name: Configure CMake
+        run: cmake -S . -B build -DSKIP_RUST_BUILD=ON
+
+      - name: Check C formatting
+        run: cmake --build build --target format-check
+
+  # C static analysis
+  clang-tidy:
+    name: C Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang-tidy cmake
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-clang-tidy-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-clang-tidy-
+
+      - name: Build Rust library
+        run: cargo build
+
+      - name: Configure CMake
+        run: cmake -S . -B build -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+
+      - name: Run clang-tidy
+        run: cmake --build build --target clang-tidy
+
+  # Test matrix for debug and release builds on Ubuntu and macOS
+  test:
+    name: Test (${{ matrix.os }}, ${{ matrix.build_type }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        build_type: [Debug, Release]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-test-${{ matrix.build_type }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-test-${{ matrix.build_type }}-
+            ${{ runner.os }}-cargo-test-
+
+      - name: Install CMake (Ubuntu)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y cmake
+
+      - name: Run Rust tests (${{ matrix.build_type }})
+        run: |
+          if [ "${{ matrix.build_type }}" = "Release" ]; then
+            cargo test --release
+          else
+            cargo test
+          fi
+
+      - name: Build Rust library (${{ matrix.build_type }})
+        run: |
+          if [ "${{ matrix.build_type }}" = "Release" ]; then
+            cargo build --release
+          else
+            cargo build
+          fi
+
+      - name: Configure CMake
+        run: |
+          if [ "${{ matrix.build_type }}" = "Release" ]; then
+            cmake -S . -B build -DSURREALDB_RELEASE=ON
+          else
+            cmake -S . -B build
+          fi
+
+      - name: Build C tests
+        run: cmake --build build
+
+      - name: Run C tests
+        run: ctest --test-dir build --output-on-failure -C ${{ matrix.build_type }}

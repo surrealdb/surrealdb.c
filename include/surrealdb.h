@@ -52,8 +52,8 @@ typedef struct sr_stream_t sr_stream_t;
  * The object representing a Surreal connection
  *
  * It is safe to be referenced from multiple threads
- * If any operation, on any thread returns SR_FATAL then the connection is poisoned and must not be used again.
- * (use will cause the program to abort)
+ * If any operation, on any thread returns SR_FATAL then the connection is poisoned and must not be
+ * used again. (use will cause the program to abort)
  *
  * should be freed with sr_surreal_disconnect
  */
@@ -63,8 +63,8 @@ typedef struct sr_surreal_t sr_surreal_t;
  * The object representing a Surreal connection
  *
  * It is safe to be referenced from multiple threads
- * If any operation, on any thread returns SR_FATAL then the connection is poisoned and must not be used again.
- * (use will cause the program to abort)
+ * If any operation, on any thread returns SR_FATAL then the connection is poisoned and must not be
+ * used again. (use will cause the program to abort)
  *
  * should be freed with sr_surreal_disconnect
  */
@@ -82,6 +82,7 @@ typedef char *sr_string_t;
  * A key-value object type for SurrealDB
  *
  * Contains string keys mapped to Value instances.
+ * Uses Box to ensure a fixed size for FFI compatibility.
  */
 typedef struct sr_object_t {
   struct sr_opaque_object_internal_t *_0;
@@ -445,6 +446,12 @@ typedef struct sr_notification_t {
  *
  * sr_surreal_disconnect(db);
  * ```
+ *
+ * # Safety
+ *
+ * - `err_ptr` must be a valid pointer to receive the error message
+ * - `surreal_ptr` must be a valid pointer to receive the connection handle
+ * - `endpoint` must be a valid pointer to a null-terminated UTF-8 string
  */
 int sr_connect(sr_string_t *err_ptr, struct sr_surreal_t **surreal_ptr, const char *endpoint);
 
@@ -452,7 +459,8 @@ int sr_connect(sr_string_t *err_ptr, struct sr_surreal_t **surreal_ptr, const ch
  * Disconnect a database connection
  *
  * The Surreal object must not be used after this function has been called.
- * Any object allocations will still be valid and should be freed using the appropriate function.
+ * Any object allocations will still be valid and should be freed using the appropriate
+ * function.
  *
  * Note: Stream objects should be killed before disconnection to ensure proper cleanup.
  *
@@ -463,6 +471,10 @@ int sr_connect(sr_string_t *err_ptr, struct sr_surreal_t **surreal_ptr, const ch
  * // connect
  * disconnect(db);
  * ```
+ *
+ * # Safety
+ *
+ * - `db` must be a valid pointer to a Surreal connection
  */
 void sr_surreal_disconnect(struct sr_surreal_t *db);
 
@@ -488,6 +500,12 @@ void sr_surreal_disconnect(struct sr_surreal_t *db);
  *     return 1;
  * }
  * ```
+ *
+ * # Safety
+ *
+ * - `db` must be a valid pointer to a Surreal connection
+ * - `err_ptr` must be a valid pointer or null
+ * - `token` must be a valid pointer to a null-terminated UTF-8 string
  */
 int sr_authenticate(const struct sr_surreal_t *db, sr_string_t *err_ptr, const char *token);
 
@@ -591,6 +609,13 @@ int sr_create(const struct sr_surreal_t *db,
  * }
  * sr_free_arr(deleted, len);
  * ```
+ *
+ * # Safety
+ *
+ * - `db` must be a valid pointer to a Surreal connection
+ * - `err_ptr` must be a valid pointer or null
+ * - `res_ptr` must be a valid pointer to receive the result array
+ * - `resource` must be a valid pointer to a null-terminated UTF-8 string
  */
 int sr_delete(const struct sr_surreal_t *db,
               sr_string_t *err_ptr,
@@ -1172,6 +1197,20 @@ int sr_set(const struct sr_surreal_t *db,
  *     // handle error
  * }
  * ```
+ *
+ * # Safety
+ *
+ * - `db` must be a valid pointer to a Surreal connection
+ * - `err_ptr` must be a valid pointer or null
+ * - `token_ptr` must be a valid pointer or null
+ * - `scope` must be a valid pointer to a credentials_scope
+ * - `creds` must be a valid pointer to credentials or null
+ * - If `creds` is not null, `creds.username` and `creds.password` must be valid
+ *   null-terminated UTF-8 strings or null
+ * - `details` must be a valid pointer to credentials_access or null
+ * - If `details` is not null, `details.namespace`, `details.database`, and `details.access`
+ *   must be valid null-terminated UTF-8 strings or null
+ * - `params` must be a valid pointer to an Object or null
  */
 int sr_signin(const struct sr_surreal_t *db,
               sr_string_t *err_ptr,
@@ -1226,6 +1265,20 @@ int sr_signin(const struct sr_surreal_t *db,
  *     // handle error
  * }
  * ```
+ *
+ * # Safety
+ *
+ * - `db` must be a valid pointer to a Surreal connection
+ * - `err_ptr` must be a valid pointer or null
+ * - `token_ptr` must be a valid pointer or null
+ * - `scope` must be a valid pointer to a credentials_scope
+ * - `creds` must be a valid pointer to credentials or null
+ * - If `creds` is not null, `creds.username` and `creds.password` must be valid
+ *   null-terminated UTF-8 strings or null
+ * - `details` must be a valid pointer to credentials_access or null
+ * - If `details` is not null, `details.namespace`, `details.database`, and `details.access`
+ *   must be valid null-terminated UTF-8 strings or null
+ * - `params` must be a valid pointer to an Object or null
  */
 int sr_signup(const struct sr_surreal_t *db,
               sr_string_t *err_ptr,
@@ -1406,6 +1459,27 @@ int sr_use_ns(const struct sr_surreal_t *db, sr_string_t *err_ptr, const char *n
  */
 int sr_version(const struct sr_surreal_t *db, sr_string_t *err_ptr, sr_string_t *res_ptr);
 
+/**
+ * create new rpc context
+ *
+ * # Examples
+ *
+ * ```c
+ * sr_string_t err;
+ * sr_surreal_rpc_t ctx;
+ *
+ * sr_surreal_rpc_new(err, ctx, "surrealkv://test.db", {});
+ * ```
+ *
+ * # Safety
+ *
+ * - `err_ptr` must be a valid pointer or null
+ * - `surreal_ptr` must be a valid pointer to receive the connection handle
+ * - `endpoint` must be a valid null-terminated UTF-8 string
+ * - `options` must be a valid Options struct
+ *
+ * Free result with sr_surreal_rpc_free
+ */
 int sr_surreal_rpc_new(sr_string_t *err_ptr,
                        struct sr_surreal_rpc_t **surreal_ptr,
                        const char *endpoint,
@@ -1452,16 +1526,33 @@ int sr_surreal_rpc_notifications(const struct sr_surreal_rpc_t *self,
  */
 void sr_surreal_rpc_free(struct sr_surreal_rpc_t *ctx);
 
+/**
+ * Free an array
+ *
+ * # Safety
+ *
+ * - `ptr` must be a valid pointer to an array
+ * - `len` must be the length of the array
+ */
 void sr_free_arr(struct sr_value_t *ptr, int len);
 
 /**
  * Get the length of an array
+ *
+ * # Safety
+ *
+ * - `arr` must be a valid pointer to an array
  */
 int sr_array_len(const struct sr_array_t *arr);
 
 /**
  * Get a value at the specified index (returns NULL if out of bounds)
  * The returned pointer is borrowed and should NOT be freed by the caller
+ *
+ * # Safety
+ *
+ * - `arr` must be a valid pointer to an array
+ * - `index` must be a valid index into the array
  */
 const struct sr_value_t *sr_array_get(const struct sr_array_t *arr, int index);
 
@@ -1469,11 +1560,20 @@ const struct sr_value_t *sr_array_get(const struct sr_array_t *arr, int index);
  * Create a new array with the given value appended
  * Returns a new array - the original array is not modified
  * The caller is responsible for freeing the returned array
+ *
+ * # Safety
+ *
+ * - `arr` must be a valid pointer to an array
+ * - `value` must be a valid pointer to a Value
  */
 struct sr_array_t *sr_array_push(const struct sr_array_t *arr, const struct sr_value_t *value);
 
 /**
  * Free an array created by sr_array_push
+ *
+ * # Safety
+ *
+ * - `arr` must be a valid pointer to an array
  */
 void sr_array_free(struct sr_array_t *arr);
 
@@ -1559,6 +1659,10 @@ void sr_free_object(struct sr_object_t obj);
 
 /**
  * Get the number of key-value pairs in the object
+ *
+ * # Safety
+ *
+ * - `obj` must be a valid pointer to an Object
  */
 int sr_object_len(const struct sr_object_t *obj);
 
@@ -1566,11 +1670,21 @@ int sr_object_len(const struct sr_object_t *obj);
  * Get all keys from the object as a null-terminated array of strings
  * Returns the number of keys, or -1 on error
  * The caller must free the returned array using sr_free_string_arr
+ *
+ * # Safety
+ *
+ * - `obj` must be a valid pointer to an Object
+ * - `keys_ptr` must be a valid pointer to receive the keys
  */
 int sr_object_keys(const struct sr_object_t *obj, char ***keys_ptr);
 
 /**
  * Free a string array returned by sr_object_keys
+ *
+ * # Safety
+ *
+ * - `arr` must be a valid pointer to an array
+ * - `len` must be the length of the array
  */
 void sr_free_string_arr(char **arr, int len);
 
@@ -1582,6 +1696,10 @@ void sr_free_arr_res_arr(struct sr_arr_res_t *ptr, int len);
  * Blocks until next item is received on stream
  * will return 1 and write notification to notification_ptr is recieved
  * will return SR_NONE if the stream is closed
+ *
+ * # Safety
+ *
+ * - `notification_ptr` must be a valid pointer to receive the notification
  */
 int sr_stream_next(struct sr_stream_t *self, struct sr_notification_t *notification_ptr);
 
@@ -1590,17 +1708,29 @@ int sr_stream_next(struct sr_stream_t *self, struct sr_notification_t *notificat
  *
  * Closes the stream and releases all associated resources.
  * The stream must not be used after calling this function.
+ *
+ * # Safety
+ *
+ * - `stream` must be a valid pointer to a Stream
  */
 void sr_stream_kill(struct sr_stream_t *stream);
 
 /**
  * Get the next notification from the stream
  * Returns the length of the CBOR-encoded notification, or SR_CLOSED if the stream is closed
+ *
+ * # Safety
+ *
+ * - `res_ptr` must be a valid pointer to receive the result
  */
 int sr_rpc_stream_next(struct sr_RpcStream *self, uint8_t **res_ptr);
 
 /**
  * Free an RpcStream
+ *
+ * # Safety
+ *
+ * - `stream` must be a valid pointer to an RpcStream
  */
 void sr_rpc_stream_free(struct sr_RpcStream *stream);
 
@@ -1653,11 +1783,19 @@ struct sr_value_t *sr_value_float(double val);
 
 /**
  * Create a String value
+ *
+ * # Safety
+ *
+ * - `val` must be a valid pointer to a null-terminated UTF-8 string
  */
 struct sr_value_t *sr_value_string(const char *val);
 
 /**
  * Create an Object value from an existing object
+ *
+ * # Safety
+ *
+ * - `obj` must be a valid pointer to an Object
  */
 struct sr_value_t *sr_value_object(const struct sr_object_t *obj);
 
@@ -1668,11 +1806,19 @@ struct sr_value_t *sr_value_duration(uint64_t secs, uint32_t nanos);
 
 /**
  * Create a Datetime value from RFC3339 string (e.g. "2024-01-15T10:30:00Z")
+ *
+ * # Safety
+ *
+ * - `val` must be a valid pointer to a null-terminated UTF-8 string
  */
 struct sr_value_t *sr_value_datetime(const char *val);
 
 /**
  * Create a UUID value from 16 bytes
+ *
+ * # Safety
+ *
+ * - `bytes` must be a valid pointer to 16 bytes
  */
 struct sr_value_t *sr_value_uuid(const uint8_t *bytes);
 
@@ -1683,16 +1829,30 @@ struct sr_value_t *sr_value_array(void);
 
 /**
  * Create a Bytes value from raw data
+ *
+ * # Safety
+ *
+ * - `data` must be a valid pointer to raw data
+ * - `len` must be the length of the data
  */
 struct sr_value_t *sr_value_bytes(const uint8_t *data, int len);
 
 /**
  * Create a Thing value (record ID) from table name and string ID
+ *
+ * # Safety
+ *
+ * - `table` must be a valid pointer to a null-terminated UTF-8 string
+ * - `id` must be a valid pointer to a null-terminated UTF-8 string
  */
 struct sr_value_t *sr_value_thing(const char *table, const char *id);
 
 /**
  * Free a value created by sr_value_* functions
+ *
+ * # Safety
+ *
+ * - `val` must be a valid pointer to a Value
  */
 void sr_value_free(struct sr_value_t *val);
 
@@ -1704,18 +1864,33 @@ struct sr_value_t *sr_value_point(double x, double y);
 /**
  * Create a LineString geometry value from an array of coordinates
  * coords is a pointer to an array of sr_g_coord structures
+ *
+ * # Safety
+ *
+ * - `coords` must be a valid pointer to an array of sr_g_coord structures
+ * - `len` must be the length of the array
  */
 struct sr_value_t *sr_value_linestring(const struct sr_sr_g_coord *coords, int len);
 
 /**
  * Create a simple Polygon geometry value from exterior ring coordinates
  * coords is a pointer to an array of sr_g_coord structures for the exterior ring
+ *
+ * # Safety
+ *
+ * - `coords` must be a valid pointer to an array of sr_g_coord structures
+ * - `len` must be the length of the array
  */
 struct sr_value_t *sr_value_polygon(const struct sr_sr_g_coord *coords, int len);
 
 /**
  * Create a MultiPoint geometry value from an array of points (x,y pairs)
  * coords is a pointer to an array of sr_g_coord structures
+ *
+ * # Safety
+ *
+ * - `coords` must be a valid pointer to an array of sr_g_coord structures
+ * - `len` must be the length of the array
  */
 struct sr_value_t *sr_value_multipoint(const struct sr_sr_g_coord *coords, int len);
 
@@ -1724,6 +1899,12 @@ struct sr_value_t *sr_value_multipoint(const struct sr_sr_g_coord *coords, int l
  * linestrings is an array of pointers to coordinate arrays
  * lens is an array of lengths for each linestring
  * count is the number of linestrings
+ *
+ * # Safety
+ *
+ * - `linestrings` must be a valid pointer to an array of pointers to coordinate arrays
+ * - `lens` must be a valid pointer to an array of lengths for each linestring
+ * - `count` must be the number of linestrings
  */
 struct sr_value_t *sr_value_multilinestring(const struct sr_sr_g_coord *const *linestrings,
                                             const int *lens,
@@ -1734,6 +1915,12 @@ struct sr_value_t *sr_value_multilinestring(const struct sr_sr_g_coord *const *l
  * polygons is an array of pointers to coordinate arrays (exterior rings only)
  * lens is an array of lengths for each polygon's exterior ring
  * count is the number of polygons
+ *
+ * # Safety
+ *
+ * - `polygons` must be a valid pointer to an array of pointers to coordinate arrays
+ * - `lens` must be a valid pointer to an array of lengths for each polygon's exterior ring
+ * - `count` must be the number of polygons
  */
 struct sr_value_t *sr_value_multipolygon(const struct sr_sr_g_coord *const *polygons,
                                          const int *lens,
@@ -1741,5 +1928,9 @@ struct sr_value_t *sr_value_multipolygon(const struct sr_sr_g_coord *const *poly
 
 /**
  * Create a Decimal value from string representation
+ *
+ * # Safety
+ *
+ * - `val` must be a valid pointer to a null-terminated UTF-8 string
  */
 struct sr_value_t *sr_value_decimal(const char *val);

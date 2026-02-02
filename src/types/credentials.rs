@@ -1,8 +1,6 @@
-use std::fmt::Debug;
-use std::fmt::Display;
-use crate::{
-    string::string_t,
-};
+use std::fmt::{Debug, Display};
+
+use crate::string::string_t;
 
 #[allow(non_camel_case_types)]
 #[repr(C)]
@@ -11,7 +9,7 @@ pub enum credentials_scope {
     ROOT,
     NAMESPACE,
     DATABASE,
-    RECORD
+    RECORD,
 }
 
 impl Display for credentials_scope {

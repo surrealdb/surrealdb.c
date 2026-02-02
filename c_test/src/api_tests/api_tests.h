@@ -1,9 +1,9 @@
 /**
  * SurrealDB C API Test Library
- * 
+ *
  * This library provides C test functions that can be called from Rust integration tests.
  * Each function tests a specific API function from the SurrealDB C bindings.
- * 
+ *
  * Return values:
  *   0 = test passed
  *   non-zero = test failed (error code)

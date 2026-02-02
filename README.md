@@ -61,3 +61,45 @@ if (sr_connect(&err, &db, endpoint) < 0)
 
 sr_surreal_disconnect(db);
 ```
+
+## Development
+
+### Code Quality Tools
+
+This project uses several linters and formatters for both Rust and C code.
+
+#### Rust
+
+```bash
+# Check formatting (requires nightly)
+cargo +nightly fmt --check
+
+# Auto-fix formatting
+cargo +nightly fmt
+
+# Run clippy lints
+cargo clippy --all-targets --all-features
+```
+
+#### C
+
+The C code quality tools are integrated into CMake. First configure the build:
+
+```bash
+cmake -S . -B build
+```
+
+Then run the targets:
+
+```bash
+# Check C formatting
+cmake --build build --target format-check
+
+# Auto-fix C formatting
+cmake --build build --target format
+
+# Run clang-tidy static analysis
+cmake --build build --target clang-tidy
+```
+
+> **Note:** `clang-format` and `clang-tidy` must be installed on your system.

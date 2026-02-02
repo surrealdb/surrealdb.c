@@ -56,6 +56,18 @@ target_link_libraries(test_runner PRIVATE
     surrealdb_c
 )
 
+# Link macOS system frameworks required by Rust dependencies (sysinfo, iana_time_zone)
+if(APPLE)
+    target_link_libraries(test_runner PRIVATE
+        "-framework CoreFoundation"
+        "-framework IOKit"
+        objc
+    )
+elseif(UNIX)
+    # Link math library required by Rust dependencies on Linux
+    target_link_libraries(test_runner PRIVATE m)
+endif()
+
 set_target_properties(test_runner PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${_test_bin_dir}"
 )
@@ -81,6 +93,18 @@ target_include_directories(test_scratch PRIVATE
 target_link_libraries(test_scratch PRIVATE
     surrealdb_c
 )
+
+# Link macOS system frameworks required by Rust dependencies (sysinfo, iana_time_zone)
+if(APPLE)
+    target_link_libraries(test_scratch PRIVATE
+        "-framework CoreFoundation"
+        "-framework IOKit"
+        objc
+    )
+elseif(UNIX)
+    # Link math library required by Rust dependencies on Linux
+    target_link_libraries(test_scratch PRIVATE m)
+endif()
 
 set_target_properties(test_scratch PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${_test_bin_dir}"
