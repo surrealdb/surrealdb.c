@@ -55,5 +55,8 @@ Output.txt
 Output.log
 .output.txt
 
-# ThirdPary directory.
+# ThirdParty directory.
 ThirdParty/
+
+# Local tools installed by scripts/install-prereqs.sh
+.local/

@@ -1,5 +1,5 @@
 use std::fmt::Debug;
-use surrealdb::sql::Geometry;
+use surrealdb::types::Geometry;
 use geo_types::{Point, LineString, Polygon, MultiPoint, MultiLineString, MultiPolygon, Coord};
 use crate::array::*;
 use crate::value::Value;
@@ -189,7 +189,6 @@ impl From<sr_geometry> for Geometry {
             sr_geometry::sr_g_collection(c) => Geometry::Collection(
                 c.as_slice().iter().cloned().map(|g| Geometry::from(g)).collect()
             ),
-            // Unimplemented geometry converts to empty point as fallback
             sr_geometry::sr_g_unimplemented => Geometry::Point(Point::new(0.0, 0.0)),
         }
     }
@@ -207,7 +206,6 @@ impl From<Geometry> for sr_geometry {
             Geometry::Collection(c) => sr_geometry::sr_g_collection(
                 c.into_iter().map(|g| g.into()).collect::<Vec<sr_geometry>>().make_array()
             ),
-            // New geometry variants added to SurrealDB that aren't yet supported
             _ => sr_geometry::sr_g_unimplemented,
         }
     }
@@ -217,7 +215,6 @@ impl From<Value> for sr_geometry {
     fn from(value: Value) -> Self {
         match value {
             Value::SR_GEOMETRY_OBJECT(g) => g,
-            // Non-geometry value passed where geometry expected - return unimplemented marker
             _ => sr_geometry::sr_g_unimplemented,
         }
     }

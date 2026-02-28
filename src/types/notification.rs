@@ -1,6 +1,5 @@
 use crate::{uuid::Uuid, value::Value};
-use surrealdb::Value as apiValue;
-use surrealdb::{sql, Notification as sdbNotification};
+use surrealdb::types::{Action as sdbAction, Notification as sdbNotification};
 
 #[derive(Debug)]
 #[repr(C)]
@@ -10,22 +9,14 @@ pub struct Notification {
     pub data: Value,
 }
 
-impl From<sdbNotification<apiValue>> for Notification {
-    fn from(value: sdbNotification<apiValue>) -> Self {
+/// Convert from the protocol-level Notification (surrealdb_types::Notification)
+/// Used by the RPC notification stream path.
+impl From<sdbNotification> for Notification {
+    fn from(value: sdbNotification) -> Self {
         Notification {
-            query_id: value.query_id.into(),
+            query_id: value.id.into(),
             action: value.action.into(),
-            data: (&value.data).into(),
-        }
-    }
-}
-
-impl From<sdbNotification<sql::Value>> for Notification {
-    fn from(value: sdbNotification<sql::Value>) -> Self {
-        Notification {
-            query_id: value.query_id.into(),
-            action: value.action.into(),
-            data: value.data.into(),
+            data: Value::from(value.result),
         }
     }
 }
@@ -44,18 +35,17 @@ pub enum Action {
     SR_ACTION_CREATE,
     SR_ACTION_UPDATE,
     SR_ACTION_DELETE,
-    /// Represents an action type added in a newer version of SurrealDB
-    /// that this C API version doesn't yet support
-    SR_ACTION_UNIMPLEMENTED,
+    SR_ACTION_KILLED,
 }
 
-impl From<surrealdb::Action> for Action {
-    fn from(value: surrealdb::Action) -> Self {
+impl From<sdbAction> for Action {
+    fn from(value: sdbAction) -> Self {
         match value {
-            surrealdb::Action::Create => Action::SR_ACTION_CREATE,
-            surrealdb::Action::Update => Action::SR_ACTION_UPDATE,
-            surrealdb::Action::Delete => Action::SR_ACTION_DELETE,
-            _ => Action::SR_ACTION_UNIMPLEMENTED,
+            sdbAction::Create => Action::SR_ACTION_CREATE,
+            sdbAction::Update => Action::SR_ACTION_UPDATE,
+            sdbAction::Delete => Action::SR_ACTION_DELETE,
+            sdbAction::Killed => Action::SR_ACTION_KILLED,
+            _ => Action::SR_ACTION_KILLED,
         }
     }
 }

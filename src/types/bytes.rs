@@ -1,6 +1,6 @@
 use std::{ffi::c_int, ptr::slice_from_raw_parts};
 
-use surrealdb::sql::Bytes as sdbBytes;
+use surrealdb::types::Bytes as sdbBytes;
 
 use super::array::{ArrayGen, MakeArray};
 
@@ -31,7 +31,7 @@ impl Bytes {
 
     #[export_name = "sr_free_byte_arr"]
     pub extern "C" fn free_byte_arr(ptr: *mut u8, len: c_int) {
-        ArrayGen { ptr: ptr, len: len }.free()
+        ArrayGen { ptr, len }.free()
     }
 }
 
@@ -66,12 +66,14 @@ impl From<Bytes> for ArrayGen<u8> {
 
 impl From<sdbBytes> for Bytes {
     fn from(value: sdbBytes) -> Self {
-        value.into_inner().make_array().into()
+        let vec: Vec<u8> = value.as_ref().to_vec();
+        vec.make_array().into()
     }
 }
 
 impl From<Bytes> for sdbBytes {
     fn from(value: Bytes) -> Self {
-        ArrayGen::from(value).into_vec().into()
+        let vec = ArrayGen::from(value).into_vec();
+        sdbBytes::from(vec)
     }
 }

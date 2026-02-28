@@ -24,6 +24,7 @@ typedef enum sr_action {
   SR_ACTION_CREATE,
   SR_ACTION_UPDATE,
   SR_ACTION_DELETE,
+  SR_ACTION_KILLED,
   /**
    * Represents an action type added in a newer version of SurrealDB
    * that this C API version doesn't yet support

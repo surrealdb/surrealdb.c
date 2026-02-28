@@ -27,14 +27,20 @@ TEST_TEAR_DOWN(Memory) {
 TEST(Memory, FreeArr) {
     TEST_ASSERT_NOT_NULL_MESSAGE(db, "Connection should succeed");
     
+    // In v3, selecting from a nonexistent table may error.
+    // Create the table first to ensure a clean result.
+    sr_arr_res_t *setup_results = NULL;
+    int setup_len = sr_query(db, &err, &setup_results, "DEFINE TABLE memory_test SCHEMALESS", NULL);
+    if (setup_len > 0) sr_free_arr_res_arr(setup_results, setup_len);
+    if (setup_len < 0 && err) { sr_free_string(err); err = NULL; }
+
     sr_value_t *results;
-    int len = sr_select(db, &err, &results, "nonexistent_table");
+    int len = sr_select(db, &err, &results, "memory_test");
     TEST_ASSERT_GREATER_OR_EQUAL_INT_MESSAGE(0, len, "select should succeed");
     
     if (len > 0) {
         sr_free_arr(results, len);
     }
-    // If we get here without crashing, test passes
 }
 
 TEST(Memory, FreeBytes) {

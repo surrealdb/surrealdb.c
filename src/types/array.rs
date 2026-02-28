@@ -3,7 +3,7 @@ use std::{
     ptr::{self, slice_from_raw_parts, slice_from_raw_parts_mut},
 };
 
-use surrealdb::sql;
+use surrealdb::types::{Array as sdbArray, Value as sdbValue};
 use super::value::Value;
 
 #[repr(C)]
@@ -95,26 +95,25 @@ pub struct Array {
     pub len: c_int,
 }
 
-impl From<sql::Array> for Array {
-    fn from(value: sql::Array) -> Self {
-        let val_vec: Vec<Value> = value.0.into_iter().map(Into::into).collect();
+impl From<sdbArray> for Array {
+    fn from(value: sdbArray) -> Self {
+        let val_vec: Vec<Value> = value.into_iter().map(|v| Value::from(v)).collect();
         val_vec.into()
     }
 }
 
-impl From<&sql::Array> for Array {
-    fn from(value: &sql::Array) -> Self {
-        let val_vec: Vec<Value> = value.0.iter().map(Into::into).collect();
+impl From<&sdbArray> for Array {
+    fn from(value: &sdbArray) -> Self {
+        let val_vec: Vec<Value> = value.iter().map(|v| Value::from(v.clone())).collect();
         val_vec.into()
     }
 }
 
-impl From<Array> for sql::Array {
+impl From<Array> for sdbArray {
     fn from(value: Array) -> Self {
         let gen_arr: ArrayGen<Value> = value.into();
-        let vec: Vec<sql::Value> = gen_arr.into_vec().into_iter().map(Into::into).collect();
-
-        Self::from(vec)
+        let vec: Vec<sdbValue> = gen_arr.into_vec().into_iter().map(|v| sdbValue::from(v)).collect();
+        sdbArray::from(vec)
     }
 }
 
@@ -134,7 +133,6 @@ impl From<ArrayGen<Value>> for Array {
 impl From<Array> for ArrayGen<Value> {
     fn from(value: Array) -> Self {
         let result = ArrayGen { ptr: value.arr, len: value.len };
-        // Prevent Array's Drop from running to avoid double-free
         std::mem::forget(value);
         result
     }

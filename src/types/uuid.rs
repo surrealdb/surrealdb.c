@@ -1,4 +1,4 @@
-use surrealdb::sql::Uuid as sdbUuid;
+use surrealdb::types::Uuid as sdbUuid;
 
 #[repr(C)]
 #[derive(Debug, Clone, PartialEq)]
@@ -6,8 +6,8 @@ pub struct Uuid(pub [u8; 16]);
 
 impl From<sdbUuid> for Uuid {
     fn from(value: sdbUuid) -> Self {
-        let bytes = value.0.into_bytes();
-        Self(bytes)
+        let inner: uuid::Uuid = value.into();
+        Self(inner.into_bytes())
     }
 }
 
@@ -26,6 +26,6 @@ impl From<Uuid> for uuid::Uuid {
 impl From<Uuid> for sdbUuid {
     fn from(value: Uuid) -> Self {
         let tmp: uuid::Uuid = value.into();
-        tmp.into()
+        sdbUuid::from(tmp)
     }
 }

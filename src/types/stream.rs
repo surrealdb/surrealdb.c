@@ -3,9 +3,7 @@ use std::ffi::c_int;
 use async_channel::Receiver;
 use futures::StreamExt;
 use surrealdb::method::Stream as sdbStream;
-use surrealdb::rpc::format::cbor::Cbor;
-use surrealdb::Value as apiValue;
-use surrealdb::{dbs, sql};
+use surrealdb::types::{Value as sdbValue, Notification as PublicNotification};
 use tokio::runtime::Handle;
 
 use crate::SR_ERROR;
@@ -18,27 +16,47 @@ use super::array::MakeArray;
 /// May be sent across threads, but must not be aliased.
 /// Use `sr_stream_next` to receive notifications and `sr_stream_kill` to close.
 pub struct Stream {
-    inner: sdbStream<apiValue>,
+    inner: sdbStream<sdbValue>,
     rt: Handle,
 }
 
 impl Stream {
-    pub fn new(inner: sdbStream<apiValue>, rt: Handle) -> Stream {
+    pub fn new(inner: sdbStream<sdbValue>, rt: Handle) -> Stream {
         Stream { inner, rt }
     }
 }
 
 impl Stream {
     /// Blocks until next item is received on stream
-    /// will return 1 and write notification to notification_ptr is recieved
+    /// will return 1 and write notification to notification_ptr if received
     /// will return SR_NONE if the stream is closed
+    ///
+    /// sr_stream_t *stream;
+    /// if (sr_select_live(db, &err, &stream, "foo") < 0)
+    /// {
+    ///     printf("%s", err);
+    ///     return 1;
+    /// }
+    ///
+    /// sr_notification_t not ;
+    /// if (sr_stream_next(stream, &not ) > 0)
+    /// {
+    ///     sr_print_notification(&not );
+    /// }
+    /// sr_stream_kill(stream);
     #[export_name = "sr_stream_next"]
     pub extern "C" fn next(&mut self, notification_ptr: *mut Notification) -> c_int {
         match self.rt.block_on(self.inner.next()) {
-            Some(n) => {
-                unsafe { notification_ptr.write(n.into()) }
+            Some(Ok(n)) => {
+                let notif = Notification {
+                    query_id: crate::uuid::Uuid::from(n.query_id),
+                    action: crate::notification::Action::from(n.action),
+                    data: crate::value::Value::from(n.data),
+                };
+                unsafe { notification_ptr.write(notif) }
                 1
             }
+            Some(Err(_)) => SR_ERROR,
             None => SR_NONE,
         }
     }
@@ -55,42 +73,47 @@ impl Stream {
     }
 }
 
-/// Stream for receiving RPC notifications
+/// Stream for receiving RPC live query notifications
 ///
+/// Wraps a `Receiver<PublicNotification>` from the datastore's notification channel.
 /// Uses synchronous blocking receives, so no async drop is required.
 pub struct RpcStream {
-    rx: Receiver<dbs::Notification>,
+    rx: Receiver<PublicNotification>,
 }
 
 impl RpcStream {
     /// Create a new RpcStream from a notification receiver
-    pub fn new(rx: Receiver<dbs::Notification>) -> Self {
+    pub fn new(rx: Receiver<PublicNotification>) -> Self {
         RpcStream { rx }
     }
 
     /// Get the next notification from the stream
-    /// Returns the length of the CBOR-encoded notification, or SR_CLOSED if the stream is closed
+    ///
+    /// Returns the length of the CBOR-encoded notification, or SR_CLOSED if the
+    /// channel is closed. The CBOR-encoded bytes are written to *res_ptr.
+    ///
+    /// Free the result with sr_free_byte_arr.
     #[export_name = "sr_rpc_stream_next"]
     pub extern "C" fn next(&mut self, res_ptr: *mut *mut u8) -> c_int {
-        let not = match self.rx.recv_blocking() {
+        let notification = match self.rx.recv_blocking() {
             Ok(n) => n,
             Err(_) => return SR_CLOSED,
         };
 
-        // Construct live message
-        let mut message = sql::Object::default();
-        message.insert("id".to_string(), not.id.into());
-        message.insert("action".to_string(), not.action.to_string().into());
-        message.insert("result".to_string(), not.result);
+        let mut obj = surrealdb::types::Object::new();
+        obj.insert(
+            "id".to_string(),
+            sdbValue::Uuid(notification.id),
+        );
+        obj.insert(
+            "action".to_string(),
+            sdbValue::String(format!("{}", notification.action)),
+        );
+        obj.insert("result".to_string(), notification.result);
 
-        // Into CBOR value
-        let cbor: Cbor = match sql::Value::Object(message).try_into() {
-            Ok(c) => c,
-            Err(_) => return SR_ERROR,
-        };
-
+        let cbor_val = crate::rpc::value_to_cbor(&sdbValue::Object(obj));
         let mut res = Vec::new();
-        if ciborium::into_writer(&cbor.0, &mut res).is_err() {
+        if ciborium::into_writer(&cbor_val, &mut res).is_err() {
             return SR_ERROR;
         }
         let out = res.make_array();

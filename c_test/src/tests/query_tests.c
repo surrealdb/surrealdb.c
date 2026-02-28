@@ -45,6 +45,12 @@ TEST(Query, Query) {
 TEST(Query, SelectLive) {
     TEST_ASSERT_NOT_NULL_MESSAGE(db, "Connection should succeed");
     
+    // In v3, table must exist before live select. Create it first.
+    sr_arr_res_t *setup_results = NULL;
+    int setup_len = sr_query(db, &err, &setup_results, "DEFINE TABLE test_table SCHEMALESS", NULL);
+    if (setup_len > 0) sr_free_arr_res_arr(setup_results, setup_len);
+    if (setup_len < 0 && err) { sr_free_string(err); err = NULL; }
+
     sr_stream_t *stream;
     int result = sr_select_live(db, &err, &stream, "test_table");
     if (result < 0) {

@@ -16,8 +16,22 @@ use surrealdb::{
     opt::Resource,
     opt::auth,
     opt::PatchOp,
-    sql, Surreal as sdbSurreal, Value as apiValue,
+    Surreal as sdbSurreal,
 };
+use surrealdb::types::{Value as sdbValue, Object as sdbObject, RecordId, RecordIdKey};
+
+fn parse_resource(s: &str) -> Resource {
+    if let Some((table, id)) = s.split_once(':') {
+        if !table.is_empty() && !id.is_empty() {
+            let record_id = RecordId {
+                table: table.to_string().into(),
+                key: RecordIdKey::String(id.to_string()),
+            };
+            return Resource::RecordId(record_id);
+        }
+    }
+    Resource::from(s)
+}
 use tokio::runtime::Runtime;
 use types::result::ArrayResult;
 
@@ -127,7 +141,7 @@ impl Surreal {
 
             let db = match rt.block_on(con_fut.into_future()) {
                 Ok(db) => db,
-                Err(e) => return Err(e.into()),
+                Err(e) => return Err(e.to_string().into()),
             };
 
             Ok(Surreal {
@@ -212,7 +226,7 @@ impl Surreal {
         check_null!(token, err_ptr, "token is null");
         with_surreal_async(db, err_ptr, |surreal| async {
             let token = unsafe { CStr::from_ptr(token) }.to_str()?;
-            surreal.db.authenticate(token).await?;
+            surreal.db.authenticate(token).await.map_err(|e| string_t::from(e.to_string()))?;
             Ok(0)
         })
     }
@@ -234,7 +248,7 @@ impl Surreal {
     #[export_name = "sr_begin"]
     pub extern "C" fn begin(db: &Surreal, err_ptr: *mut string_t) -> c_int {
         with_surreal_async(db, err_ptr, |surreal| async {
-            surreal.db.query("BEGIN TRANSACTION").await?;
+            surreal.db.query("BEGIN TRANSACTION").await.map_err(|e| string_t::from(e.to_string()))?;
             Ok(0)
         })
     }
@@ -256,7 +270,7 @@ impl Surreal {
     #[export_name = "sr_cancel"]
     pub extern "C" fn cancel(db: &Surreal, err_ptr: *mut string_t) -> c_int {
         with_surreal_async(db, err_ptr, |surreal| async {
-            surreal.db.query("CANCEL TRANSACTION").await?;
+            surreal.db.query("CANCEL TRANSACTION").await.map_err(|e| string_t::from(e.to_string()))?;
             Ok(0)
         })
     }
@@ -278,7 +292,7 @@ impl Surreal {
     #[export_name = "sr_commit"]
     pub extern "C" fn commit(db: &Surreal, err_ptr: *mut string_t) -> c_int {
         with_surreal_async(db, err_ptr, |surreal| async {
-            surreal.db.query("COMMIT TRANSACTION").await?;
+            surreal.db.query("COMMIT TRANSACTION").await.map_err(|e| string_t::from(e.to_string()))?;
             Ok(0)
         })
     }
@@ -308,16 +322,17 @@ impl Surreal {
         check_null!(content, err_ptr, "content is null");
         with_surreal_async(db, err_ptr, |surreal| async {
             let resource = unsafe { CStr::from_ptr(resource) }.to_str()?;
-            let content = sql::Object::from(unsafe { &*content }.clone());
+            let content = sdbObject::from(unsafe { &*content }.clone());
 
-            // Use raw query to properly handle both table names and record IDs
             let query = format!("CREATE {} CONTENT $content", resource);
-            let mut res = surreal.db.query(&query).bind(("content", content)).await?;
+            let mut res = surreal.db.query(&query).bind(("content", content)).await
+                .map_err(|e| string_t::from(e.to_string()))?;
             
-            let obj = match res.take::<apiValue>(0)?.into_inner() {
-                sql::Value::Array(arr) if !arr.is_empty() => {
+            let val: sdbValue = res.take(0).map_err(|e| string_t::from(e.to_string()))?;
+            let obj = match val {
+                sdbValue::Array(arr) if !arr.is_empty() => {
                     match arr.into_iter().next().unwrap() {
-                        sql::Value::Object(o) => o,
+                        sdbValue::Object(o) => o,
                         other => {
                             return Err(format!(
                                 "Expected object as return type of create, but found: {other:?}"
@@ -326,7 +341,7 @@ impl Surreal {
                         }
                     }
                 }
-                sql::Value::Object(o) => o,
+                sdbValue::Object(o) => o,
                 other => {
                     return Err(format!(
                         "Expected object as return type of create, but found: {other:?}"
@@ -335,7 +350,7 @@ impl Surreal {
                 }
             };
             if !res_ptr.is_null() {
-                let boxed = Box::new(obj.into());
+                let boxed = Box::new(Object::from(obj));
                 unsafe { res_ptr.write(Box::leak(boxed)) }
                 Ok(1)
             } else {
@@ -380,14 +395,15 @@ impl Surreal {
         with_surreal_async(db, err_ptr, |surreal| async {
             let resource = unsafe { CStr::from_ptr(resource) }.to_str()?;
 
-            let res = match surreal
+            let val: sdbValue = surreal
                 .db
-                .delete(Resource::from(resource))
-                .await?
-                .into_inner()
-            {
-                sql::Value::Array(a) => Array::from(a),
-                v => Array::from(vec![v.into()]),
+                .delete(parse_resource(resource))
+                .await
+                .map_err(|e| string_t::from(e.to_string()))?;
+
+            let res = match val {
+                sdbValue::Array(a) => Array::from(a),
+                v => Array::from(vec![Value::from(v)]),
             };
 
             let ArrayGen { ptr, len } = res.into();
@@ -426,7 +442,7 @@ impl Surreal {
         check_null!(file_path, err_ptr, "file_path is null");
         with_surreal_async(db, err_ptr, |surreal| async {
             let file_path = unsafe { CStr::from_ptr(file_path) }.to_str()?;
-            surreal.db.export(file_path).await?;
+            surreal.db.export(file_path).await.map_err(|e| string_t::from(e.to_string()))?;
             Ok(0)
         })
     }
@@ -448,7 +464,7 @@ impl Surreal {
     #[export_name = "sr_health"]
     pub extern "C" fn health(db: &Surreal, err_ptr: *mut string_t) -> c_int {
         with_surreal_async(db, err_ptr, |surreal| async {
-            surreal.db.health().await?;
+            surreal.db.health().await.map_err(|e| string_t::from(e.to_string()))?;
             Ok(0)
         })
     }
@@ -482,7 +498,7 @@ impl Surreal {
         check_null!(file_path, err_ptr, "file_path is null");
         with_surreal_async(db, err_ptr, |surreal| async {
             let file_path = unsafe { CStr::from_ptr(file_path) }.to_str()?;
-            surreal.db.import(file_path).await?;
+            surreal.db.import(file_path).await.map_err(|e| string_t::from(e.to_string()))?;
             Ok(0)
         })
     }
@@ -526,17 +542,18 @@ impl Surreal {
         check_null!(content, err_ptr, "content is null");
         with_surreal_async(db, err_ptr, |surreal| async {
             let resource = unsafe { CStr::from_ptr(resource) }.to_str()?;
-            let content = sql::Object::from(unsafe { &*content }.clone());
+            let content = sdbObject::from(unsafe { &*content }.clone());
 
-            let res = match surreal
+            let val: sdbValue = surreal
                 .db
-                .insert(Resource::from(resource))
+                .insert(parse_resource(resource))
                 .content(content)
-                .await?
-                .into_inner()
-            {
-                sql::Value::Array(a) => Array::from(a),
-                v => Array::from(vec![v.into()]),
+                .await
+                .map_err(|e| string_t::from(e.to_string()))?;
+
+            let res = match val {
+                sdbValue::Array(a) => Array::from(a),
+                v => Array::from(vec![Value::from(v)]),
             };
 
             let ArrayGen { ptr, len } = res.into();
@@ -591,17 +608,18 @@ impl Surreal {
         check_null!(content, err_ptr, "content is null");
         with_surreal_async(db, err_ptr, |surreal| async {
             let table = unsafe { CStr::from_ptr(table) }.to_str()?;
-            let content = sql::Object::from(unsafe { &*content }.clone());
+            let content = sdbObject::from(unsafe { &*content }.clone());
 
-            let res = surreal
+            let val: sdbValue = surreal
                 .db
                 .insert(Resource::from(table))
                 .relation(content)
-                .await?;
+                .await
+                .map_err(|e| string_t::from(e.to_string()))?;
 
-            let result = match res.into_inner() {
-                sql::Value::Array(a) => Array::from(a),
-                v => Array::from(vec![v.into()]),
+            let result = match val {
+                sdbValue::Array(a) => Array::from(a),
+                v => Array::from(vec![Value::from(v)]),
             };
 
             let ArrayGen { ptr, len } = result.into();
@@ -649,22 +667,23 @@ impl Surreal {
         with_surreal_async(db, err_ptr, |surreal| async {
             let function_name = unsafe { CStr::from_ptr(function_name) }.to_str()?;
             
-            let args_vec: Vec<sql::Value> = if args.is_null() {
+            let args_vec: Vec<sdbValue> = if args.is_null() {
                 vec![]
             } else {
                 let arr = unsafe { &*args };
-                arr.as_slice().iter().cloned().map(|v| v.into()).collect()
+                arr.as_slice().iter().cloned().map(|v| sdbValue::from(v)).collect()
             };
 
-            let res: apiValue = surreal
+            let res: sdbValue = surreal
                 .db
                 .run(function_name)
                 .args(args_vec)
-                .await?;
+                .await
+                .map_err(|e| string_t::from(e.to_string()))?;
 
-            let result_arr = match res.into_inner() {
-                sql::Value::Array(a) => Array::from(a),
-                v => Array::from(vec![v.into()]),
+            let result_arr = match res {
+                sdbValue::Array(a) => Array::from(a),
+                v => Array::from(vec![Value::from(v)]),
             };
 
             let ArrayGen { ptr, len } = result_arr.into();
@@ -730,15 +749,16 @@ impl Surreal {
             let mut q = surreal.db.query(&query);
             
             if !content.is_null() {
-                let content_obj = sql::Object::from(unsafe { &*content }.clone());
+                let content_obj = sdbObject::from(unsafe { &*content }.clone());
                 q = q.bind(("content", content_obj));
             }
 
-            let mut res = q.await?;
+            let mut res = q.await.map_err(|e| string_t::from(e.to_string()))?;
             
-            let result = match res.take::<apiValue>(0)?.into_inner() {
-                sql::Value::Array(a) => Array::from(a),
-                v => Array::from(vec![v.into()]),
+            let val: sdbValue = res.take(0).map_err(|e| string_t::from(e.to_string()))?;
+            let result = match val {
+                sdbValue::Array(a) => Array::from(a),
+                v => Array::from(vec![Value::from(v)]),
             };
 
             let ArrayGen { ptr, len } = result.into();
@@ -765,7 +785,7 @@ impl Surreal {
     #[export_name = "sr_invalidate"]
     pub extern "C" fn invalidate(db: &Surreal, err_ptr: *mut string_t) -> c_int {
         with_surreal_async(db, err_ptr, |surreal| async {
-            surreal.db.invalidate().await?;
+            surreal.db.invalidate().await.map_err(|e| string_t::from(e.to_string()))?;
             Ok(0)
         })
     }
@@ -797,7 +817,7 @@ impl Surreal {
         with_surreal_async(db, err_ptr, |surreal| async {
             let uuid_str = unsafe { CStr::from_ptr(query_id) }.to_str()?;
             let query = format!("KILL u'{}'", uuid_str);
-            surreal.db.query(query).await?;
+            surreal.db.query(query).await.map_err(|e| string_t::from(e.to_string()))?;
             Ok(0)
         })
     }
@@ -839,18 +859,18 @@ impl Surreal {
     ) -> c_int {
         check_null!(stream_ptr, err_ptr, "stream_ptr is null");
         check_null!(resource, err_ptr, "resource is null");
-        use surrealdb::method::Stream as sdbStream;
+        use surrealdb::method::Stream as sdbStreamType;
         with_surreal_async(db, err_ptr, |surreal| async {
             let resource = unsafe { CStr::from_ptr(resource) }.to_str()?;
 
-            let stream_inner: sdbStream<apiValue> =
-                surreal.db.select(Resource::from(resource)).live().await?;
+            let stream_inner: sdbStreamType<sdbValue> =
+                surreal.db.select(parse_resource(resource)).live().await
+                    .map_err(|e| string_t::from(e.to_string()))?;
 
             let stream_boxed = Box::new(Stream::new(stream_inner, surreal.rt.handle().clone()));
 
             unsafe { stream_ptr.write(Box::leak(stream_boxed)) };
 
-            // return 1 because 1 stream was written to *stream_ptr
             Ok(1)
         })
     }
@@ -894,17 +914,18 @@ impl Surreal {
         check_null!(content, err_ptr, "content is null");
         with_surreal_async(db, err_ptr, |surreal| async {
             let resource = unsafe { CStr::from_ptr(resource) }.to_str()?;
-            let content = sql::Object::from(unsafe { &*content }.clone());
+            let content = sdbObject::from(unsafe { &*content }.clone());
 
-            let res = match surreal
+            let val: sdbValue = surreal
                 .db
-                .update(Resource::from(resource))
+                .update(parse_resource(resource))
                 .merge(content)
-                .await?
-                .into_inner()
-            {
-                sql::Value::Array(a) => Array::from(a),
-                v => Array::from(vec![v.into()]),
+                .await
+                .map_err(|e| string_t::from(e.to_string()))?;
+
+            let res = match val {
+                sdbValue::Array(a) => Array::from(a),
+                v => Array::from(vec![Value::from(v)]),
             };
 
             let ArrayGen { ptr, len } = res.into();
@@ -957,17 +978,18 @@ impl Surreal {
         with_surreal_async(db, err_ptr, |surreal| async {
             let resource = unsafe { CStr::from_ptr(resource) }.to_str()?;
             let path = unsafe { CStr::from_ptr(path) }.to_str()?;
-            let value: sql::Value = unsafe { &*value }.clone().into();
+            let value: sdbValue = unsafe { &*value }.clone().into();
 
-            let res = surreal
+            let val: sdbValue = surreal
                 .db
-                .update(Resource::from(resource))
+                .update(parse_resource(resource))
                 .patch(PatchOp::add(path, value))
-                .await?;
+                .await
+                .map_err(|e| string_t::from(e.to_string()))?;
 
-            let result = match res.into_inner() {
-                sql::Value::Array(a) => Array::from(a),
-                v => Array::from(vec![v.into()]),
+            let result = match val {
+                sdbValue::Array(a) => Array::from(a),
+                v => Array::from(vec![Value::from(v)]),
             };
 
             let ArrayGen { ptr, len } = result.into();
@@ -1015,15 +1037,16 @@ impl Surreal {
             let resource = unsafe { CStr::from_ptr(resource) }.to_str()?;
             let path = unsafe { CStr::from_ptr(path) }.to_str()?;
 
-            let res = surreal
+            let val: sdbValue = surreal
                 .db
-                .update(Resource::from(resource))
+                .update(parse_resource(resource))
                 .patch(PatchOp::remove(path))
-                .await?;
+                .await
+                .map_err(|e| string_t::from(e.to_string()))?;
 
-            let result = match res.into_inner() {
-                sql::Value::Array(a) => Array::from(a),
-                v => Array::from(vec![v.into()]),
+            let result = match val {
+                sdbValue::Array(a) => Array::from(a),
+                v => Array::from(vec![Value::from(v)]),
             };
 
             let ArrayGen { ptr, len } = result.into();
@@ -1074,17 +1097,18 @@ impl Surreal {
         with_surreal_async(db, err_ptr, |surreal| async {
             let resource = unsafe { CStr::from_ptr(resource) }.to_str()?;
             let path = unsafe { CStr::from_ptr(path) }.to_str()?;
-            let value: sql::Value = unsafe { &*value }.clone().into();
+            let value: sdbValue = unsafe { &*value }.clone().into();
 
-            let res = surreal
+            let val: sdbValue = surreal
                 .db
-                .update(Resource::from(resource))
+                .update(parse_resource(resource))
                 .patch(PatchOp::replace(path, value))
-                .await?;
+                .await
+                .map_err(|e| string_t::from(e.to_string()))?;
 
-            let result = match res.into_inner() {
-                sql::Value::Array(a) => Array::from(a),
-                v => Array::from(vec![v.into()]),
+            let result = match val {
+                sdbValue::Array(a) => Array::from(a),
+                v => Array::from(vec![Value::from(v)]),
             };
 
             let ArrayGen { ptr, len } = result.into();
@@ -1115,24 +1139,25 @@ impl Surreal {
         check_null!(query, err_ptr, "query is null");
         with_surreal_async(db, err_ptr, |surreal| async {
             let query = unsafe { CStr::from_ptr(query) }.to_str()?;
-            let vars: sql::Object = match vars.is_null() {
-                true => Default::default(),
+            let vars: sdbObject = match vars.is_null() {
+                true => sdbObject::default(),
                 false => unsafe { &*vars }.clone().into(),
             };
 
-            let mut res = surreal.db.query(query).bind(vars).await?;
+            let mut res = surreal.db.query(query).bind(vars).await
+                .map_err(|e| string_t::from(e.to_string()))?;
             let res_len = res.num_statements();
 
             let mut acc = Vec::with_capacity(res_len);
             for index in 0..res_len {
-                let api_res = res.take::<apiValue>(index);
-                let arr_res = match api_res.map(|v| v.into_inner()) {
-                    Ok(sql::Value::Array(arr)) => {
+                let api_res: Result<sdbValue, _> = res.take(index);
+                let arr_res = match api_res {
+                    Ok(sdbValue::Array(arr)) => {
                         let a = arr.into();
                         ArrayResult::ok(a)
                     }
                     Ok(val) => {
-                        let arr: Array = vec![val.into()].into();
+                        let arr: Array = vec![Value::from(val)].into();
                         ArrayResult::ok(arr)
                     }
                     Err(e) => ArrayResult::err(e.to_string()),
@@ -1191,14 +1216,15 @@ impl Surreal {
         with_surreal_async(db, err_ptr, |surreal| async {
             let resource = unsafe { CStr::from_ptr(resource) }.to_str()?;
 
-            let res = match surreal
+            let val: sdbValue = surreal
                 .db
-                .select(Resource::from(resource))
-                .await?
-                .into_inner()
-            {
-                sql::Value::Array(a) => Array::from(a),
-                v => Array::from(vec![v.into()]),
+                .select(parse_resource(resource))
+                .await
+                .map_err(|e| string_t::from(e.to_string()))?;
+
+            let res = match val {
+                sdbValue::Array(a) => Array::from(a),
+                v => Array::from(vec![Value::from(v)]),
             };
 
             let ArrayGen { ptr, len } = res.into();
@@ -1207,6 +1233,7 @@ impl Surreal {
             Ok(len as c_int)
         })
     }
+
     /// Set a variable for the current session
     ///
     /// Defines a session variable that can be referenced in queries.
@@ -1240,9 +1267,9 @@ impl Surreal {
         check_null!(value, err_ptr, "value is null");
         with_surreal_async(db, err_ptr, |surreal| async {
             let key = unsafe { CStr::from_ptr(key) }.to_str()?;
-            let value: sql::Value = unsafe { &*value }.clone().into();
+            let value: sdbValue = unsafe { &*value }.clone().into();
             
-            surreal.db.set(key, value).await?;
+            surreal.db.set(key, value).await.map_err(|e| string_t::from(e.to_string()))?;
             Ok(0)
         })
     }
@@ -1359,78 +1386,76 @@ impl Surreal {
             let token: String = match scope {
                 credentials_scope::ROOT => {
                     let login = auth::Root {
-                        username: user,
-                        password: pass,
+                        username: user.to_string(),
+                        password: pass.to_string(),
                     };
-                    let jwt = surreal.db.signin(login).await?;
-                    jwt.into_insecure_token()
+                    let jwt = surreal.db.signin(login).await.map_err(|e| string_t::from(e.to_string()))?;
+                    jwt.access.into_insecure_token()
                 }
                 credentials_scope::NAMESPACE => {
                     if ns.is_empty() {
-                        Err("Namespace must be provided.")?
+                        return Err("Namespace must be provided.".into());
                     }
 
                     let login = auth::Namespace {
-                        namespace: ns,
-                        username: user,
-                        password: pass,
+                        namespace: ns.to_string(),
+                        username: user.to_string(),
+                        password: pass.to_string(),
                     };
 
-                    let jwt = surreal.db.signin(login).await?;
-                    jwt.into_insecure_token()
+                    let jwt = surreal.db.signin(login).await.map_err(|e| string_t::from(e.to_string()))?;
+                    jwt.access.into_insecure_token()
                 }
                 credentials_scope::DATABASE => {
                     if ns.is_empty() {
-                        Err("Namespace must be provided.")?
+                        return Err("Namespace must be provided.".into());
                     }
                     if db_name.is_empty() {
-                        Err("Database must be provided.")?
+                        return Err("Database must be provided.".into());
                     }
 
                     let login = auth::Database {
-                        namespace: ns,
-                        database: db_name,
-                        username: user,
-                        password: pass,
+                        namespace: ns.to_string(),
+                        database: db_name.to_string(),
+                        username: user.to_string(),
+                        password: pass.to_string(),
                     };
 
-                    let jwt = surreal.db.signin(login).await?;
-                    jwt.into_insecure_token()
+                    let jwt = surreal.db.signin(login).await.map_err(|e| string_t::from(e.to_string()))?;
+                    jwt.access.into_insecure_token()
                 }
                 credentials_scope::RECORD => {
                     if ns.is_empty() {
-                        Err("Namespace must be provided.")?
+                        return Err("Namespace must be provided.".into());
                     }
                     if db_name.is_empty() {
-                        Err("Database must be provided.")?
+                        return Err("Database must be provided.".into());
                     }
                     if ac.is_empty() {
-                        Err("Access method must be provided.")?
+                        return Err("Access method must be provided.".into());
                     }
 
-                    // Use custom params if provided, otherwise use username/password from creds
-                    let record_params: sql::Object = if !params.is_null() {
+                    let record_params: sdbObject = if !params.is_null() {
                         unsafe { &*params }.clone().into()
                     } else {
-                        let mut obj = sql::Object::default();
-                        obj.insert("username".to_string(), sql::Value::from(user));
-                        obj.insert("password".to_string(), sql::Value::from(pass));
+                        let mut obj = sdbObject::default();
+                        obj.insert("username".to_string(), sdbValue::String(user.to_string()));
+                        obj.insert("password".to_string(), sdbValue::String(pass.to_string()));
                         obj
                     };
 
                     let login = auth::Record {
-                        namespace: ns,
-                        database: db_name,
-                        access: ac,
+                        namespace: ns.to_string(),
+                        database: db_name.to_string(),
+                        access: ac.to_string(),
                         params: record_params,
                     };
 
-                    let jwt = surreal.db.signin(login).await?;
-                    jwt.into_insecure_token()
+                    let jwt = surreal.db.signin(login).await.map_err(|e| string_t::from(e.to_string()))?;
+                    jwt.access.into_insecure_token()
                 }
             };
             
-            // Return token if pointer provided
             if !token_ptr.is_null() {
                 unsafe { *token_ptr = token.to_string_t(); }
             }
@@ -1438,8 +1463,6 @@ impl Surreal {
             Ok(0)
         })
     }
-
-
 
     /// Sign up a new user with credentials
     ///
@@ -1531,48 +1554,46 @@ impl Surreal {
 
             let token: String = match scope {
                 credentials_scope::ROOT => {
-                    Err("Cannot signup as ROOT user")?
+                    return Err("Cannot signup as ROOT user".into());
                 }
                 credentials_scope::NAMESPACE => {
-                    Err("Namespace scope does not support signup. Use RECORD scope instead.")?
+                    return Err("Namespace scope does not support signup. Use RECORD scope instead.".into());
                 }
                 credentials_scope::DATABASE => {
-                    Err("Database scope does not support signup. Use RECORD scope instead.")?
+                    return Err("Database scope does not support signup. Use RECORD scope instead.".into());
                 }
                 credentials_scope::RECORD => {
                     if ns.is_empty() {
-                        Err("Namespace must be provided.")?
+                        return Err("Namespace must be provided.".into());
                     }
                     if db_name.is_empty() {
-                        Err("Database must be provided.")?
+                        return Err("Database must be provided.".into());
                     }
                     if ac.is_empty() {
-                        Err("Access method must be provided.")?
+                        return Err("Access method must be provided.".into());
                     }
 
-                    // Use custom params if provided, otherwise use username/password from creds
-                    let record_params: sql::Object = if !params.is_null() {
+                    let record_params: sdbObject = if !params.is_null() {
                         unsafe { &*params }.clone().into()
                     } else {
-                        let mut obj = sql::Object::default();
-                        obj.insert("username".to_string(), sql::Value::from(user));
-                        obj.insert("password".to_string(), sql::Value::from(pass));
+                        let mut obj = sdbObject::default();
+                        obj.insert("username".to_string(), sdbValue::String(user.to_string()));
+                        obj.insert("password".to_string(), sdbValue::String(pass.to_string()));
                         obj
                     };
 
                     let signup = auth::Record {
-                        namespace: ns,
-                        database: db_name,
-                        access: ac,
+                        namespace: ns.to_string(),
+                        database: db_name.to_string(),
+                        access: ac.to_string(),
                         params: record_params,
                     };
 
-                    let jwt = surreal.db.signup(signup).await?;
-                    jwt.into_insecure_token()
+                    let jwt = surreal.db.signup(signup).await.map_err(|e| string_t::from(e.to_string()))?;
+                    jwt.access.into_insecure_token()
                 }
             };
             
-            // Return token if pointer provided
             if !token_ptr.is_null() {
                 unsafe { *token_ptr = token.to_string_t(); }
             }
@@ -1610,7 +1631,7 @@ impl Surreal {
         check_null!(key, err_ptr, "key is null");
         with_surreal_async(db, err_ptr, |surreal| async {
             let key = unsafe { CStr::from_ptr(key) }.to_str()?;
-            surreal.db.unset(key).await?;
+            surreal.db.unset(key).await.map_err(|e| string_t::from(e.to_string()))?;
             Ok(0)
         })
     }
@@ -1654,17 +1675,18 @@ impl Surreal {
         check_null!(content, err_ptr, "content is null");
         with_surreal_async(db, err_ptr, |surreal| async {
             let resource = unsafe { CStr::from_ptr(resource) }.to_str()?;
-            let content = sql::Object::from(unsafe { &*content }.clone());
+            let content = sdbObject::from(unsafe { &*content }.clone());
 
-            let res = match surreal
+            let val: sdbValue = surreal
                 .db
-                .update(Resource::from(resource))
+                .update(parse_resource(resource))
                 .content(content)
-                .await?
-                .into_inner()
-            {
-                sql::Value::Array(a) => Array::from(a),
-                v => Array::from(vec![v.into()]),
+                .await
+                .map_err(|e| string_t::from(e.to_string()))?;
+
+            let res = match val {
+                sdbValue::Array(a) => Array::from(a),
+                v => Array::from(vec![Value::from(v)]),
             };
 
             let ArrayGen { ptr, len } = res.into();
@@ -1713,17 +1735,18 @@ impl Surreal {
         check_null!(content, err_ptr, "content is null");
         with_surreal_async(db, err_ptr, |surreal| async {
             let resource = unsafe { CStr::from_ptr(resource) }.to_str()?;
-            let content = sql::Object::from(unsafe { &*content }.clone());
+            let content = sdbObject::from(unsafe { &*content }.clone());
 
-            let res = match surreal
+            let val: sdbValue = surreal
                 .db
-                .upsert(Resource::from(resource))
+                .upsert(parse_resource(resource))
                 .content(content)
-                .await?
-                .into_inner()
-            {
-                sql::Value::Array(a) => Array::from(a),
-                v => Array::from(vec![v.into()]),
+                .await
+                .map_err(|e| string_t::from(e.to_string()))?;
+
+            let res = match val {
+                sdbValue::Array(a) => Array::from(a),
+                v => Array::from(vec![Value::from(v)]),
             };
 
             let ArrayGen { ptr, len } = res.into();
@@ -1760,7 +1783,7 @@ impl Surreal {
         with_surreal_async(db, err_ptr, |surreal| async {
             let db_name = unsafe { CStr::from_ptr(db_name) }.to_str()?;
 
-            surreal.db.use_db(db_name).await?;
+            surreal.db.use_db(db_name).await.map_err(|e| string_t::from(e.to_string()))?;
 
             Ok(0)
         })
@@ -1793,7 +1816,7 @@ impl Surreal {
         with_surreal_async(db, err_ptr, |surreal| async {
             let ns_name = unsafe { CStr::from_ptr(ns_name) }.to_str()?;
 
-            surreal.db.use_ns(ns_name).await?;
+            surreal.db.use_ns(ns_name).await.map_err(|e| string_t::from(e.to_string()))?;
 
             Ok(0)
         })
@@ -1832,7 +1855,7 @@ impl Surreal {
     ) -> c_int {
         check_null!(res_ptr, err_ptr, "res_ptr is null");
         with_surreal_async(db, err_ptr, |surreal| async {
-            let res = surreal.db.version().await?;
+            let res = surreal.db.version().await.map_err(|e| string_t::from(e.to_string()))?;
             let res_string = res.to_string();
             let len = res_string.bytes().len();
             let res_str: string_t = res_string.to_string_t();
@@ -1843,36 +1866,6 @@ impl Surreal {
         })
     }
 }
-
-// fn with_surreal<C>(db: &Surreal, err_ptr: *mut string_t, fun: C) -> c_int
-// where
-//     C: FnOnce(&Surreal) -> Result<c_int, string_t>,
-// {
-//     if db.ps.load(Ordering::Acquire) {
-//         std::process::abort()
-//     }
-
-//     let res = match catch_unwind(AssertUnwindSafe(|| fun(&db))) {
-//         Ok(r) => r,
-//         Err(e) => {
-//             if let Some(e_str) = e.downcast_ref::<&str>() {
-//                 let e_string: string_t = format!("Panicked with: {e_str}").into();
-//                 unsafe { err_ptr.write(e_string) }
-//             } else {
-//                 unsafe { err_ptr.write("Panicked".into()) }
-//             }
-//             return SR_FATAL;
-//         }
-//     };
-
-//     match res {
-//         Ok(n) => n,
-//         Err(e) => {
-//             unsafe { err_ptr.write(e) }
-//             SR_ERROR
-//         }
-//     }
-// }
 
 /// Execute a given closure in an async context, which returns a result then catches panics and writes errors appropriately
 fn with_surreal_async<'a, 'b, C, F>(db: &'a Surreal, err_ptr: *mut string_t, fun: C) -> c_int
