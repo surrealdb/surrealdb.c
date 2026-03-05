@@ -242,6 +242,10 @@ elseif(APPLE)
     set_target_properties(surrealdb_c PROPERTIES
         INTERFACE_LINK_LIBRARIES "-framework Security;-framework SystemConfiguration;-framework CoreFoundation;-framework IOKit;-lobjc"
     )
+elseif(UNIX)
+    set_target_properties(surrealdb_c PROPERTIES
+        INTERFACE_LINK_LIBRARIES "m;dl;pthread;rt"
+    )
 endif()
 
 if(_sdb_is_multi_config AND NOT _sdb_force_release)
