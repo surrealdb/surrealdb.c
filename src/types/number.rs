@@ -1,6 +1,6 @@
 use std::ffi::{c_double, c_float, c_int, CStr};
 
-use surrealdb::sql;
+use surrealdb::types::Number as sdbNumber;
 use rust_decimal::Decimal;
 use crate::string::string_t;
 use crate::utils::CStringExt2;
@@ -39,18 +39,18 @@ impl From<Decimal> for Number {
     }
 }
 
-impl From<Number> for sql::Number {
+impl From<Number> for sdbNumber {
     fn from(value: Number) -> Self {
         match value {
-            Number::SR_NUMBER_INT(i) => sql::Number::Int(i),
-            Number::SR_NUMBER_FLOAT(f) => sql::Number::Float(f),
+            Number::SR_NUMBER_INT(i) => sdbNumber::Int(i),
+            Number::SR_NUMBER_FLOAT(f) => sdbNumber::Float(f),
             Number::SR_NUMBER_DECIMAL(s) => {
                 let cstr = unsafe { CStr::from_ptr(s.0) };
                 let decimal_str = cstr.to_string_lossy();
                 match decimal_str.parse::<Decimal>() {
-                    Ok(d) => sql::Number::Decimal(d),
+                    Ok(d) => sdbNumber::Decimal(d),
                     // Fallback to float if parsing fails
-                    Err(_) => sql::Number::Float(decimal_str.parse().unwrap_or(0.0)),
+                    Err(_) => sdbNumber::Float(decimal_str.parse().unwrap_or(0.0)),
                 }
             }
         }

@@ -3,7 +3,7 @@ use std::{
     ffi::{c_char, c_double, c_float, c_int, CStr},
 };
 
-use surrealdb::sql;
+use surrealdb::types::{Object as sdbObject, Value as sdbValue};
 
 use crate::{utils::CStringExt2, value::Value};
 
@@ -154,7 +154,6 @@ impl Object {
             return 0;
         }
         
-        // Allocate array for the pointers
         let boxed = keys.into_boxed_slice();
         let ptr = Box::into_raw(boxed) as *mut *mut c_char;
         unsafe { *keys_ptr = ptr; }
@@ -176,35 +175,33 @@ impl Object {
             }
         }
         
-        // Free the array itself
         let _ = unsafe { Box::from_raw(std::slice::from_raw_parts_mut(arr, len as usize) as *mut [*mut c_char]) };
     }
 }
 
-impl From<sql::Object> for Object {
-    fn from(value: sql::Object) -> Self {
-        let map = value.0;
+impl From<sdbObject> for Object {
+    fn from(value: sdbObject) -> Self {
         let out = Self(Box::new(
-            map.into_iter().map(|(k, v)| (k, v.into())).collect(),
+            value.into_iter().map(|(k, v)| (k, Value::from(v))).collect(),
         ));
         out
     }
 }
 
-impl From<&sql::Object> for Object {
-    fn from(value: &sql::Object) -> Self {
-        let map = &value.0;
+impl From<&sdbObject> for Object {
+    fn from(value: &sdbObject) -> Self {
         let out = Self(Box::new(
-            map.iter().map(|(k, v)| (k.to_owned(), v.into())).collect(),
+            value.iter().map(|(k, v)| (k.to_owned(), Value::from(v.clone()))).collect(),
         ));
         out
     }
 }
-impl From<Object> for sql::Object {
+
+impl From<Object> for sdbObject {
     fn from(value: Object) -> Self {
         let map = value.0;
-        let out: BTreeMap<String, sql::Value> =
-            map.into_iter().map(|(k, v)| (k, v.into())).collect();
-        out.into()
+        let entries: BTreeMap<String, sdbValue> =
+            map.into_iter().map(|(k, v)| (k, sdbValue::from(v))).collect();
+        sdbObject::from(entries)
     }
 }

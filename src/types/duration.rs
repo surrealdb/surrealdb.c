@@ -1,4 +1,5 @@
-use surrealdb::sql;
+use surrealdb::types::Duration as sdbDuration;
+
 #[derive(Debug, Clone, PartialEq)]
 #[repr(C)]
 pub struct Duration {
@@ -15,13 +16,14 @@ impl From<std::time::Duration> for Duration {
     }
 }
 
-impl From<surrealdb::sql::Duration> for Duration {
-    fn from(value: surrealdb::sql::Duration) -> Self {
-        value.0.into()
+impl From<sdbDuration> for Duration {
+    fn from(value: sdbDuration) -> Self {
+        let std_dur: std::time::Duration = value.into();
+        std_dur.into()
     }
 }
 
-impl From<Duration> for sql::Duration {
+impl From<Duration> for sdbDuration {
     fn from(value: Duration) -> Self {
         std::time::Duration::new(value.secs, value.nanos).into()
     }

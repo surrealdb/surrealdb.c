@@ -60,7 +60,7 @@ TEST(RPC, Execute) {
 
 TEST(RPC, Notifications) {
     sr_surreal_rpc_t *rpc;
-    sr_string_t err;
+    sr_string_t err = NULL;
     sr_option_t opts = {0};
     
     int result = sr_surreal_rpc_new(&err, &rpc, "memory", opts);
@@ -69,7 +69,6 @@ TEST(RPC, Notifications) {
         TEST_FAIL_MESSAGE("Failed to create RPC connection");
     }
     
-    // Get notifications stream
     sr_RpcStream *stream = NULL;
     result = sr_surreal_rpc_notifications(rpc, &err, &stream);
     if (result < 0) {
@@ -79,7 +78,6 @@ TEST(RPC, Notifications) {
     }
     TEST_ASSERT_NOT_NULL_MESSAGE(stream, "Notifications stream should not be NULL");
     
-    // Clean up
     sr_rpc_stream_free(stream);
     sr_surreal_rpc_free(rpc);
 }

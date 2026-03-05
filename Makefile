@@ -6,9 +6,12 @@ BUILD_DIR := build
 # Unix/Linux/macOS: Use default generator (usually Make or Ninja)
 GENERATOR_FLAG :=
 
-.PHONY: all configure build test clean
+.PHONY: all configure build test clean prereqs example-smoke verify
 
 all: build
+
+prereqs:
+	bash scripts/install-prereqs.sh
 
 configure:
 	cmake -S . -B $(BUILD_DIR) $(GENERATOR_FLAG)
@@ -22,6 +25,14 @@ ifeq ($(OS),Windows_NT)
 else
 	ctest --test-dir $(BUILD_DIR) --output-on-failure
 endif
+
+example-smoke: build
+	@echo "=== Building and running v3 smoke test ==="
+	$(BUILD_DIR)/v3_smoke_test
+
+verify: build test example-smoke
+	@echo ""
+	@echo "=== All verifications passed ==="
 
 clean:
 	cmake -E rm -rf $(BUILD_DIR)

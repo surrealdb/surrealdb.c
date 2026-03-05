@@ -47,4 +47,24 @@ if(MSVC)
     target_link_options(saas_example PRIVATE /NODEFAULTLIB:MSVCRT)
 endif()
 
+# ============================================================================
+# V3 Smoke Test
+# ============================================================================
+
+add_executable(v3_smoke_test
+    v3_smoke_test.c
+)
+
+target_link_libraries(v3_smoke_test PRIVATE
+    surrealdb::surrealdb_c
+)
+
+set_target_properties(v3_smoke_test PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}"
+)
+
+if(MSVC)
+    target_link_options(v3_smoke_test PRIVATE /NODEFAULTLIB:MSVCRT)
+endif()
+
 message(STATUS "Example binaries will be output to: ${_example_bin_dir}")

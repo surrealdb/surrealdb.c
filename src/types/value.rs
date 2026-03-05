@@ -1,8 +1,9 @@
 use std::ffi::CStr;
 
 use chrono::DateTime;
-use surrealdb_core::sql;
-use surrealdb_core::sql::Value as sdbValue;
+use surrealdb::types::{
+    Value as sdbValue, Number as sdbNumber,
+};
 
 pub use crate::{array::Array, number::Number, object::Object, geometry::sr_geometry};
 use crate::{bytes::Bytes, string::string_t, thing::Thing, utils::CStringExt2, uuid::Uuid};
@@ -53,26 +54,22 @@ impl From<sdbValue> for Value {
             sdbValue::Null => Value::SR_VALUE_NULL,
             sdbValue::Bool(b) => Value::SR_VALUE_BOOL(b),
             sdbValue::Number(n) => match n {
-                sql::Number::Int(i) => Value::SR_VALUE_NUMBER(Number::SR_NUMBER_INT(i)),
-                sql::Number::Float(f) => Value::SR_VALUE_NUMBER(Number::SR_NUMBER_FLOAT(f)),
-                sql::Number::Decimal(d) => Value::SR_VALUE_NUMBER(Number::from(d)),
+                sdbNumber::Int(i) => Value::SR_VALUE_NUMBER(Number::SR_NUMBER_INT(i)),
+                sdbNumber::Float(f) => Value::SR_VALUE_NUMBER(Number::SR_NUMBER_FLOAT(f)),
+                sdbNumber::Decimal(d) => Value::SR_VALUE_NUMBER(Number::from(d)),
                 _ => {
-                    // Handle any new Number variants by converting to string representation
                     Value::SR_VALUE_NUMBER(Number::SR_NUMBER_FLOAT(0.0))
                 }
             },
-            sdbValue::Strand(s) => Value::SR_VALUE_STRAND(s.0.to_string_t()),
-            sdbValue::Duration(d) => Value::SR_VALUE_DURATION(d.into()),
-            sdbValue::Datetime(dt) => Value::SR_VALUE_DATETIME(dt.to_rfc3339().to_string_t()),
-            sdbValue::Uuid(u) => Value::SR_VALUE_UUID(u.into()),
-            // unnecessary box see: https://github.com/mozilla/cbindgen/issues/981
+            sdbValue::String(s) => Value::SR_VALUE_STRAND(s.to_string_t()),
+            sdbValue::Duration(d) => Value::SR_VALUE_DURATION(Duration::from(std::time::Duration::from(d))),
+            sdbValue::Datetime(dt) => Value::SR_VALUE_DATETIME(dt.to_string().to_string_t()),
+            sdbValue::Uuid(u) => Value::SR_VALUE_UUID(Uuid(u.into_bytes())),
             sdbValue::Array(a) => Value::SR_VALUE_ARRAY(Box::new(a.into())),
             sdbValue::Object(o) => Value::SR_VALUE_OBJECT(o.into()),
             sdbValue::Geometry(g) => Value::SR_GEOMETRY_OBJECT(sr_geometry::from(g)),
-            sdbValue::Bytes(b) => Value::SR_VALUE_BYTES(b.into()),
-            sdbValue::Thing(t) => Value::SR_VALUE_THING(t.into()),
-            // Other variants are internal/computed and shouldn't appear in query results
-            // If they do, we convert to None to avoid panics
+            sdbValue::Bytes(b) => Value::SR_VALUE_BYTES(Bytes::from(b)),
+            sdbValue::RecordId(r) => Value::SR_VALUE_THING(Thing::from(r)),
             _ => Value::SR_VALUE_NONE,
         }
     }
@@ -80,43 +77,6 @@ impl From<sdbValue> for Value {
 
 impl From<&sdbValue> for Value {
     fn from(value: &sdbValue) -> Self {
-        match value {
-            sdbValue::None => Value::SR_VALUE_NONE,
-            sdbValue::Null => Value::SR_VALUE_NULL,
-            sdbValue::Bool(b) => Value::SR_VALUE_BOOL(*b),
-            sdbValue::Number(n) => match n {
-                sql::Number::Int(i) => Value::SR_VALUE_NUMBER(Number::SR_NUMBER_INT(*i)),
-                sql::Number::Float(f) => Value::SR_VALUE_NUMBER(Number::SR_NUMBER_FLOAT(*f)),
-                sql::Number::Decimal(d) => Value::SR_VALUE_NUMBER(Number::from(*d)),
-                _ => {
-                    // Handle any new Number variants
-                    Value::SR_VALUE_NUMBER(Number::SR_NUMBER_FLOAT(0.0))
-                }
-            },
-            sdbValue::Strand(s) => Value::SR_VALUE_STRAND(s.0.as_str().to_string_t()),
-            sdbValue::Duration(d) => Value::SR_VALUE_DURATION(d.clone().into()),
-            sdbValue::Datetime(dt) => Value::SR_VALUE_DATETIME(dt.to_rfc3339().to_string_t()),
-            sdbValue::Uuid(u) => Value::SR_VALUE_UUID(u.clone().into()),
-            // unnecessary box see: https://github.com/mozilla/cbindgen/issues/981
-            sdbValue::Array(a) => Value::SR_VALUE_ARRAY(Box::new(a.into())),
-            sdbValue::Object(o) => Value::SR_VALUE_OBJECT(o.into()),
-            sdbValue::Geometry(g) => Value::SR_GEOMETRY_OBJECT(sr_geometry::from(g.clone())),
-            sdbValue::Bytes(b) => Value::SR_VALUE_BYTES(b.clone().into()),
-            sdbValue::Thing(t) => Value::SR_VALUE_THING(t.into()),
-            // Other variants are internal/computed and shouldn't appear in query results
-            _ => Value::SR_VALUE_NONE,
-        }
-    }
-}
-impl From<surrealdb::Value> for Value {
-    fn from(value: surrealdb::Value) -> Self {
-        let value: sdbValue = value.into_inner();
-        Self::from(value)
-    }
-}
-impl From<&surrealdb::Value> for Value {
-    fn from(value: &surrealdb::Value) -> Self {
-        // Clone the value to safely convert without relying on internal layout assumptions
         Self::from(value.clone())
     }
 }
@@ -128,23 +88,27 @@ impl From<Value> for sdbValue {
             Value::SR_VALUE_NULL => sdbValue::Null,
             Value::SR_VALUE_BOOL(b) => sdbValue::Bool(b),
             Value::SR_VALUE_NUMBER(n) => sdbValue::Number(n.into()),
-            Value::SR_VALUE_STRAND(s) => sdbValue::Strand(String::from(s).into()),
-            Value::SR_VALUE_DURATION(d) => sdbValue::Duration(d.into()),
+            Value::SR_VALUE_STRAND(s) => sdbValue::String(String::from(s)),
+            Value::SR_VALUE_DURATION(d) => {
+                let std_dur = std::time::Duration::new(d.secs, d.nanos);
+                sdbValue::Duration(std_dur.into())
+            }
             Value::SR_VALUE_DATETIME(d) => {
                 let cstr = unsafe { CStr::from_ptr(d.0) };
-                sdbValue::Datetime(
-                    DateTime::parse_from_rfc3339(cstr.to_string_lossy().as_ref())
-                        .unwrap_or_default()
-                        .to_utc()
-                        .into(),
-                )
+                let parsed = DateTime::parse_from_rfc3339(cstr.to_string_lossy().as_ref())
+                    .unwrap_or_default()
+                    .to_utc();
+                sdbValue::Datetime(parsed.into())
             }
-            Value::SR_VALUE_UUID(u) => sdbValue::Uuid(u.into()),
+            Value::SR_VALUE_UUID(u) => {
+                let uuid_val: uuid::Uuid = u.into();
+                sdbValue::Uuid(uuid_val.into())
+            }
             Value::SR_VALUE_ARRAY(a) => sdbValue::Array((*a).into()),
             Value::SR_VALUE_OBJECT(o) => sdbValue::Object(o.into()),
             Value::SR_GEOMETRY_OBJECT(g) => sdbValue::Geometry(g.into()),
             Value::SR_VALUE_BYTES(b) => sdbValue::Bytes(b.into()),
-            Value::SR_VALUE_THING(t) => sdbValue::Thing(t.into()),
+            Value::SR_VALUE_THING(t) => sdbValue::RecordId(t.into()),
         }
     }
 }

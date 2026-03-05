@@ -1,5 +1,4 @@
 use std::{
-    collections::BTreeMap,
     ffi::{c_char, c_int, CStr},
     future::IntoFuture,
     panic::{catch_unwind, AssertUnwindSafe},
@@ -8,32 +7,26 @@ use std::{
     time::Duration,
 };
 use std::sync::Arc;
-use arc_swap::ArcSwap;
-use surrealdb::dbs::Session;
-use surrealdb::kvs::Datastore;
-use surrealdb::rpc::format::cbor;
-use surrealdb::rpc::Method;
-use surrealdb::rpc::RpcContext;
-use surrealdb::rpc::Data;
-use surrealdb::sql;
-use surrealdb_core::rpc::{RpcProtocolV1, RpcProtocolV2};
+use surrealdb_core::dbs::Session;
+use surrealdb_core::kvs::Datastore;
+use surrealdb_core::rpc::{Method, RpcProtocol, DbResult};
+use surrealdb::types::{Value as sdbValue, HashMap};
 use tokio::{runtime::Runtime, sync::RwLock};
-use tokio::sync::Semaphore;
+
 use crate::{array::MakeArray, opts::Options, stream::RpcStream, string::string_t, SR_ERROR, SR_FATAL};
 
-/// The object representing a Surreal connection
+/// The object representing a Surreal RPC connection
 ///
 /// It is safe to be referenced from multiple threads
 /// If any operation, on any thread returns SR_FATAL then the connection is poisoned and must not be used again.
 /// (use will cause the program to abort)
 ///
-/// should be freed with sr_surreal_disconnect
+/// should be freed with sr_surreal_rpc_free
 pub struct SurrealRpc {
     inner: RwLock<SurrealRpcInner>,
     rt: Runtime,
     ps: AtomicBool,
 }
-
 /// create new rpc context
 ///
 /// # Examples
@@ -66,12 +59,11 @@ impl SurrealRpc {
 
             let mut kvs = match rt.block_on(con_fut.into_future()) {
                 Ok(db) => db,
-                Err(e) => return Err(e.into()),
+                Err(e) => return Err(e.to_string().into()),
             };
 
             kvs = kvs.with_notifications();
 
-            kvs = kvs.with_strict_mode(options.strict);
             if options.query_timeout != 0 {
                 kvs =
                     kvs.with_query_timeout(Some(Duration::from_secs(options.query_timeout as u64)))
@@ -82,11 +74,13 @@ impl SurrealRpc {
                 )))
             }
 
+            let session_map = HashMap::default();
+            let default_session = Arc::new(RwLock::new(Session::default().with_rt(true)));
+            session_map.insert(None, default_session);
+
             let inner = SurrealRpcInner {
                 kvs,
-                sess: ArcSwap::new(Arc::new(Session::default().with_rt(true))),
-                vars: BTreeMap::default(),
-                lock: Arc::new(Semaphore::new(1)),
+                session_map,
             };
 
             Ok(SurrealRpc {
@@ -122,7 +116,7 @@ impl SurrealRpc {
         }
     }
 
-    /// Execute an RPC request
+    /// Execute an RPC request via raw CBOR bytes
     ///
     /// # Safety
     ///
@@ -155,48 +149,36 @@ impl SurrealRpc {
         with_async(self, err_ptr, |ctx| async {
             let in_bytes = slice_from_raw_parts(ptr, len as usize);
             let in_bytes = unsafe { &*in_bytes };
-            let in_data = cbor::req(in_bytes.to_vec())?;
-            let method = Method::parse_case_insensitive(in_data.method.to_str());
-            //let method = Method::parse(in_data.method);
-            /*
-            let res = match method.can_be_immut() {
-                true => {
-                    ctx.inner
-                        .read()
-                        .await
-                        .execute_immut(method, in_data.params)
-                        .await
-                }
-                false => {
-                    ctx.inner
-                        .write()
-                        .await
-                        .execute(None, method, in_data.params)
-                        .await?
-                }
-            }?;
-             */
-            let inner = &ctx.inner.write().await;
-            let res = <SurrealRpcInner as RpcProtocolV2>::execute(
+
+            let in_value: ciborium::Value = ciborium::from_reader(in_bytes.as_ref())
+                .map_err(|e| string_t::from(format!("CBOR decode error: {e}")))?;
+
+            let (method_str, params) = parse_cbor_request(&in_value)?;
+            let method = Method::parse_case_insensitive(&method_str);
+
+            let inner = &ctx.inner.read().await;
+            let res = <SurrealRpcInner as RpcProtocol>::execute(
                 &*inner,
+                None,
+                None,
                 method,
-                in_data.params,
-            ).await?;
+                params,
+            ).await.map_err(|e| string_t::from(e.to_string()))?;
             
-            // Currently only Data::Other is supported; Data::Live requires stream handling
-            let result = match res {
-                Data::Other(v) => {
-                    let out = cbor::res(v)?.make_array();
-                    //let out = cbor::res(res)?.make_array();
+            match res {
+                DbResult::Other(v) => {
+                    let cbor_val = value_to_cbor(&v);
+                    let mut out_bytes = Vec::new();
+                    ciborium::into_writer(&cbor_val, &mut out_bytes)
+                        .map_err(|e| string_t::from(format!("CBOR encode error: {e}")))?;
+                    let out = out_bytes.make_array();
                     unsafe { res_ptr.write(out.ptr) }
                     Ok(out.len)
                 }
                 _ => {
-                    Err("C SDK: RPC::execute had unimplemented response.")
+                    Err(string_t::from("C SDK: RPC::execute had unimplemented response."))
                 }
-            }?;
-            
-            Ok(result)
+            }
         })
     }
 
@@ -227,7 +209,7 @@ impl SurrealRpc {
                 .await
                 .kvs
                 .notifications()
-                .ok_or("Notifications not enabled")?;
+                .ok_or(string_t::from("Notifications not enabled"))?;
 
             let rpc_stream = RpcStream::new(receiver);
             let stream_boxed = Box::new(rpc_stream);
@@ -238,10 +220,6 @@ impl SurrealRpc {
     }
 
     /// Free an RPC context
-    ///
-    /// # Safety
-    ///
-    /// - `ctx` must be a valid pointer to a SurrealRpc, or null (no-op)
     #[export_name = "sr_surreal_rpc_free"]
     pub extern "C" fn rpc_free(ctx: *mut SurrealRpc) {
         if ctx.is_null() {
@@ -249,6 +227,85 @@ impl SurrealRpc {
         }
         let boxed = unsafe { Box::from_raw(ctx) };
         drop(boxed)
+    }
+}
+
+fn parse_cbor_request(value: &ciborium::Value) -> Result<(String, surrealdb::types::Array), string_t> {
+    let map = value.as_map().ok_or(string_t::from("Expected CBOR map for RPC request"))?;
+    
+    let mut method = String::new();
+    let mut params = surrealdb::types::Array::new();
+    
+    for (k, v) in map {
+        if let Some(key) = k.as_text() {
+            match key {
+                "method" => {
+                    method = v.as_text().unwrap_or("").to_string();
+                }
+                "params" => {
+                    if let Some(arr) = v.as_array() {
+                        for item in arr {
+                            params.push(cbor_to_value(item));
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    
+    Ok((method, params))
+}
+
+fn cbor_to_value(v: &ciborium::Value) -> sdbValue {
+    match v {
+        ciborium::Value::Null => sdbValue::Null,
+        ciborium::Value::Bool(b) => sdbValue::Bool(*b),
+        ciborium::Value::Integer(i) => {
+            let n: i128 = (*i).into();
+            sdbValue::Number(surrealdb::types::Number::Int(n as i64))
+        }
+        ciborium::Value::Float(f) => sdbValue::Number(surrealdb::types::Number::Float(*f)),
+        ciborium::Value::Text(s) => sdbValue::String(s.clone()),
+        ciborium::Value::Bytes(b) => sdbValue::Bytes(surrealdb::types::Bytes::from(b.clone())),
+        ciborium::Value::Array(arr) => {
+            let vals: Vec<sdbValue> = arr.iter().map(cbor_to_value).collect();
+            sdbValue::Array(surrealdb::types::Array::from(vals))
+        }
+        ciborium::Value::Map(map) => {
+            let mut obj = surrealdb::types::Object::new();
+            for (k, v) in map {
+                if let Some(key) = k.as_text() {
+                    obj.insert(key.to_string(), cbor_to_value(v));
+                }
+            }
+            sdbValue::Object(obj)
+        }
+        _ => sdbValue::None,
+    }
+}
+
+pub(crate) fn value_to_cbor(v: &sdbValue) -> ciborium::Value {
+    match v {
+        sdbValue::None => ciborium::Value::Null,
+        sdbValue::Null => ciborium::Value::Null,
+        sdbValue::Bool(b) => ciborium::Value::Bool(*b),
+        sdbValue::Number(n) => match n {
+            surrealdb::types::Number::Int(i) => ciborium::Value::Integer((*i).into()),
+            surrealdb::types::Number::Float(f) => ciborium::Value::Float(*f),
+            surrealdb::types::Number::Decimal(d) => ciborium::Value::Text(d.to_string()),
+        },
+        sdbValue::String(s) => ciborium::Value::Text(s.clone()),
+        sdbValue::Array(arr) => {
+            ciborium::Value::Array(arr.iter().map(value_to_cbor).collect())
+        }
+        sdbValue::Object(obj) => {
+            let entries: Vec<(ciborium::Value, ciborium::Value)> = obj.iter()
+                .map(|(k, v)| (ciborium::Value::Text(k.clone()), value_to_cbor(v)))
+                .collect();
+            ciborium::Value::Map(entries)
+        }
+        _ => ciborium::Value::Text(format!("{v:?}")),
     }
 }
 
@@ -288,43 +345,30 @@ where
 #[allow(dead_code)]
 struct SurrealRpcInner {
     kvs: Datastore,
-    sess: ArcSwap<Session>,
-    lock: Arc<Semaphore>,
-    vars: BTreeMap<String, sql::Value>,
+    session_map: HashMap<Option<uuid::Uuid>, Arc<RwLock<Session>>>,
 }
 
-
-impl SurrealRpcInner {
-
-}
-
-impl RpcContext for SurrealRpcInner {
+impl RpcProtocol for SurrealRpcInner {
     fn kvs(&self) -> &Datastore {
         &self.kvs
     }
 
-    fn lock(&self) -> Arc<Semaphore> {
-        self.lock.clone()   
+    fn session_map(&self) -> &HashMap<Option<uuid::Uuid>, Arc<RwLock<Session>>> {
+        &self.session_map
     }
 
-    fn session(&self) -> Arc<Session> {
-        self.sess.load().clone()
-    }
-
-    fn set_session(&self, session: Arc<Session>) {
-        self.sess.store(session);
-    }
-    fn version_data(&self) -> Data {
+    fn version_data(&self) -> DbResult {
         let ver_str = surrealdb_core::env::VERSION.to_string();
-        ver_str.into()
+        DbResult::Other(sdbValue::String(ver_str))
     }
     
     const LQ_SUPPORT: bool = true;
 
-    async fn handle_live(&self, _lqid: &uuid::Uuid) {}
+    async fn handle_live(&self, _lqid: &uuid::Uuid, _session_id: Option<uuid::Uuid>) {}
 
     async fn handle_kill(&self, _lqid: &uuid::Uuid) {}
-}
 
-impl RpcProtocolV1 for SurrealRpcInner{}
-impl RpcProtocolV2 for SurrealRpcInner{}
+    async fn cleanup_lqs(&self, _session_id: Option<&uuid::Uuid>) {}
+
+    async fn cleanup_all_lqs(&self) {}
+}

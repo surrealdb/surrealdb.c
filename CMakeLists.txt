@@ -233,10 +233,18 @@ add_dependencies(surrealdb_c rust_lib)
 # This allows examples and tests to use surrealdb::surrealdb_c just like external consumers
 add_library(surrealdb::surrealdb_c ALIAS surrealdb_c)
 
-# Windows system libraries required by the Rust library
+# Platform-specific system libraries required by the Rust library
 if(WIN32)
     set_target_properties(surrealdb_c PROPERTIES
         INTERFACE_LINK_LIBRARIES "ws2_32;userenv;bcrypt;ntdll;pdh;netapi32;iphlpapi;psapi;propsys;runtimeobject;secur32;powrprof"
+    )
+elseif(APPLE)
+    set_target_properties(surrealdb_c PROPERTIES
+        INTERFACE_LINK_LIBRARIES "-framework Security;-framework SystemConfiguration;-framework CoreFoundation;-framework IOKit;-lobjc"
+    )
+elseif(UNIX)
+    set_target_properties(surrealdb_c PROPERTIES
+        INTERFACE_LINK_LIBRARIES "m;dl;pthread;rt"
     )
 endif()
 
