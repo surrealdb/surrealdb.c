@@ -1,3 +1,5 @@
+#![recursion_limit = "256"]
+
 pub mod opts;
 pub mod rpc;
 pub mod types;
