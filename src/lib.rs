@@ -9,7 +9,10 @@ use std::{
     ffi::{c_char, c_int, CStr},
     future::IntoFuture,
     panic::{catch_unwind, AssertUnwindSafe},
-    sync::atomic::{AtomicBool, Ordering},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
 };
 use stream::Stream;
 use string::string_t;
@@ -79,7 +82,7 @@ macro_rules! check_null {
 /// should be freed with sr_surreal_disconnect
 pub struct Surreal {
     db: sdbSurreal<Any>,
-    rt: Runtime,
+    rt: Arc<Runtime>,
     ps: AtomicBool,
 }
 
@@ -148,7 +151,7 @@ impl Surreal {
 
             Ok(Surreal {
                 db,
-                rt,
+                rt: Arc::new(rt),
                 ps: AtomicBool::new(false),
             })
         }));
@@ -196,6 +199,106 @@ impl Surreal {
     #[export_name = "sr_surreal_disconnect"]
     pub extern "C" fn disconnect(db: *mut Surreal) {
         catch_unwind(AssertUnwindSafe(|| drop(unsafe { Box::from_raw(db) }))).ok();
+    }
+
+    /// Clone a database connection
+    ///
+    /// Creates a new independent Surreal handle that shares the same underlying
+    /// database engine as the original. The cloned handle has its own Tokio runtime
+    /// and independent namespace/database state.
+    ///
+    /// This is equivalent to Rust SDK's `db.clone()` — enabling multiple independent
+    /// sessions on a single embedded (surrealkv://) connection without file locking issues.
+    ///
+    /// # Safety
+    ///
+    /// - `db` must be a valid pointer to a Surreal connection
+    /// - `err_ptr` must be a valid pointer or null
+    /// - `clone_ptr` must be a valid pointer to receive the cloned handle
+    /// - The original `db` must NOT be disconnected while clones are in use
+    /// - Each clone must be freed with `sr_surreal_disconnect`
+    ///
+    /// # Examples
+    ///
+    /// ```c
+    /// sr_surreal_t *db;
+    /// sr_surreal_t *clone;
+    /// sr_string_t err;
+    ///
+    /// // Connect once
+    /// if (sr_connect(&err, &db, "surrealkv://test.skv") < 0) {
+    ///     printf("error: %s\n", err);
+    ///     return 1;
+    /// }
+    ///
+    /// // Clone for independent session
+    /// if (sr_clone(db, &err, &clone) < 0) {
+    ///     printf("error: %s\n", err);
+    ///     return 1;
+    /// }
+    ///
+    /// // Each handle can use different NS/DB independently
+    /// sr_use_ns(db, &err, "ns1");
+    /// sr_use_db(db, &err, "db1");
+    /// sr_use_ns(clone, &err, "ns2");
+    /// sr_use_db(clone, &err, "db2");
+    ///
+    /// // Queries run concurrently on separate sessions
+    /// // ...
+    ///
+    /// sr_surreal_disconnect(clone);
+    /// sr_surreal_disconnect(db);
+    /// ```
+    #[export_name = "sr_clone"]
+    pub extern "C" fn clone_connection(
+        db: &Surreal,
+        err_ptr: *mut string_t,
+        clone_ptr: *mut *mut Surreal,
+    ) -> c_int {
+        check_null!(clone_ptr, err_ptr, "clone_ptr is null");
+
+        let res: Result<Result<Surreal, string_t>, _> = catch_unwind(AssertUnwindSafe(|| {
+            if db.ps.load(Ordering::Acquire) {
+                return Err("connection is poisoned".into());
+            }
+
+            // Clone the underlying Surreal<Any> — shares the same engine
+            let cloned_db = db.db.clone();
+
+            // Share the parent's Tokio runtime (Arc::clone is ~0 cost)
+            let shared_rt = Arc::clone(&db.rt);
+
+            Ok(Surreal {
+                db: cloned_db,
+                rt: shared_rt,
+                ps: AtomicBool::new(false),
+            })
+        }));
+
+        let res: Result<Surreal, string_t> = match res {
+            Ok(r) => r,
+            Err(e) => {
+                if let Some(e_str) = e.downcast_ref::<&str>() {
+                    let e_string: string_t = format!("Panicked with: {e_str}").into();
+                    unsafe { err_ptr.write(e_string) }
+                } else {
+                    unsafe { err_ptr.write("Panicked".into()) }
+                }
+                return SR_FATAL;
+            }
+        };
+
+        match res {
+            Ok(s) => {
+                let boxed = Box::new(s);
+                unsafe { clone_ptr.write(Box::leak(boxed)) }
+                1
+            }
+            Err(e) => {
+                unsafe { err_ptr.write(e) }
+                SR_ERROR
+            }
+        }
     }
 
     /// Authenticate with a token
