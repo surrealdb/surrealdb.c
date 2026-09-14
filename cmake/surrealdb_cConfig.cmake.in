@@ -9,11 +9,11 @@ if(NOT TARGET surrealdb::surrealdb_c)
         IMPORTED_LOCATION "${_surrealdb_c_lib}"
         INTERFACE_INCLUDE_DIRECTORIES "${_surrealdb_c_include_dir}"
     )
-    if(WIN32)
-        set_property(TARGET surrealdb::surrealdb_c PROPERTY
-            INTERFACE_LINK_LIBRARIES "ws2_32;userenv;bcrypt;ntdll;pdh;netapi32;iphlpapi;psapi;propsys;runtimeobject;secur32;powrprof"
-        )
-    endif()
+    # Baked in at configure time from SURREALDB_C_SYSTEM_LIBS in CMakeLists.txt,
+    # so this list cannot drift from the one used for the in-tree build.
+    set_property(TARGET surrealdb::surrealdb_c PROPERTY
+        INTERFACE_LINK_LIBRARIES "@SURREALDB_C_SYSTEM_LIBS@"
+    )
 endif()
 
 check_required_components(surrealdb_c)

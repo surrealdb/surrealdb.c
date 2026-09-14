@@ -14,33 +14,53 @@
  * Test Helpers
  * ============================================================================ */
 
-#define ASSERT_TRUE(cond) do { if (!(cond)) { fprintf(stderr, "ASSERT_TRUE failed: %s at %s:%d\n", #cond, __FILE__, __LINE__); return TEST_FAIL; } } while(0)
-#define ASSERT_FALSE(cond) do { if (cond) { fprintf(stderr, "ASSERT_FALSE failed: %s at %s:%d\n", #cond, __FILE__, __LINE__); return TEST_FAIL; } } while(0)
-#define ASSERT_EQ(a, b) do { if ((a) != (b)) { fprintf(stderr, "ASSERT_EQ failed: %s != %s at %s:%d\n", #a, #b, __FILE__, __LINE__); return TEST_FAIL; } } while(0)
-#define ASSERT_GE(a, b) do { if ((a) < (b)) { fprintf(stderr, "ASSERT_GE failed: %s < %s at %s:%d\n", #a, #b, __FILE__, __LINE__); return TEST_FAIL; } } while(0)
-#define ASSERT_NOT_NULL(ptr) do { if ((ptr) == NULL) { fprintf(stderr, "ASSERT_NOT_NULL failed: %s at %s:%d\n", #ptr, __FILE__, __LINE__); return TEST_FAIL; } } while(0)
+#define ASSERT_TRUE(cond) do { if (!(cond)) { fprintf(stderr, "ASSERT_TRUE failed: %s at %s:%d\n", #cond, __FILE__, __LINE__); return API_TEST_FAIL; } } while(0)
+#define ASSERT_FALSE(cond) do { if (cond) { fprintf(stderr, "ASSERT_FALSE failed: %s at %s:%d\n", #cond, __FILE__, __LINE__); return API_TEST_FAIL; } } while(0)
+#define ASSERT_EQ(a, b) do { if ((a) != (b)) { fprintf(stderr, "ASSERT_EQ failed: %s != %s at %s:%d\n", #a, #b, __FILE__, __LINE__); return API_TEST_FAIL; } } while(0)
+#define ASSERT_GE(a, b) do { if ((a) < (b)) { fprintf(stderr, "ASSERT_GE failed: %s < %s at %s:%d\n", #a, #b, __FILE__, __LINE__); return API_TEST_FAIL; } } while(0)
+#define ASSERT_NOT_NULL(ptr) do { if ((ptr) == NULL) { fprintf(stderr, "ASSERT_NOT_NULL failed: %s at %s:%d\n", #ptr, __FILE__, __LINE__); return API_TEST_FAIL; } } while(0)
 
 /* Helper to create a connected database for tests */
 static int setup_db(sr_surreal_t **db) {
     sr_string_t err;
     if (sr_connect(&err, db, "mem://") < 0) {
         fprintf(stderr, "Failed to connect: %s\n", err);
-        sr_free_string(err);
-        return TEST_FAIL;
+        sr_string_free(err);
+        return API_TEST_FAIL;
     }
     if (sr_use_ns(*db, &err, "test") < 0) {
         fprintf(stderr, "Failed to use namespace: %s\n", err);
-        sr_free_string(err);
+        sr_string_free(err);
         sr_surreal_disconnect(*db);
-        return TEST_FAIL;
+        return API_TEST_FAIL;
     }
     if (sr_use_db(*db, &err, "test") < 0) {
         fprintf(stderr, "Failed to use database: %s\n", err);
-        sr_free_string(err);
+        sr_string_free(err);
         sr_surreal_disconnect(*db);
-        return TEST_FAIL;
+        return API_TEST_FAIL;
     }
-    return TEST_PASS;
+    return API_TEST_PASS;
+}
+
+/*
+ * Create rows so that a table exists before it is selected from.
+ *
+ * SurrealDB 3.x rejects SELECT against a table that has never been written to
+ * ("The table 'x' does not exist"), where 2.x returned an empty result.
+ */
+static int seed_table(sr_surreal_t *db, const char *statement) {
+    sr_string_t err;
+    sr_arr_res_t *res;
+
+    int n = sr_query(db, &err, &res, statement, NULL);
+    if (n < 0) {
+        fprintf(stderr, "Failed to seed table: %s\n", err);
+        sr_string_free(err);
+        return API_TEST_FAIL;
+    }
+    sr_arr_res_arr_free(res, n);
+    return API_TEST_PASS;
 }
 
 /* ============================================================================
@@ -56,7 +76,7 @@ int test_sr_connect(void) {
     ASSERT_NOT_NULL(db);
     
     sr_surreal_disconnect(db);
-    return TEST_PASS;
+    return API_TEST_PASS;
 }
 
 int test_sr_surreal_disconnect(void) {
@@ -68,7 +88,7 @@ int test_sr_surreal_disconnect(void) {
     
     sr_surreal_disconnect(db);
     /* If we get here without crashing, the test passes */
-    return TEST_PASS;
+    return API_TEST_PASS;
 }
 
 int test_sr_use_ns(void) {
@@ -82,7 +102,7 @@ int test_sr_use_ns(void) {
     ASSERT_GE(res, 0);
     
     sr_surreal_disconnect(db);
-    return TEST_PASS;
+    return API_TEST_PASS;
 }
 
 int test_sr_use_db(void) {
@@ -99,7 +119,7 @@ int test_sr_use_db(void) {
     ASSERT_GE(res, 0);
     
     sr_surreal_disconnect(db);
-    return TEST_PASS;
+    return API_TEST_PASS;
 }
 
 int test_sr_version(void) {
@@ -114,9 +134,9 @@ int test_sr_version(void) {
     ASSERT_GE(res, 0);
     ASSERT_NOT_NULL(ver);
     
-    sr_free_string(ver);
+    sr_string_free(ver);
     sr_surreal_disconnect(db);
-    return TEST_PASS;
+    return API_TEST_PASS;
 }
 
 int test_sr_health(void) {
@@ -130,7 +150,7 @@ int test_sr_health(void) {
     ASSERT_GE(res, 0);
     
     sr_surreal_disconnect(db);
-    return TEST_PASS;
+    return API_TEST_PASS;
 }
 
 /* ============================================================================
@@ -147,14 +167,15 @@ int test_sr_authenticate(void) {
     ASSERT_GE(res, 0);
     
     /* First signin to get a token */
-    sr_credentials_scope scope = ROOT;
+    sr_credentials_scope scope = SR_SCOPE_ROOT;
     sr_credentials creds = { "root", "root" };
     
     res = sr_signin(db, &err, &token, &scope, &creds, NULL, NULL);
     if (res < 0) {
         /* In-memory DB may not require auth, which is fine */
+        if (err) sr_string_free(err);
         sr_surreal_disconnect(db);
-        return TEST_SKIP;
+        return API_TEST_SKIP;
     }
     
     ASSERT_NOT_NULL(token);
@@ -163,9 +184,9 @@ int test_sr_authenticate(void) {
     res = sr_authenticate(db, &err, token);
     ASSERT_GE(res, 0);
     
-    sr_free_string(token);
+    sr_string_free(token);
     sr_surreal_disconnect(db);
-    return TEST_PASS;
+    return API_TEST_PASS;
 }
 
 int test_sr_signin(void) {
@@ -178,22 +199,23 @@ int test_sr_signin(void) {
     ASSERT_GE(res, 0);
     
     /* Test ROOT signin */
-    sr_credentials_scope scope = ROOT;
+    sr_credentials_scope scope = SR_SCOPE_ROOT;
     sr_credentials creds = { "root", "root" };
     
     res = sr_signin(db, &err, &token, &scope, &creds, NULL, NULL);
     if (res < 0) {
         /* In-memory DB may not support root auth - skip test */
+        if (err) sr_string_free(err);
         sr_surreal_disconnect(db);
-        return TEST_SKIP;
+        return API_TEST_SKIP;
     }
     
     /* Token should be returned */
     ASSERT_NOT_NULL(token);
     
-    sr_free_string(token);
+    sr_string_free(token);
     sr_surreal_disconnect(db);
-    return TEST_PASS;
+    return API_TEST_PASS;
 }
 
 int test_sr_signup(void) {
@@ -222,12 +244,14 @@ int test_sr_signup(void) {
     
     if (res < 0) {
         /* If we can't create access method, skip */
+        if (err) sr_string_free(err);
         sr_surreal_disconnect(db);
-        return TEST_SKIP;
+        return API_TEST_SKIP;
     }
+    sr_arr_res_arr_free(query_res, res);
     
     /* Test RECORD signup */
-    sr_credentials_scope scope = RECORD;
+    sr_credentials_scope scope = SR_SCOPE_RECORD;
     sr_credentials creds = { "testuser", "testpass123" };
     sr_credentials_access details = { "test", "test", "user" };
     
@@ -235,17 +259,17 @@ int test_sr_signup(void) {
     if (res < 0) {
         /* Signup may fail for various reasons in embedded mode */
         fprintf(stderr, "Signup failed (may be expected): %s\n", err ? err : "unknown");
-        sr_free_string(err);
+        sr_string_free(err);
         sr_surreal_disconnect(db);
-        return TEST_SKIP;
+        return API_TEST_SKIP;
     }
     
     /* Token should be returned */
     ASSERT_NOT_NULL(token);
     
-    sr_free_string(token);
+    sr_string_free(token);
     sr_surreal_disconnect(db);
-    return TEST_PASS;
+    return API_TEST_PASS;
 }
 
 int test_sr_invalidate(void) {
@@ -259,7 +283,7 @@ int test_sr_invalidate(void) {
     ASSERT_GE(res, 0);
     
     sr_surreal_disconnect(db);
-    return TEST_PASS;
+    return API_TEST_PASS;
 }
 
 /* ============================================================================
@@ -268,43 +292,49 @@ int test_sr_invalidate(void) {
 
 int test_sr_create(void) {
     sr_surreal_t *db;
-    if (setup_db(&db) != TEST_PASS) return TEST_FAIL;
+    if (setup_db(&db) != API_TEST_PASS) return API_TEST_FAIL;
     
     sr_string_t err;
-    sr_object_t *result;
+    sr_object_t result;
     sr_object_t content = sr_object_new();
     sr_object_insert_str(&content, "name", "test_item");
     
     int res = sr_create(db, &err, &result, "items", &content);
     ASSERT_GE(res, 0);
     
-    sr_free_object(content);
-    /* Note: result is returned via pointer from Rust - do not free with sr_free_object */
+    sr_object_free(content);
+    /* The created record is written by value and owned by the caller. */
+    sr_object_free(result);
     sr_surreal_disconnect(db);
-    return TEST_PASS;
+    return API_TEST_PASS;
 }
 
 int test_sr_select(void) {
     sr_surreal_t *db;
-    if (setup_db(&db) != TEST_PASS) return TEST_FAIL;
+    if (setup_db(&db) != API_TEST_PASS) return API_TEST_FAIL;
     
     sr_string_t err;
     sr_value_t *results;
     
+    if (seed_table(db, "CREATE items:1 SET name = 'a'") != API_TEST_PASS) {
+        sr_surreal_disconnect(db);
+        return API_TEST_FAIL;
+    }
+
     int len = sr_select(db, &err, &results, "items");
     ASSERT_GE(len, 0);
     
     if (len > 0) {
-        sr_free_arr(results, len);
+        sr_values_free(results, len);
     }
     
     sr_surreal_disconnect(db);
-    return TEST_PASS;
+    return API_TEST_PASS;
 }
 
 int test_sr_insert(void) {
     sr_surreal_t *db;
-    if (setup_db(&db) != TEST_PASS) return TEST_FAIL;
+    if (setup_db(&db) != API_TEST_PASS) return API_TEST_FAIL;
     
     sr_string_t err;
     sr_value_t *results;
@@ -314,23 +344,23 @@ int test_sr_insert(void) {
     int len = sr_insert(db, &err, &results, "items", &content);
     ASSERT_GE(len, 0);
     
-    sr_free_object(content);
+    sr_object_free(content);
     if (len > 0) {
-        sr_free_arr(results, len);
+        sr_values_free(results, len);
     }
     
     sr_surreal_disconnect(db);
-    return TEST_PASS;
+    return API_TEST_PASS;
 }
 
 int test_sr_insert_relation(void) {
     /* Skip: insert_relation requires specific record ID format for in/out fields */
-    return TEST_SKIP;
+    return API_TEST_SKIP;
 }
 
 int test_sr_update(void) {
     sr_surreal_t *db;
-    if (setup_db(&db) != TEST_PASS) return TEST_FAIL;
+    if (setup_db(&db) != API_TEST_PASS) return API_TEST_FAIL;
     
     sr_string_t err;
     sr_value_t *results;
@@ -338,10 +368,8 @@ int test_sr_update(void) {
     /* First create a record */
     sr_object_t create_content = sr_object_new();
     sr_object_insert_str(&create_content, "name", "original");
-    sr_object_t *created;
-    sr_create(db, &err, &created, "items:1", &create_content);
-    sr_free_object(create_content);
-    /* Note: created is returned via pointer from Rust - do not free with sr_free_object */
+    sr_create(db, &err, NULL, "items:1", &create_content);
+    sr_object_free(create_content);
     
     /* Update it */
     sr_object_t update_content = sr_object_new();
@@ -350,18 +378,18 @@ int test_sr_update(void) {
     int len = sr_update(db, &err, &results, "items:1", &update_content);
     ASSERT_GE(len, 0);
     
-    sr_free_object(update_content);
+    sr_object_free(update_content);
     if (len > 0) {
-        sr_free_arr(results, len);
+        sr_values_free(results, len);
     }
     
     sr_surreal_disconnect(db);
-    return TEST_PASS;
+    return API_TEST_PASS;
 }
 
 int test_sr_upsert(void) {
     sr_surreal_t *db;
-    if (setup_db(&db) != TEST_PASS) return TEST_FAIL;
+    if (setup_db(&db) != API_TEST_PASS) return API_TEST_FAIL;
     
     sr_string_t err;
     sr_value_t *results;
@@ -371,18 +399,18 @@ int test_sr_upsert(void) {
     int len = sr_upsert(db, &err, &results, "items:upsert1", &content);
     ASSERT_GE(len, 0);
     
-    sr_free_object(content);
+    sr_object_free(content);
     if (len > 0) {
-        sr_free_arr(results, len);
+        sr_values_free(results, len);
     }
     
     sr_surreal_disconnect(db);
-    return TEST_PASS;
+    return API_TEST_PASS;
 }
 
 int test_sr_delete(void) {
     sr_surreal_t *db;
-    if (setup_db(&db) != TEST_PASS) return TEST_FAIL;
+    if (setup_db(&db) != API_TEST_PASS) return API_TEST_FAIL;
     
     sr_string_t err;
     sr_value_t *results;
@@ -390,26 +418,24 @@ int test_sr_delete(void) {
     /* First create a record */
     sr_object_t content = sr_object_new();
     sr_object_insert_str(&content, "name", "to_delete");
-    sr_object_t *created;
-    sr_create(db, &err, &created, "items:delete1", &content);
-    sr_free_object(content);
-    /* Note: created is returned via pointer from Rust - do not free with sr_free_object */
+    sr_create(db, &err, NULL, "items:delete1", &content);
+    sr_object_free(content);
     
     /* Delete it */
     int len = sr_delete(db, &err, &results, "items:delete1");
     ASSERT_GE(len, 0);
     
     if (len > 0) {
-        sr_free_arr(results, len);
+        sr_values_free(results, len);
     }
     
     sr_surreal_disconnect(db);
-    return TEST_PASS;
+    return API_TEST_PASS;
 }
 
 int test_sr_merge(void) {
     sr_surreal_t *db;
-    if (setup_db(&db) != TEST_PASS) return TEST_FAIL;
+    if (setup_db(&db) != API_TEST_PASS) return API_TEST_FAIL;
     
     sr_string_t err;
     sr_value_t *results;
@@ -418,10 +444,8 @@ int test_sr_merge(void) {
     sr_object_t create_content = sr_object_new();
     sr_object_insert_str(&create_content, "name", "original");
     sr_object_insert_int(&create_content, "count", 1);
-    sr_object_t *created;
-    sr_create(db, &err, &created, "items:merge1", &create_content);
-    sr_free_object(create_content);
-    /* Note: created is returned via pointer from Rust - do not free with sr_free_object */
+    sr_create(db, &err, NULL, "items:merge1", &create_content);
+    sr_object_free(create_content);
     
     /* Merge new data */
     sr_object_t merge_content = sr_object_new();
@@ -430,13 +454,13 @@ int test_sr_merge(void) {
     int len = sr_merge(db, &err, &results, "items:merge1", &merge_content);
     ASSERT_GE(len, 0);
     
-    sr_free_object(merge_content);
+    sr_object_free(merge_content);
     if (len > 0) {
-        sr_free_arr(results, len);
+        sr_values_free(results, len);
     }
     
     sr_surreal_disconnect(db);
-    return TEST_PASS;
+    return API_TEST_PASS;
 }
 
 /* ============================================================================
@@ -445,7 +469,7 @@ int test_sr_merge(void) {
 
 int test_sr_query(void) {
     sr_surreal_t *db;
-    if (setup_db(&db) != TEST_PASS) return TEST_FAIL;
+    if (setup_db(&db) != API_TEST_PASS) return API_TEST_FAIL;
     
     sr_string_t err;
     sr_arr_res_t *results;
@@ -454,21 +478,21 @@ int test_sr_query(void) {
     ASSERT_GE(len, 0);
     
     if (len > 0) {
-        sr_free_arr_res_arr(results, len);
+        sr_arr_res_arr_free(results, len);
     }
     
     sr_surreal_disconnect(db);
-    return TEST_PASS;
+    return API_TEST_PASS;
 }
 
 int test_sr_run(void) {
     /* Skip: sr_run may require specific function registration */
-    return TEST_SKIP;
+    return API_TEST_SKIP;
 }
 
 int test_sr_relate(void) {
     sr_surreal_t *db;
-    if (setup_db(&db) != TEST_PASS) return TEST_FAIL;
+    if (setup_db(&db) != API_TEST_PASS) return API_TEST_FAIL;
     
     sr_string_t err;
     sr_value_t *results;
@@ -476,28 +500,24 @@ int test_sr_relate(void) {
     /* First create two records */
     sr_object_t p1 = sr_object_new();
     sr_object_insert_str(&p1, "name", "John");
-    sr_object_t *p1_res;
-    sr_create(db, &err, &p1_res, "person:john", &p1);
-    sr_free_object(p1);
-    /* Note: p1_res is returned via pointer from Rust - do not free with sr_free_object */
+    sr_create(db, &err, NULL, "person:john", &p1);
+    sr_object_free(p1);
     
     sr_object_t p2 = sr_object_new();
     sr_object_insert_str(&p2, "name", "Jane");
-    sr_object_t *p2_res;
-    sr_create(db, &err, &p2_res, "person:jane", &p2);
-    sr_free_object(p2);
-    /* Note: p2_res is returned via pointer from Rust - do not free with sr_free_object */
+    sr_create(db, &err, NULL, "person:jane", &p2);
+    sr_object_free(p2);
     
     /* Create relation */
     int len = sr_relate(db, &err, &results, "person:john", "knows", "person:jane", NULL);
     ASSERT_GE(len, 0);
     
     if (len > 0) {
-        sr_free_arr(results, len);
+        sr_values_free(results, len);
     }
     
     sr_surreal_disconnect(db);
-    return TEST_PASS;
+    return API_TEST_PASS;
 }
 
 /* ============================================================================
@@ -506,7 +526,7 @@ int test_sr_relate(void) {
 
 int test_sr_patch_add(void) {
     sr_surreal_t *db;
-    if (setup_db(&db) != TEST_PASS) return TEST_FAIL;
+    if (setup_db(&db) != API_TEST_PASS) return API_TEST_FAIL;
     
     sr_string_t err;
     sr_value_t *results;
@@ -514,10 +534,8 @@ int test_sr_patch_add(void) {
     /* First create a record */
     sr_object_t content = sr_object_new();
     sr_object_insert_str(&content, "name", "test");
-    sr_object_t *created;
-    sr_create(db, &err, &created, "items:patch1", &content);
-    sr_free_object(content);
-    /* Note: created is returned via pointer from Rust - do not free with sr_free_object */
+    sr_create(db, &err, NULL, "items:patch1", &content);
+    sr_object_free(content);
     
     /* Patch add */
     sr_value_t *value = sr_value_string("new_value");
@@ -526,16 +544,16 @@ int test_sr_patch_add(void) {
     
     sr_value_free(value);
     if (len > 0) {
-        sr_free_arr(results, len);
+        sr_values_free(results, len);
     }
     
     sr_surreal_disconnect(db);
-    return TEST_PASS;
+    return API_TEST_PASS;
 }
 
 int test_sr_patch_remove(void) {
     sr_surreal_t *db;
-    if (setup_db(&db) != TEST_PASS) return TEST_FAIL;
+    if (setup_db(&db) != API_TEST_PASS) return API_TEST_FAIL;
     
     sr_string_t err;
     sr_value_t *results;
@@ -544,26 +562,24 @@ int test_sr_patch_remove(void) {
     sr_object_t content = sr_object_new();
     sr_object_insert_str(&content, "name", "test");
     sr_object_insert_str(&content, "to_remove", "value");
-    sr_object_t *created;
-    sr_create(db, &err, &created, "items:patch2", &content);
-    sr_free_object(content);
-    /* Note: created is returned via pointer from Rust - do not free with sr_free_object */
+    sr_create(db, &err, NULL, "items:patch2", &content);
+    sr_object_free(content);
     
     /* Patch remove */
     int len = sr_patch_remove(db, &err, &results, "items:patch2", "/to_remove");
     ASSERT_GE(len, 0);
     
     if (len > 0) {
-        sr_free_arr(results, len);
+        sr_values_free(results, len);
     }
     
     sr_surreal_disconnect(db);
-    return TEST_PASS;
+    return API_TEST_PASS;
 }
 
 int test_sr_patch_replace(void) {
     sr_surreal_t *db;
-    if (setup_db(&db) != TEST_PASS) return TEST_FAIL;
+    if (setup_db(&db) != API_TEST_PASS) return API_TEST_FAIL;
     
     sr_string_t err;
     sr_value_t *results;
@@ -571,10 +587,8 @@ int test_sr_patch_replace(void) {
     /* First create a record */
     sr_object_t content = sr_object_new();
     sr_object_insert_str(&content, "name", "original");
-    sr_object_t *created;
-    sr_create(db, &err, &created, "items:patch3", &content);
-    sr_free_object(content);
-    /* Note: created is returned via pointer from Rust - do not free with sr_free_object */
+    sr_create(db, &err, NULL, "items:patch3", &content);
+    sr_object_free(content);
     
     /* Patch replace */
     sr_value_t *value = sr_value_string("replaced");
@@ -583,11 +597,11 @@ int test_sr_patch_replace(void) {
     
     sr_value_free(value);
     if (len > 0) {
-        sr_free_arr(results, len);
+        sr_values_free(results, len);
     }
     
     sr_surreal_disconnect(db);
-    return TEST_PASS;
+    return API_TEST_PASS;
 }
 
 /* ============================================================================
@@ -596,7 +610,7 @@ int test_sr_patch_replace(void) {
 
 int test_sr_begin(void) {
     sr_surreal_t *db;
-    if (setup_db(&db) != TEST_PASS) return TEST_FAIL;
+    if (setup_db(&db) != API_TEST_PASS) return API_TEST_FAIL;
     
     sr_string_t err;
     int res = sr_begin(db, &err);
@@ -606,12 +620,12 @@ int test_sr_begin(void) {
     sr_cancel(db, &err);
     
     sr_surreal_disconnect(db);
-    return TEST_PASS;
+    return API_TEST_PASS;
 }
 
 int test_sr_commit(void) {
     sr_surreal_t *db;
-    if (setup_db(&db) != TEST_PASS) return TEST_FAIL;
+    if (setup_db(&db) != API_TEST_PASS) return API_TEST_FAIL;
     
     sr_string_t err;
     sr_begin(db, &err);
@@ -620,12 +634,12 @@ int test_sr_commit(void) {
     ASSERT_GE(res, 0);
     
     sr_surreal_disconnect(db);
-    return TEST_PASS;
+    return API_TEST_PASS;
 }
 
 int test_sr_cancel(void) {
     sr_surreal_t *db;
-    if (setup_db(&db) != TEST_PASS) return TEST_FAIL;
+    if (setup_db(&db) != API_TEST_PASS) return API_TEST_FAIL;
     
     sr_string_t err;
     sr_begin(db, &err);
@@ -634,7 +648,7 @@ int test_sr_cancel(void) {
     ASSERT_GE(res, 0);
     
     sr_surreal_disconnect(db);
-    return TEST_PASS;
+    return API_TEST_PASS;
 }
 
 /* ============================================================================
@@ -643,7 +657,7 @@ int test_sr_cancel(void) {
 
 int test_sr_set(void) {
     sr_surreal_t *db;
-    if (setup_db(&db) != TEST_PASS) return TEST_FAIL;
+    if (setup_db(&db) != API_TEST_PASS) return API_TEST_FAIL;
     
     sr_string_t err;
     sr_value_t *value = sr_value_int(42);
@@ -653,12 +667,12 @@ int test_sr_set(void) {
     
     sr_value_free(value);
     sr_surreal_disconnect(db);
-    return TEST_PASS;
+    return API_TEST_PASS;
 }
 
 int test_sr_unset(void) {
     sr_surreal_t *db;
-    if (setup_db(&db) != TEST_PASS) return TEST_FAIL;
+    if (setup_db(&db) != API_TEST_PASS) return API_TEST_FAIL;
     
     sr_string_t err;
     sr_value_t *value = sr_value_int(42);
@@ -669,7 +683,7 @@ int test_sr_unset(void) {
     ASSERT_GE(res, 0);
     
     sr_surreal_disconnect(db);
-    return TEST_PASS;
+    return API_TEST_PASS;
 }
 
 /* ============================================================================
@@ -678,18 +692,23 @@ int test_sr_unset(void) {
 
 int test_sr_select_live(void) {
     sr_surreal_t *db;
-    if (setup_db(&db) != TEST_PASS) return TEST_FAIL;
+    if (setup_db(&db) != API_TEST_PASS) return API_TEST_FAIL;
     
     sr_string_t err;
     sr_stream_t *stream;
     
+    if (seed_table(db, "CREATE items:1 SET name = 'a'") != API_TEST_PASS) {
+        sr_surreal_disconnect(db);
+        return API_TEST_FAIL;
+    }
+
     int res = sr_select_live(db, &err, &stream, "items");
     ASSERT_GE(res, 0);
     ASSERT_NOT_NULL(stream);
     
     sr_stream_kill(stream);
     sr_surreal_disconnect(db);
-    return TEST_PASS;
+    return API_TEST_PASS;
 }
 
 /* ============================================================================
@@ -698,12 +717,12 @@ int test_sr_select_live(void) {
 
 int test_sr_export(void) {
     /* Skip: requires file system access */
-    return TEST_SKIP;
+    return API_TEST_SKIP;
 }
 
 int test_sr_import(void) {
     /* Skip: requires file system access */
-    return TEST_SKIP;
+    return API_TEST_SKIP;
 }
 
 /* ============================================================================
@@ -715,7 +734,7 @@ int test_sr_value_none(void) {
     ASSERT_NOT_NULL(val);
     ASSERT_EQ(val->tag, SR_VALUE_NONE);
     sr_value_free(val);
-    return TEST_PASS;
+    return API_TEST_PASS;
 }
 
 int test_sr_value_null(void) {
@@ -723,7 +742,7 @@ int test_sr_value_null(void) {
     ASSERT_NOT_NULL(val);
     ASSERT_EQ(val->tag, SR_VALUE_NULL);
     sr_value_free(val);
-    return TEST_PASS;
+    return API_TEST_PASS;
 }
 
 int test_sr_value_bool(void) {
@@ -738,7 +757,7 @@ int test_sr_value_bool(void) {
     ASSERT_FALSE(val_false->sr_value_bool);
     sr_value_free(val_false);
     
-    return TEST_PASS;
+    return API_TEST_PASS;
 }
 
 int test_sr_value_int(void) {
@@ -748,7 +767,7 @@ int test_sr_value_int(void) {
     ASSERT_EQ(val->sr_value_number.tag, SR_NUMBER_INT);
     ASSERT_EQ(val->sr_value_number.sr_number_int, 12345);
     sr_value_free(val);
-    return TEST_PASS;
+    return API_TEST_PASS;
 }
 
 int test_sr_value_float(void) {
@@ -757,7 +776,7 @@ int test_sr_value_float(void) {
     ASSERT_EQ(val->tag, SR_VALUE_NUMBER);
     ASSERT_EQ(val->sr_value_number.tag, SR_NUMBER_FLOAT);
     sr_value_free(val);
-    return TEST_PASS;
+    return API_TEST_PASS;
 }
 
 int test_sr_value_string(void) {
@@ -766,7 +785,7 @@ int test_sr_value_string(void) {
     ASSERT_EQ(val->tag, SR_VALUE_STRAND);
     ASSERT_NOT_NULL(val->sr_value_strand);
     sr_value_free(val);
-    return TEST_PASS;
+    return API_TEST_PASS;
 }
 
 int test_sr_value_object(void) {
@@ -778,8 +797,8 @@ int test_sr_value_object(void) {
     ASSERT_EQ(val->tag, SR_VALUE_OBJECT);
     
     sr_value_free(val);
-    sr_free_object(obj);
-    return TEST_PASS;
+    sr_object_free(obj);
+    return API_TEST_PASS;
 }
 
 int test_sr_value_free(void) {
@@ -787,7 +806,7 @@ int test_sr_value_free(void) {
     ASSERT_NOT_NULL(val);
     sr_value_free(val);
     /* If we get here without crashing, test passes */
-    return TEST_PASS;
+    return API_TEST_PASS;
 }
 
 int test_sr_value_duration(void) {
@@ -797,7 +816,7 @@ int test_sr_value_duration(void) {
     ASSERT_EQ(val->sr_value_duration.secs, 3600);
     ASSERT_EQ(val->sr_value_duration.nanos, 500000000);
     sr_value_free(val);
-    return TEST_PASS;
+    return API_TEST_PASS;
 }
 
 int test_sr_value_datetime(void) {
@@ -806,7 +825,7 @@ int test_sr_value_datetime(void) {
     ASSERT_EQ(val->tag, SR_VALUE_DATETIME);
     ASSERT_NOT_NULL(val->sr_value_datetime);
     sr_value_free(val);
-    return TEST_PASS;
+    return API_TEST_PASS;
 }
 
 int test_sr_value_uuid(void) {
@@ -818,15 +837,15 @@ int test_sr_value_uuid(void) {
     ASSERT_EQ(val->sr_value_uuid._0[0], 0x12);
     ASSERT_EQ(val->sr_value_uuid._0[15], 0xf0);
     sr_value_free(val);
-    return TEST_PASS;
+    return API_TEST_PASS;
 }
 
 int test_sr_value_array(void) {
-    sr_value_t *val = sr_value_array();
+    sr_value_t *val = sr_value_array(NULL);
     ASSERT_NOT_NULL(val);
     ASSERT_EQ(val->tag, SR_VALUE_ARRAY);
     sr_value_free(val);
-    return TEST_PASS;
+    return API_TEST_PASS;
 }
 
 int test_sr_value_bytes(void) {
@@ -836,7 +855,7 @@ int test_sr_value_bytes(void) {
     ASSERT_EQ(val->tag, SR_VALUE_BYTES);
     ASSERT_EQ(val->sr_value_bytes.len, 5);
     sr_value_free(val);
-    return TEST_PASS;
+    return API_TEST_PASS;
 }
 
 int test_sr_value_thing(void) {
@@ -844,23 +863,23 @@ int test_sr_value_thing(void) {
     ASSERT_NOT_NULL(val);
     ASSERT_EQ(val->tag, SR_VALUE_THING);
     sr_value_free(val);
-    return TEST_PASS;
+    return API_TEST_PASS;
 }
 
 int test_sr_value_point(void) {
     sr_value_t *val = sr_value_point(10.5, 20.3);
     ASSERT_NOT_NULL(val);
     ASSERT_EQ(val->tag, SR_GEOMETRY_OBJECT);
-    ASSERT_EQ(val->sr_geometry_object.tag, sr_g_point);
+    ASSERT_EQ(val->sr_geometry_object.tag, SR_GEOMETRY_POINT);
     /* Verify coordinates */
-    ASSERT_EQ(val->sr_geometry_object.sr_g_point._0.x, 10.5);
-    ASSERT_EQ(val->sr_geometry_object.sr_g_point._0.y, 20.3);
+    ASSERT_EQ(val->sr_geometry_object.sr_geometry_point._0.x, 10.5);
+    ASSERT_EQ(val->sr_geometry_object.sr_geometry_point._0.y, 20.3);
     sr_value_free(val);
-    return TEST_PASS;
+    return API_TEST_PASS;
 }
 
 int test_sr_value_linestring(void) {
-    sr_sr_g_coord coords[] = {
+    sr_g_coord coords[] = {
         {0.0, 0.0},
         {10.0, 10.0},
         {20.0, 0.0}
@@ -868,16 +887,16 @@ int test_sr_value_linestring(void) {
     sr_value_t *val = sr_value_linestring(coords, 3);
     ASSERT_NOT_NULL(val);
     ASSERT_EQ(val->tag, SR_GEOMETRY_OBJECT);
-    ASSERT_EQ(val->sr_geometry_object.tag, sr_g_linestring);
+    ASSERT_EQ(val->sr_geometry_object.tag, SR_GEOMETRY_LINESTRING);
     /* Verify length */
-    ASSERT_EQ(val->sr_geometry_object.sr_g_linestring._0.len, 3);
+    ASSERT_EQ(val->sr_geometry_object.sr_geometry_linestring._0.len, 3);
     sr_value_free(val);
-    return TEST_PASS;
+    return API_TEST_PASS;
 }
 
 int test_sr_value_polygon(void) {
     /* Simple square polygon */
-    sr_sr_g_coord coords[] = {
+    sr_g_coord coords[] = {
         {0.0, 0.0},
         {10.0, 0.0},
         {10.0, 10.0},
@@ -887,15 +906,15 @@ int test_sr_value_polygon(void) {
     sr_value_t *val = sr_value_polygon(coords, 5);
     ASSERT_NOT_NULL(val);
     ASSERT_EQ(val->tag, SR_GEOMETRY_OBJECT);
-    ASSERT_EQ(val->sr_geometry_object.tag, sr_g_polygon);
+    ASSERT_EQ(val->sr_geometry_object.tag, SR_GEOMETRY_POLYGON);
     /* Verify exterior ring has 5 coordinates */
-    ASSERT_EQ(val->sr_geometry_object.sr_g_polygon._0._0.len, 5);
+    ASSERT_EQ(val->sr_geometry_object.sr_geometry_polygon._0._0.len, 5);
     sr_value_free(val);
-    return TEST_PASS;
+    return API_TEST_PASS;
 }
 
 int test_sr_value_multipoint(void) {
-    sr_sr_g_coord coords[] = {
+    sr_g_coord coords[] = {
         {1.0, 2.0},
         {3.0, 4.0},
         {5.0, 6.0}
@@ -903,11 +922,11 @@ int test_sr_value_multipoint(void) {
     sr_value_t *val = sr_value_multipoint(coords, 3);
     ASSERT_NOT_NULL(val);
     ASSERT_EQ(val->tag, SR_GEOMETRY_OBJECT);
-    ASSERT_EQ(val->sr_geometry_object.tag, sr_g_multipoint);
+    ASSERT_EQ(val->sr_geometry_object.tag, SR_GEOMETRY_MULTIPOINT);
     /* Verify 3 points */
-    ASSERT_EQ(val->sr_geometry_object.sr_g_multipoint._0.len, 3);
+    ASSERT_EQ(val->sr_geometry_object.sr_geometry_multipoint._0.len, 3);
     sr_value_free(val);
-    return TEST_PASS;
+    return API_TEST_PASS;
 }
 
 /* ============================================================================
@@ -917,8 +936,8 @@ int test_sr_value_multipoint(void) {
 int test_sr_object_new(void) {
     sr_object_t obj = sr_object_new();
     /* Object should be created without crashing */
-    sr_free_object(obj);
-    return TEST_PASS;
+    sr_object_free(obj);
+    return API_TEST_PASS;
 }
 
 int test_sr_object_get(void) {
@@ -929,8 +948,8 @@ int test_sr_object_get(void) {
     ASSERT_NOT_NULL(val);
     ASSERT_EQ(val->tag, SR_VALUE_STRAND);
     
-    sr_free_object(obj);
-    return TEST_PASS;
+    sr_object_free(obj);
+    return API_TEST_PASS;
 }
 
 int test_sr_object_insert(void) {
@@ -944,8 +963,8 @@ int test_sr_object_insert(void) {
     ASSERT_EQ(retrieved->tag, SR_VALUE_NUMBER);
     
     sr_value_free(val);
-    sr_free_object(obj);
-    return TEST_PASS;
+    sr_object_free(obj);
+    return API_TEST_PASS;
 }
 
 int test_sr_object_insert_str(void) {
@@ -956,8 +975,8 @@ int test_sr_object_insert_str(void) {
     ASSERT_NOT_NULL(val);
     ASSERT_EQ(val->tag, SR_VALUE_STRAND);
     
-    sr_free_object(obj);
-    return TEST_PASS;
+    sr_object_free(obj);
+    return API_TEST_PASS;
 }
 
 int test_sr_object_insert_int(void) {
@@ -968,8 +987,8 @@ int test_sr_object_insert_int(void) {
     ASSERT_NOT_NULL(val);
     ASSERT_EQ(val->tag, SR_VALUE_NUMBER);
     
-    sr_free_object(obj);
-    return TEST_PASS;
+    sr_object_free(obj);
+    return API_TEST_PASS;
 }
 
 int test_sr_object_insert_float(void) {
@@ -980,8 +999,8 @@ int test_sr_object_insert_float(void) {
     ASSERT_NOT_NULL(val);
     ASSERT_EQ(val->tag, SR_VALUE_NUMBER);
     
-    sr_free_object(obj);
-    return TEST_PASS;
+    sr_object_free(obj);
+    return API_TEST_PASS;
 }
 
 int test_sr_object_insert_double(void) {
@@ -992,38 +1011,48 @@ int test_sr_object_insert_double(void) {
     ASSERT_NOT_NULL(val);
     ASSERT_EQ(val->tag, SR_VALUE_NUMBER);
     
-    sr_free_object(obj);
-    return TEST_PASS;
+    sr_object_free(obj);
+    return API_TEST_PASS;
 }
 
-int test_sr_free_object(void) {
+int test_sr_object_free(void) {
     sr_object_t obj = sr_object_new();
     sr_object_insert_str(&obj, "key", "value");
-    sr_free_object(obj);
+    sr_object_free(obj);
     /* If we get here without crashing, test passes */
-    return TEST_PASS;
+    return API_TEST_PASS;
 }
 
 /* ============================================================================
  * Array Tests
  * ============================================================================ */
 
-int test_sr_free_arr(void) {
+int test_sr_values_free(void) {
     sr_surreal_t *db;
-    if (setup_db(&db) != TEST_PASS) return TEST_FAIL;
+    if (setup_db(&db) != API_TEST_PASS) return API_TEST_FAIL;
     
     sr_string_t err;
     sr_value_t *results;
     
-    int len = sr_select(db, &err, &results, "nonexistent_table");
-    ASSERT_GE(len, 0);
-    
-    if (len > 0) {
-        sr_free_arr(results, len);
+    /*
+     * Seeded so the select returns rows and sr_values_free is actually reached.
+     * This previously selected a table that did not exist, so the free under
+     * test never ran even when the test reported a pass.
+     */
+    if (seed_table(db, "CREATE freeable:1 SET n = 1; CREATE freeable:2 SET n = 2")
+        != API_TEST_PASS) {
+        sr_surreal_disconnect(db);
+        return API_TEST_FAIL;
     }
+
+    int len = sr_select(db, &err, &results, "freeable");
+    ASSERT_GE(len, 0);
+    ASSERT_TRUE(len > 0);
+
+    sr_values_free(results, len);
     
     sr_surreal_disconnect(db);
-    return TEST_PASS;
+    return API_TEST_PASS;
 }
 
 /* ============================================================================
@@ -1039,18 +1068,18 @@ int test_sr_surreal_rpc_new(void) {
     ASSERT_GE(res, 0);
     ASSERT_NOT_NULL(rpc);
     
-    sr_surreal_rpc_free(rpc);
-    return TEST_PASS;
+    sr_surreal_rpc_disconnect(rpc);
+    return API_TEST_PASS;
 }
 
 int test_sr_surreal_rpc_execute(void) {
     /* Skip: requires CBOR encoding setup */
-    return TEST_SKIP;
+    return API_TEST_SKIP;
 }
 
 int test_sr_surreal_rpc_notifications(void) {
     /* Skip: requires RPC setup */
-    return TEST_SKIP;
+    return API_TEST_SKIP;
 }
 
 int test_sr_surreal_rpc_free(void) {
@@ -1059,9 +1088,9 @@ int test_sr_surreal_rpc_free(void) {
     sr_option_t opts = {0};
     
     sr_surreal_rpc_new(&err, &rpc, "memory", opts);
-    sr_surreal_rpc_free(rpc);
+    sr_surreal_rpc_disconnect(rpc);
     /* If we get here without crashing, test passes */
-    return TEST_PASS;
+    return API_TEST_PASS;
 }
 
 /* ============================================================================
@@ -1070,29 +1099,29 @@ int test_sr_surreal_rpc_free(void) {
 
 int test_sr_stream_next(void) {
     /* Tested as part of select_live */
-    return TEST_SKIP;
+    return API_TEST_SKIP;
 }
 
 int test_sr_stream_kill(void) {
     /* Tested as part of select_live */
-    return TEST_SKIP;
+    return API_TEST_SKIP;
 }
 
 int test_sr_rpc_stream_next(void) {
     /* Skip: requires RPC stream setup */
-    return TEST_SKIP;
+    return API_TEST_SKIP;
 }
 
 int test_sr_rpc_stream_free(void) {
     /* Skip: requires RPC stream setup */
-    return TEST_SKIP;
+    return API_TEST_SKIP;
 }
 
 /* ============================================================================
  * Utility Tests
  * ============================================================================ */
 
-int test_sr_free_string(void) {
+int test_sr_string_free(void) {
     sr_surreal_t *db;
     sr_string_t err;
     sr_string_t ver;
@@ -1100,11 +1129,11 @@ int test_sr_free_string(void) {
     sr_connect(&err, &db, "mem://");
     sr_version(db, &err, &ver);
     
-    sr_free_string(ver);
+    sr_string_free(ver);
     /* If we get here without crashing, test passes */
     
     sr_surreal_disconnect(db);
-    return TEST_PASS;
+    return API_TEST_PASS;
 }
 
 int test_sr_value_print(void) {
@@ -1112,7 +1141,7 @@ int test_sr_value_print(void) {
     sr_value_print(val);
     sr_value_free(val);
     /* If we get here without crashing, test passes */
-    return TEST_PASS;
+    return API_TEST_PASS;
 }
 
 int test_sr_value_eq(void) {
@@ -1126,12 +1155,12 @@ int test_sr_value_eq(void) {
     sr_value_free(a);
     sr_value_free(b);
     sr_value_free(c);
-    return TEST_PASS;
+    return API_TEST_PASS;
 }
 
 int test_sr_print_notification(void) {
     /* Skip: requires actual notification */
-    return TEST_SKIP;
+    return API_TEST_SKIP;
 }
 
 /* ============================================================================
@@ -1140,36 +1169,36 @@ int test_sr_print_notification(void) {
 
 int test_sr_value_multilinestring(void) {
     /* Create two linestrings */
-    sr_sr_g_coord line1[] = {{0.0, 0.0}, {10.0, 10.0}};
-    sr_sr_g_coord line2[] = {{20.0, 20.0}, {30.0, 30.0}, {40.0, 20.0}};
+    sr_g_coord line1[] = {{0.0, 0.0}, {10.0, 10.0}};
+    sr_g_coord line2[] = {{20.0, 20.0}, {30.0, 30.0}, {40.0, 20.0}};
     
-    const sr_sr_g_coord *lines[] = {line1, line2};
+    const sr_g_coord *lines[] = {line1, line2};
     int lens[] = {2, 3};
     
     sr_value_t *val = sr_value_multilinestring(lines, lens, 2);
     ASSERT_NOT_NULL(val);
     ASSERT_EQ(val->tag, SR_GEOMETRY_OBJECT);
-    ASSERT_EQ(val->sr_geometry_object.tag, sr_g_multiline);
-    ASSERT_EQ(val->sr_geometry_object.sr_g_multiline._0.len, 2);
+    ASSERT_EQ(val->sr_geometry_object.tag, SR_GEOMETRY_MULTILINE);
+    ASSERT_EQ(val->sr_geometry_object.sr_geometry_multiline._0.len, 2);
     sr_value_free(val);
-    return TEST_PASS;
+    return API_TEST_PASS;
 }
 
 int test_sr_value_multipolygon(void) {
     /* Create two simple square polygons */
-    sr_sr_g_coord poly1[] = {{0.0, 0.0}, {10.0, 0.0}, {10.0, 10.0}, {0.0, 10.0}, {0.0, 0.0}};
-    sr_sr_g_coord poly2[] = {{20.0, 20.0}, {30.0, 20.0}, {30.0, 30.0}, {20.0, 30.0}, {20.0, 20.0}};
+    sr_g_coord poly1[] = {{0.0, 0.0}, {10.0, 0.0}, {10.0, 10.0}, {0.0, 10.0}, {0.0, 0.0}};
+    sr_g_coord poly2[] = {{20.0, 20.0}, {30.0, 20.0}, {30.0, 30.0}, {20.0, 30.0}, {20.0, 20.0}};
     
-    const sr_sr_g_coord *polys[] = {poly1, poly2};
+    const sr_g_coord *polys[] = {poly1, poly2};
     int lens[] = {5, 5};
     
     sr_value_t *val = sr_value_multipolygon(polys, lens, 2);
     ASSERT_NOT_NULL(val);
     ASSERT_EQ(val->tag, SR_GEOMETRY_OBJECT);
-    ASSERT_EQ(val->sr_geometry_object.tag, sr_g_multipolygon);
-    ASSERT_EQ(val->sr_geometry_object.sr_g_multipolygon._0.len, 2);
+    ASSERT_EQ(val->sr_geometry_object.tag, SR_GEOMETRY_MULTIPOLYGON);
+    ASSERT_EQ(val->sr_geometry_object.sr_geometry_multipolygon._0.len, 2);
     sr_value_free(val);
-    return TEST_PASS;
+    return API_TEST_PASS;
 }
 
 int test_sr_value_decimal(void) {
@@ -1178,7 +1207,7 @@ int test_sr_value_decimal(void) {
     ASSERT_EQ(val->tag, SR_VALUE_NUMBER);
     ASSERT_EQ(val->sr_value_number.tag, SR_NUMBER_DECIMAL);
     sr_value_free(val);
-    return TEST_PASS;
+    return API_TEST_PASS;
 }
 
 /* ============================================================================
@@ -1187,7 +1216,7 @@ int test_sr_value_decimal(void) {
 
 int test_sr_array_len(void) {
     sr_surreal_t *db;
-    if (setup_db(&db) != TEST_PASS) return TEST_FAIL;
+    if (setup_db(&db) != API_TEST_PASS) return API_TEST_FAIL;
     
     sr_string_t err;
     sr_arr_res_t *results;
@@ -1199,16 +1228,16 @@ int test_sr_array_len(void) {
     if (res > 0 && results[0].ok.arr != NULL) {
         int len = sr_array_len(&results[0].ok);
         ASSERT_EQ(len, 3);
-        sr_free_arr_res_arr(results, res);
+        sr_arr_res_arr_free(results, res);
     }
     
     sr_surreal_disconnect(db);
-    return TEST_PASS;
+    return API_TEST_PASS;
 }
 
 int test_sr_array_get(void) {
     sr_surreal_t *db;
-    if (setup_db(&db) != TEST_PASS) return TEST_FAIL;
+    if (setup_db(&db) != API_TEST_PASS) return API_TEST_FAIL;
     
     sr_string_t err;
     sr_arr_res_t *results;
@@ -1226,15 +1255,15 @@ int test_sr_array_get(void) {
         const sr_value_t *oob = sr_array_get(&results[0].ok, 100);
         ASSERT_TRUE(oob == NULL);
         
-        sr_free_arr_res_arr(results, res);
+        sr_arr_res_arr_free(results, res);
     }
     
     sr_surreal_disconnect(db);
-    return TEST_PASS;
+    return API_TEST_PASS;
 }
 
 int test_sr_array_push(void) {
-    sr_value_t *arr_val = sr_value_array();
+    sr_value_t *arr_val = sr_value_array(NULL);
     ASSERT_NOT_NULL(arr_val);
     ASSERT_EQ(arr_val->tag, SR_VALUE_ARRAY);
     
@@ -1252,7 +1281,7 @@ int test_sr_array_push(void) {
     sr_array_free(new_arr);
     sr_value_free(int_val);
     sr_value_free(arr_val);
-    return TEST_PASS;
+    return API_TEST_PASS;
 }
 
 /* ============================================================================
@@ -1269,8 +1298,8 @@ int test_sr_object_len(void) {
     sr_object_insert_int(&obj, "key2", 42);
     ASSERT_EQ(sr_object_len(&obj), 2);
     
-    sr_free_object(obj);
-    return TEST_PASS;
+    sr_object_free(obj);
+    return API_TEST_PASS;
 }
 
 int test_sr_object_keys(void) {
@@ -1289,9 +1318,9 @@ int test_sr_object_keys(void) {
     ASSERT_TRUE(strcmp(keys[1], "beta") == 0);
     ASSERT_TRUE(strcmp(keys[2], "gamma") == 0);
     
-    sr_free_string_arr(keys, len);
-    sr_free_object(obj);
-    return TEST_PASS;
+    sr_string_arr_free(keys, len);
+    sr_object_free(obj);
+    return API_TEST_PASS;
 }
 
 /* ============================================================================
@@ -1300,13 +1329,15 @@ int test_sr_object_keys(void) {
 
 int test_sr_kill(void) {
     sr_surreal_t *db;
-    if (setup_db(&db) != TEST_PASS) return TEST_FAIL;
+    if (setup_db(&db) != API_TEST_PASS) return API_TEST_FAIL;
     
     sr_string_t err;
     
     /* Create a table first */
-    sr_arr_res_t *res;
-    sr_query(db, &err, &res, "CREATE test_kill SET value = 1", NULL);
+    sr_arr_res_t *res = NULL;
+    int seeded = sr_query(db, &err, &res, "CREATE test_kill SET value = 1", NULL);
+    if (seeded < 0) { if (err) sr_string_free(err); }
+    else sr_arr_res_arr_free(res, seeded);
     
     /* Start a live query */
     sr_stream_t *stream;
@@ -1314,17 +1345,17 @@ int test_sr_kill(void) {
     if (result < 0) {
         /* Live queries may not be supported in all modes */
         sr_surreal_disconnect(db);
-        return TEST_SKIP;
+        return API_TEST_SKIP;
     }
     
     /* Kill using a fake UUID - should not crash */
     result = sr_kill(db, &err, "00000000-0000-0000-0000-000000000000");
     /* May fail if UUID doesn't exist, but shouldn't crash */
     if (result < 0 && err) {
-        sr_free_string(err);
+        sr_string_free(err);
     }
     
     sr_stream_kill(stream);
     sr_surreal_disconnect(db);
-    return TEST_PASS;
+    return API_TEST_PASS;
 }

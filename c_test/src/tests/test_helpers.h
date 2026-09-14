@@ -12,7 +12,7 @@ static inline sr_surreal_t* test_helper_connect(const char *endpoint) {
     
     if (sr_connect(&err, &db, endpoint) < 0) {
         printf("ERROR: Failed to connect to %s: %s\n", endpoint, err);
-        sr_free_string(err);
+        sr_string_free(err);
         return NULL;
     } 
     
@@ -25,13 +25,13 @@ static inline int test_helper_setup_ns_db(sr_surreal_t *db, const char *ns, cons
     
     if (sr_use_ns(db, &err, ns) < 0) {
         printf("ERROR: Failed to use namespace %s: %s\n", ns, err);
-        sr_free_string(err);
+        sr_string_free(err);
         return -1;
     }
     
     if (sr_use_db(db, &err, db_name) < 0) {
         printf("ERROR: Failed to use database %s: %s\n", db_name, err);
-        sr_free_string(err);
+        sr_string_free(err);
         return -1;
     }
     

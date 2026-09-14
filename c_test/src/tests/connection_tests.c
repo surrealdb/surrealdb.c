@@ -48,7 +48,7 @@ TEST(Connection, Authenticate) {
     result = sr_authenticate(db, &err, "invalid_token");
     // This should fail since the token is invalid, but shouldn't crash
     if (result < 0) {
-        sr_free_string(err);
+        sr_string_free(err);
     }
     // Test passes if we get here without crashing
 }
@@ -62,7 +62,7 @@ TEST(Connection, Invalidate) {
     if (result < 0) {
         char msg[256];
         snprintf(msg, sizeof(msg), "Invalidate should succeed: %s", err);
-        sr_free_string(err);
+        sr_string_free(err);
         TEST_FAIL_MESSAGE(msg);
     }
     TEST_ASSERT_GREATER_OR_EQUAL_INT_MESSAGE(0, result, "Invalidate should succeed");
@@ -77,7 +77,7 @@ TEST(Connection, UseNamespace) {
     if (result < 0) {
         char msg[256];
         snprintf(msg, sizeof(msg), "use_ns should succeed: %s", err);
-        sr_free_string(err);
+        sr_string_free(err);
         TEST_FAIL_MESSAGE(msg);
     }
     TEST_ASSERT_GREATER_OR_EQUAL_INT_MESSAGE(0, result, "use_ns should succeed");
@@ -94,7 +94,7 @@ TEST(Connection, UseDatabase) {
     if (result < 0) {
         char msg[256];
         snprintf(msg, sizeof(msg), "use_db should succeed: %s", err);
-        sr_free_string(err);
+        sr_string_free(err);
         TEST_FAIL_MESSAGE(msg);
     }
     TEST_ASSERT_GREATER_OR_EQUAL_INT_MESSAGE(0, result, "use_db should succeed");
@@ -110,13 +110,13 @@ TEST(Connection, Version) {
     if (result < 0) {
         char msg[256];
         snprintf(msg, sizeof(msg), "version should succeed: %s", err);
-        sr_free_string(err);
+        sr_string_free(err);
         TEST_FAIL_MESSAGE(msg);
     }
     TEST_ASSERT_GREATER_OR_EQUAL_INT_MESSAGE(0, result, "version should succeed");
     TEST_ASSERT_NOT_NULL_MESSAGE(version, "Version string should not be null");
     printf("  SurrealDB version: %s\n", version);
-    sr_free_string(version);
+    sr_string_free(version);
 }
 
 TEST(Connection, Health) {
@@ -128,7 +128,7 @@ TEST(Connection, Health) {
     if (result < 0) {
         char msg[256];
         snprintf(msg, sizeof(msg), "health check should succeed: %s", err);
-        sr_free_string(err);
+        sr_string_free(err);
         TEST_FAIL_MESSAGE(msg);
     }
     TEST_ASSERT_GREATER_OR_EQUAL_INT_MESSAGE(0, result, "health check should succeed");

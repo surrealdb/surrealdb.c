@@ -71,14 +71,7 @@ impl ArrayResult {
     }
 }
 
-impl ArrayResult {
-    #[export_name = "sr_free_arr_res"]
-    pub extern "C" fn free_arr_res(res: ArrayResult) {
-        let _ = res;
-    }
-}
-
-#[export_name = "sr_free_arr_res_arr"]
-pub extern "C" fn free_arr_res_arr(ptr: *mut ArrayResult, len: c_int) {
+#[export_name = "sr_arr_res_arr_free"]
+pub extern "C" fn arr_res_arr_free(ptr: *mut ArrayResult, len: c_int) {
     ArrayGen { ptr, len }.free()
 }

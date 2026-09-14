@@ -13,7 +13,7 @@ int main(void) {
     /* 1. Connect to in-memory database */
     if (sr_connect(&err, &db, "mem://") < 0) {
         printf("FAIL [connect]: %s\n", err);
-        sr_free_string(err);
+        sr_string_free(err);
         return 1;
     }
     printf("OK   [connect mem://]\n");
@@ -21,7 +21,7 @@ int main(void) {
     /* 2. Select namespace and database */
     if (sr_use_ns(db, &err, "test") < 0) {
         printf("FAIL [use_ns]: %s\n", err);
-        sr_free_string(err);
+        sr_string_free(err);
         failures++;
     } else {
         printf("OK   [use_ns test]\n");
@@ -29,7 +29,7 @@ int main(void) {
 
     if (sr_use_db(db, &err, "test") < 0) {
         printf("FAIL [use_db]: %s\n", err);
-        sr_free_string(err);
+        sr_string_free(err);
         failures++;
     } else {
         printf("OK   [use_db test]\n");
@@ -41,19 +41,19 @@ int main(void) {
         int rc = sr_version(db, &err, &ver);
         if (rc < 0) {
             printf("FAIL [version]: %s\n", err);
-            sr_free_string(err);
+            sr_string_free(err);
             err = NULL;
             failures++;
         } else {
             printf("OK   [version]: %s\n", ver);
-            sr_free_string(ver);
+            sr_string_free(ver);
         }
     }
 
     /* 4. Health check */
     if (sr_health(db, &err) < 0) {
         printf("FAIL [health]: %s\n", err);
-        sr_free_string(err);
+        sr_string_free(err);
         err = NULL;
         failures++;
     } else {
@@ -67,18 +67,18 @@ int main(void) {
         sr_object_insert_int(&content, "age", 30);
         sr_object_insert_str(&content, "email", "alice@example.com");
 
-        sr_object_t *result = NULL;
+        sr_object_t result;
         int rc = sr_create(db, &err, &result, "person:alice", &content);
         if (rc < 0) {
             printf("FAIL [create person:alice]: %s\n", err);
-            sr_free_string(err);
+            sr_string_free(err);
             err = NULL;
             failures++;
         } else {
             printf("OK   [create person:alice]\n");
-            if (result) sr_free_object(*result);
+            sr_object_free(result);
         }
-        sr_free_object(content);
+        sr_object_free(content);
     }
 
     /* 6. Create another record */
@@ -88,18 +88,18 @@ int main(void) {
         sr_object_insert_int(&content, "age", 25);
         sr_object_insert_str(&content, "email", "bob@example.com");
 
-        sr_object_t *result = NULL;
+        sr_object_t result;
         int rc = sr_create(db, &err, &result, "person:bob", &content);
         if (rc < 0) {
             printf("FAIL [create person:bob]: %s\n", err);
-            sr_free_string(err);
+            sr_string_free(err);
             err = NULL;
             failures++;
         } else {
             printf("OK   [create person:bob]\n");
-            if (result) sr_free_object(*result);
+            sr_object_free(result);
         }
-        sr_free_object(content);
+        sr_object_free(content);
     }
 
     /* 7. Select all persons */
@@ -108,7 +108,7 @@ int main(void) {
         int len = sr_select(db, &err, &persons, "person");
         if (len < 0) {
             printf("FAIL [select person]: %s\n", err);
-            sr_free_string(err);
+            sr_string_free(err);
             err = NULL;
             failures++;
         } else {
@@ -116,7 +116,7 @@ int main(void) {
             for (int i = 0; i < len; i++) {
                 sr_value_print(&persons[i]);
             }
-            sr_free_arr(persons, len);
+            sr_values_free(persons, len);
         }
     }
 
@@ -126,12 +126,12 @@ int main(void) {
         int len = sr_select(db, &err, &persons, "person:alice");
         if (len < 0) {
             printf("FAIL [select person:alice]: %s\n", err);
-            sr_free_string(err);
+            sr_string_free(err);
             err = NULL;
             failures++;
         } else {
             printf("OK   [select person:alice]: got %d records\n", len);
-            sr_free_arr(persons, len);
+            sr_values_free(persons, len);
         }
     }
 
@@ -141,7 +141,7 @@ int main(void) {
         int num_stmts = sr_query(db, &err, &results, "SELECT * FROM person WHERE age > 20", NULL);
         if (num_stmts < 0) {
             printf("FAIL [query]: %s\n", err);
-            sr_free_string(err);
+            sr_string_free(err);
             err = NULL;
             failures++;
         } else {
@@ -156,7 +156,7 @@ int main(void) {
                     printf("  stmt %d: ERROR: %s\n", i, results[i].err.msg);
                 }
             }
-            sr_free_arr_res_arr(results, num_stmts);
+            sr_arr_res_arr_free(results, num_stmts);
         }
     }
 
@@ -169,14 +169,14 @@ int main(void) {
         int len = sr_merge(db, &err, &merged, "person:alice", &content);
         if (len < 0) {
             printf("FAIL [merge person:alice]: %s\n", err);
-            sr_free_string(err);
+            sr_string_free(err);
             err = NULL;
             failures++;
         } else {
             printf("OK   [merge person:alice]: updated %d records\n", len);
-            sr_free_arr(merged, len);
+            sr_values_free(merged, len);
         }
-        sr_free_object(content);
+        sr_object_free(content);
     }
 
     /* 11. Delete a record */
@@ -185,12 +185,12 @@ int main(void) {
         int len = sr_delete(db, &err, &deleted, "person:bob");
         if (len < 0) {
             printf("FAIL [delete person:bob]: %s\n", err);
-            sr_free_string(err);
+            sr_string_free(err);
             err = NULL;
             failures++;
         } else {
             printf("OK   [delete person:bob]: deleted %d records\n", len);
-            sr_free_arr(deleted, len);
+            sr_values_free(deleted, len);
         }
     }
 
@@ -201,7 +201,7 @@ int main(void) {
         sr_value_free(val);
         if (rc < 0) {
             printf("FAIL [set variable]: %s\n", err);
-            sr_free_string(err);
+            sr_string_free(err);
             err = NULL;
             failures++;
         } else {
@@ -214,7 +214,7 @@ int main(void) {
         int rc = sr_unset(db, &err, "my_var");
         if (rc < 0) {
             printf("FAIL [unset variable]: %s\n", err);
-            sr_free_string(err);
+            sr_string_free(err);
             err = NULL;
             failures++;
         } else {
@@ -232,14 +232,14 @@ int main(void) {
         int len = sr_upsert(db, &err, &upserted, "person:charlie", &content);
         if (len < 0) {
             printf("FAIL [upsert person:charlie]: %s\n", err);
-            sr_free_string(err);
+            sr_string_free(err);
             err = NULL;
             failures++;
         } else {
             printf("OK   [upsert person:charlie]: %d records\n", len);
-            sr_free_arr(upserted, len);
+            sr_values_free(upserted, len);
         }
-        sr_free_object(content);
+        sr_object_free(content);
     }
 
     /* 15. Create a relation */
@@ -251,14 +251,14 @@ int main(void) {
         int len = sr_relate(db, &err, &result, "person:alice", "knows", "person:charlie", &content);
         if (len < 0) {
             printf("FAIL [relate]: %s\n", err);
-            sr_free_string(err);
+            sr_string_free(err);
             err = NULL;
             failures++;
         } else {
             printf("OK   [relate alice->knows->charlie]: %d records\n", len);
-            sr_free_arr(result, len);
+            sr_values_free(result, len);
         }
-        sr_free_object(content);
+        sr_object_free(content);
     }
 
     /* 16. Final verification query with graph traversal */
@@ -268,7 +268,7 @@ int main(void) {
             "SELECT *, ->knows->person AS friends FROM person:alice", NULL);
         if (num_stmts < 0) {
             printf("FAIL [graph query]: %s\n", err);
-            sr_free_string(err);
+            sr_string_free(err);
             err = NULL;
             failures++;
         } else {
@@ -280,7 +280,7 @@ int main(void) {
                     }
                 }
             }
-            sr_free_arr_res_arr(results, num_stmts);
+            sr_arr_res_arr_free(results, num_stmts);
         }
     }
 

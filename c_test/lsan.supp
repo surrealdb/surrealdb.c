@@ -1,0 +1,19 @@
+# LeakSanitizer suppressions for the test suite.
+#
+# SurrealDB's async runtime keeps worker threads alive past the end of main().
+# LeakSanitizer takes its snapshot at process exit, so whatever those threads
+# still hold is reported as leaked. The give-away is the stack: every frame is
+# `asan_thread_start` plus Rust allocator internals, with no test-suite or
+# surrealdb_c frame anywhere.
+#
+# Measured on the Auth group (which hashes a password via crypto::argon2 and so
+# does the most background work): 3/12 runs before the 0.2.1 geometry fix,
+# 2/12 after -- unchanged, and unrelated to it. A gate that fails one run in six
+# gets ignored, which is worse than not having one.
+#
+# Cost, stated plainly: this also hides a genuine leak that originates on a
+# worker thread. That is tolerable only because the Rust staticlib is not
+# instrumented anyway, so such a leak would have no useful frames either way.
+# Anything allocated on the main path -- which is all of the C API surface --
+# is still caught.
+leak:asan_thread_start

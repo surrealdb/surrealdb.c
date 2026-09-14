@@ -41,18 +41,23 @@ use array::{Array, ArrayGen, MakeArray};
 pub use types::*;
 use utils::CStringExt2;
 use value::{Object, Value};
+use crate::opts::Options;
 use crate::credentials::{credentials_scope, credentials_access};
 
 pub const SR_NONE: c_int = 0;
 pub const SR_CLOSED: c_int = -1;
 pub const SR_ERROR: c_int = -2;
 pub const SR_FATAL: c_int = -3;
+/// A bounded wait expired with nothing to report. Distinct from SR_NONE, which
+/// means the stream has ended: a timeout says to call again, SR_NONE says not
+/// to. Only the `_timeout` variants ever return this.
+pub const SR_TIMEOUT: c_int = -4;
 
 /// Safely write an error message to an error pointer
 /// 
 /// If `err_ptr` is null, the error is silently ignored.
 #[inline]
-fn write_error(err_ptr: *mut string_t, msg: impl Into<string_t>) {
+pub(crate) fn write_error(err_ptr: *mut string_t, msg: impl Into<string_t>) {
     if !err_ptr.is_null() {
         unsafe { err_ptr.write(msg.into()) };
     }
@@ -130,6 +135,41 @@ impl Surreal {
         check_null!(surreal_ptr, err_ptr, "surreal_ptr is null");
         check_null!(endpoint, err_ptr, "endpoint is null");
 
+        Self::connect_inner(err_ptr, surreal_ptr, endpoint, None)
+    }
+
+    /// Connect with explicit options.
+    ///
+    /// `sr_connect` uses the server defaults for everything. This takes the
+    /// same `Options` as `sr_surreal_rpc_new`, so query and transaction
+    /// timeouts and the capability sandbox can be set on the direct path too.
+    ///
+    /// `session_dir` is ignored here: sessions belong to an RPC context, and
+    /// this path has no session map of its own.
+    ///
+    /// # Safety
+    ///
+    /// - `err_ptr` must be a valid pointer or null
+    /// - `surreal_ptr` must be a valid pointer to receive the connection
+    /// - `endpoint` must be a valid null-terminated UTF-8 string
+    #[export_name = "sr_connect_with_options"]
+    pub extern "C" fn connect_with_options(
+        err_ptr: *mut string_t,
+        surreal_ptr: *mut *mut Surreal,
+        endpoint: *const c_char,
+        options: Options,
+    ) -> c_int {
+        check_null!(surreal_ptr, err_ptr, "surreal_ptr is null");
+        check_null!(endpoint, err_ptr, "endpoint is null");
+        Self::connect_inner(err_ptr, surreal_ptr, endpoint, Some(options))
+    }
+
+    fn connect_inner(
+        err_ptr: *mut string_t,
+        surreal_ptr: *mut *mut Surreal,
+        endpoint: *const c_char,
+        options: Option<Options>,
+    ) -> c_int {
         let res: Result<Result<Surreal, string_t>, _> = catch_unwind(AssertUnwindSafe(|| {
             let Ok(endpoint) = (unsafe { CStr::from_ptr(endpoint).to_str() }) else {
                 return Err("invalid utf8".into());
@@ -139,7 +179,38 @@ impl Surreal {
                 return Err("error creating runtime".into());
             };
 
-            let con_fut = any::connect(endpoint);
+            // Without options this stays exactly as it was: a bare endpoint,
+            // no Config, so nothing about the default path changes.
+            let con_fut = match options {
+                None => any::connect(endpoint),
+                Some(opts) => {
+                    let mut config = surrealdb::opt::Config::new();
+                    if opts.query_timeout != 0 {
+                        config = config.query_timeout(std::time::Duration::from_secs(
+                            opts.query_timeout as u64,
+                        ));
+                    }
+                    if opts.transaction_timeout != 0 {
+                        config = config.transaction_timeout(std::time::Duration::from_secs(
+                            opts.transaction_timeout as u64,
+                        ));
+                    }
+                    match opts.capabilities.to_capabilities() {
+                        // The SDK wraps the core type; the conversion is
+                        // documented as not-public-API but is the only route,
+                        // and Config::capabilities takes the wrapper.
+                        Ok(Some(caps)) => {
+                            config = config
+                                .capabilities(surrealdb::opt::capabilities::Capabilities::from(
+                                    caps,
+                                ))
+                        }
+                        Ok(None) => {}
+                        Err(e) => return Err(string_t::from(e)),
+                    }
+                    any::connect((endpoint.to_owned(), config))
+                }
+            };
 
             let db = match rt.block_on(con_fut.into_future()) {
                 Ok(db) => db,
@@ -305,6 +376,9 @@ impl Surreal {
     /// The resource can be a table name (e.g., "user") for auto-generated IDs,
     /// or a specific record ID (e.g., "user:john").
     ///
+    /// On success the created record is written to `res_ptr` and the caller owns
+    /// it: release it with [`sr_object_free`]. Pass null to discard the result.
+    ///
     /// # Safety
     ///
     /// - `db` must be a valid pointer to a Surreal connection
@@ -316,7 +390,7 @@ impl Surreal {
     pub extern "C" fn create(
         db: &Surreal,
         err_ptr: *mut string_t,
-        res_ptr: *mut &mut Object,
+        res_ptr: *mut Object,
         resource: *const c_char,
         content: *const Object,
     ) -> c_int {
@@ -352,8 +426,11 @@ impl Surreal {
                 }
             };
             if !res_ptr.is_null() {
-                let boxed = Box::new(Object::from(obj));
-                unsafe { res_ptr.write(Box::leak(boxed)) }
+                // Written by value. Boxing here would allocate a second time and
+                // the box itself would be unreachable from C: `sr_object_free`
+                // takes an Object by value and frees its contents, leaving the
+                // outer allocation orphaned. Object is already one pointer wide.
+                unsafe { res_ptr.write(Object::from(obj)) }
                 Ok(1)
             } else {
                 Ok(0)
@@ -383,7 +460,7 @@ impl Surreal {
     ///     printf("%s", err);
     ///     return 1;
     /// }
-    /// sr_free_arr(deleted, len);
+    /// sr_values_free(deleted, len);
     /// ```
     #[export_name = "sr_delete"]
     pub extern "C" fn delete(
@@ -475,6 +552,14 @@ impl Surreal {
     ///
     /// Imports data from a file into the current namespace and database.
     ///
+    /// As of SurrealDB 3.x the file **must** begin with `OPTION IMPORT;`. That
+    /// statement disables events, live queries, field processing and per-row
+    /// result output for import performance, and the server rejects the import
+    /// outright without it. Note that exported files are not prefixed with it
+    /// automatically, so a file produced by `sr_export` needs the line added
+    /// before it can be fed back through `sr_import`. To run statements with
+    /// full side effects, use `sr_query` instead.
+    ///
     /// # Safety
     ///
     /// - `db` must be a valid pointer to a Surreal connection
@@ -484,6 +569,7 @@ impl Surreal {
     /// # Examples
     ///
     /// ```c
+    /// // backup.surql must start with: OPTION IMPORT;
     /// sr_surreal_t *db;
     /// sr_string_t err;
     /// if (sr_import(db, &err, "backup.surql") < 0) {
@@ -529,7 +615,7 @@ impl Surreal {
     ///     printf("%s", err);
     ///     return 1;
     /// }
-    /// sr_free_arr(inserted, len);
+    /// sr_values_free(inserted, len);
     /// ```
     #[export_name = "sr_insert"]
     pub extern "C" fn insert(
@@ -595,7 +681,7 @@ impl Surreal {
     ///     printf("Failed to insert relation: %s", err);
     ///     return 1;
     /// }
-    /// sr_free_arr(result, len);
+    /// sr_values_free(result, len);
     /// ```
     #[export_name = "sr_insert_relation"]
     pub extern "C" fn insert_relation(
@@ -654,7 +740,7 @@ impl Surreal {
     ///     printf("Failed to run function: %s", err);
     ///     return 1;
     /// }
-    /// sr_free_arr(result, 1);
+    /// sr_values_free(result, 1);
     /// ```
     #[export_name = "sr_run"]
     pub extern "C" fn run(
@@ -721,7 +807,7 @@ impl Surreal {
     ///     printf("Failed to create relation: %s", err);
     ///     return 1;
     /// }
-    /// sr_free_arr(result, len);
+    /// sr_values_free(result, len);
     /// ```
     #[export_name = "sr_relate"]
     pub extern "C" fn relate(
@@ -901,7 +987,7 @@ impl Surreal {
     ///     printf("%s", err);
     ///     return 1;
     /// }
-    /// sr_free_arr(merged, len);
+    /// sr_values_free(merged, len);
     /// ```
     #[export_name = "sr_merge"]
     pub extern "C" fn merge(
@@ -962,7 +1048,7 @@ impl Surreal {
     ///     printf("Failed to patch: %s", err);
     ///     return 1;
     /// }
-    /// sr_free_arr(patched, len);
+    /// sr_values_free(patched, len);
     /// ```
     #[export_name = "sr_patch_add"]
     pub extern "C" fn patch_add(
@@ -1022,7 +1108,7 @@ impl Surreal {
     ///     printf("Failed to patch: %s", err);
     ///     return 1;
     /// }
-    /// sr_free_arr(patched, len);
+    /// sr_values_free(patched, len);
     /// ```
     #[export_name = "sr_patch_remove"]
     pub extern "C" fn patch_remove(
@@ -1081,7 +1167,7 @@ impl Surreal {
     ///     printf("Failed to patch: %s", err);
     ///     return 1;
     /// }
-    /// sr_free_arr(patched, len);
+    /// sr_values_free(patched, len);
     /// ```
     #[export_name = "sr_patch_replace"]
     pub extern "C" fn patch_replace(
@@ -1180,7 +1266,7 @@ impl Surreal {
     ///
     /// can be used to select everything from a table or a single record
     /// writes values to *res_ptr, and returns the number of values
-    /// result values are allocated by Surreal and must be freed with sr_free_arr
+    /// result values are allocated by Surreal and must be freed with sr_values_free
     ///
     /// # Safety
     ///
@@ -1205,7 +1291,7 @@ impl Surreal {
     /// {
     ///     sr_value_print(&foos[i]);
     /// }
-    /// sr_free_arr(foos, len);
+    /// sr_values_free(foos, len);
     #[export_name = "sr_select"]
     pub extern "C" fn select(
         db: &Surreal,
@@ -1290,7 +1376,7 @@ impl Surreal {
     /// sr_string_t err;
     /// sr_string_t token;
     ///
-    /// sr_credentials_scope scope = sr_credentials_scope::ROOT;
+    /// sr_credentials_scope scope = sr_credentials_scope::SR_SCOPE_ROOT;
     /// const sr_string_t user = "<user>";
     /// // SHOULD NEVER BE HARDCODED
     /// const sr_string_t password = "<password>";
@@ -1304,14 +1390,14 @@ impl Surreal {
     ///     return 1;
     /// }
     /// // token now contains the JWT
-    /// sr_free_string(token);
+    /// sr_string_free(token);
     /// ```
     /// ```c
     /// sr_surreal_t *db;
     /// sr_string_t err;
     /// sr_string_t token;
     ///
-    /// sr_credentials_scope scope = sr_credentials_scope::DATABASE;
+    /// sr_credentials_scope scope = sr_credentials_scope::SR_SCOPE_DATABASE;
     /// const sr_string_t user = "<user>";
     /// // SHOULD NEVER BE HARDCODED
     /// const sr_string_t password = "<password>";
@@ -1386,7 +1472,7 @@ impl Surreal {
             }
 
             let token: String = match scope {
-                credentials_scope::ROOT => {
+                credentials_scope::SR_SCOPE_ROOT => {
                     let login = auth::Root {
                         username: user.to_string(),
                         password: pass.to_string(),
@@ -1394,7 +1480,7 @@ impl Surreal {
                     let jwt = surreal.db.signin(login).await.map_err(|e| string_t::from(e.to_string()))?;
                     jwt.access.into_insecure_token()
                 }
-                credentials_scope::NAMESPACE => {
+                credentials_scope::SR_SCOPE_NAMESPACE => {
                     if ns.is_empty() {
                         return Err("Namespace must be provided.".into());
                     }
@@ -1408,7 +1494,7 @@ impl Surreal {
                     let jwt = surreal.db.signin(login).await.map_err(|e| string_t::from(e.to_string()))?;
                     jwt.access.into_insecure_token()
                 }
-                credentials_scope::DATABASE => {
+                credentials_scope::SR_SCOPE_DATABASE => {
                     if ns.is_empty() {
                         return Err("Namespace must be provided.".into());
                     }
@@ -1426,7 +1512,7 @@ impl Surreal {
                     let jwt = surreal.db.signin(login).await.map_err(|e| string_t::from(e.to_string()))?;
                     jwt.access.into_insecure_token()
                 }
-                credentials_scope::RECORD => {
+                credentials_scope::SR_SCOPE_RECORD => {
                     if ns.is_empty() {
                         return Err("Namespace must be provided.".into());
                     }
@@ -1478,7 +1564,7 @@ impl Surreal {
     /// sr_surreal_t *db;
     /// sr_string_t err;
     /// sr_string_t token;
-    /// sr_credentials_scope scope = sr_credentials_scope::RECORD;
+    /// sr_credentials_scope scope = sr_credentials_scope::SR_SCOPE_RECORD;
     /// const sr_string_t user = "newuser";
     /// const sr_string_t password = "password123";
     /// sr_credentials creds = sr_credentials {
@@ -1499,7 +1585,7 @@ impl Surreal {
     ///     return 1;
     /// }
     /// // token now contains the JWT
-    /// sr_free_string(token);
+    /// sr_string_free(token);
     /// ```
     /// For custom params:
     /// ```c
@@ -1555,16 +1641,16 @@ impl Surreal {
             }
 
             let token: String = match scope {
-                credentials_scope::ROOT => {
+                credentials_scope::SR_SCOPE_ROOT => {
                     return Err("Cannot signup as ROOT user".into());
                 }
-                credentials_scope::NAMESPACE => {
+                credentials_scope::SR_SCOPE_NAMESPACE => {
                     return Err("Namespace scope does not support signup. Use RECORD scope instead.".into());
                 }
-                credentials_scope::DATABASE => {
+                credentials_scope::SR_SCOPE_DATABASE => {
                     return Err("Database scope does not support signup. Use RECORD scope instead.".into());
                 }
-                credentials_scope::RECORD => {
+                credentials_scope::SR_SCOPE_RECORD => {
                     if ns.is_empty() {
                         return Err("Namespace must be provided.".into());
                     }
@@ -1662,7 +1748,7 @@ impl Surreal {
     ///     printf("%s", err);
     ///     return 1;
     /// }
-    /// sr_free_arr(updated, len);
+    /// sr_values_free(updated, len);
     /// ```
     #[export_name = "sr_update"]
     pub extern "C" fn update(
@@ -1722,7 +1808,7 @@ impl Surreal {
     ///     printf("%s", err);
     ///     return 1;
     /// }
-    /// sr_free_arr(upserted, len);
+    /// sr_values_free(upserted, len);
     /// ```
     #[export_name = "sr_upsert"]
     pub extern "C" fn upsert(
@@ -1827,7 +1913,7 @@ impl Surreal {
     /// Returns the database version
     ///
     /// Retrieves the version string of the connected SurrealDB server.
-    /// NOTE: version is allocated in Surreal and must be freed with sr_free_string
+    /// NOTE: version is allocated in Surreal and must be freed with sr_string_free
     ///
     /// # Safety
     ///
@@ -1847,7 +1933,7 @@ impl Surreal {
     ///     return 1;
     /// }
     /// printf("%s", ver);
-    /// sr_free_string(ver);
+    /// sr_string_free(ver);
     /// ```
     #[export_name = "sr_version"]
     pub extern "C" fn version(
@@ -1876,20 +1962,35 @@ where
     C: FnOnce(&'a Surreal) -> F + 'b,
     F: std::future::Future<Output = Result<c_int, string_t>>,
 {
+    // A poisoned connection reports SR_FATAL rather than aborting. The header
+    // has always documented the poisoning contract, but nothing ever set the
+    // flag, so `ps` was write-only and the abort below it unreachable. Taking
+    // the host process down from inside a library is also the wrong answer for
+    // an embedded consumer -- in a game engine plugin it would take the editor
+    // with it.
     if db.ps.load(Ordering::Acquire) {
-        std::process::abort()
+        write_error(err_ptr, "connection is poisoned: an earlier operation returned SR_FATAL");
+        return SR_FATAL;
     }
     let _guard = db.rt.enter();
 
+    // These go through write_error rather than writing err_ptr directly: the
+    // header documents err_ptr as "a valid pointer or null" on every function
+    // routed through here, and an unconditional write segfaults on the null
+    // case. Only the failure paths were affected, so it held up in testing and
+    // crashed exactly when something had already gone wrong.
     let res = match catch_unwind(AssertUnwindSafe(|| db.rt.block_on(fun(&db)))) {
         Ok(r) => r,
         Err(e) => {
             if let Some(e_str) = e.downcast_ref::<&str>() {
-                let e_string: string_t = format!("Panicked with: {e_str}").into();
-                unsafe { err_ptr.write(e_string) }
+                write_error(err_ptr, format!("Panicked with: {e_str}"));
             } else {
-                unsafe { err_ptr.write("Panicked".into()) }
+                write_error(err_ptr, "Panicked");
             }
+            // Make the documented contract real: a panic crossing the FFI
+            // boundary leaves the datastore in an unknown state, so the handle
+            // is poisoned from here on.
+            db.ps.store(true, Ordering::Release);
             return SR_FATAL;
         }
     };
@@ -1897,7 +1998,7 @@ where
     match res {
         Ok(n) => n,
         Err(e) => {
-            unsafe { err_ptr.write(e) }
+            write_error(err_ptr, e);
             SR_ERROR
         }
     }

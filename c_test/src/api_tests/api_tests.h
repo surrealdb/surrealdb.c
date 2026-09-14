@@ -22,9 +22,14 @@ extern "C" {
  * Test Result Codes
  * ============================================================================ */
 
-#define TEST_PASS 0
-#define TEST_FAIL 1
-#define TEST_SKIP 2
+/*
+ * Prefixed because Unity already defines TEST_PASS() and TEST_FAIL() as
+ * function-like macros; the unprefixed names silently replaced them in any
+ * translation unit including both headers.
+ */
+#define API_TEST_PASS 0
+#define API_TEST_FAIL 1
+#define API_TEST_SKIP 2
 
 /* ============================================================================
  * Connection Tests
@@ -137,13 +142,13 @@ int test_sr_object_insert_str(void);
 int test_sr_object_insert_int(void);
 int test_sr_object_insert_float(void);
 int test_sr_object_insert_double(void);
-int test_sr_free_object(void);
+int test_sr_object_free(void);
 
 /* ============================================================================
  * Array Tests
  * ============================================================================ */
 
-int test_sr_free_arr(void);
+int test_sr_values_free(void);
 
 /* ============================================================================
  * RPC Tests
@@ -167,7 +172,7 @@ int test_sr_rpc_stream_free(void);
  * Utility Tests
  * ============================================================================ */
 
-int test_sr_free_string(void);
+int test_sr_string_free(void);
 int test_sr_value_print(void);
 int test_sr_value_eq(void);
 int test_sr_print_notification(void);

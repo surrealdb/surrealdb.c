@@ -190,8 +190,8 @@ impl Drop for Array {
 }
 
 impl Array {
-    #[export_name = "sr_free_arr"]
-    pub extern "C" fn free_arr(ptr: *mut Value, len: c_int) {
+    #[export_name = "sr_values_free"]
+    pub extern "C" fn values_free(ptr: *mut Value, len: c_int) {
         ArrayGen { ptr, len }.free()
     }
 
@@ -243,6 +243,32 @@ impl Array {
         let array = unsafe { &*arr };
         let mut vec: Vec<Value> = array.as_slice().to_vec();
         vec.push(value);
+        Box::into_raw(Box::new(vec.into()))
+    }
+
+    /// Build an array from a contiguous block of values, in one allocation.
+    ///
+    /// `sr_array_push` cannot mutate -- it returns a *new* array each call, so
+    /// appending n elements copies 1 + 2 + ... + n values. Use this instead
+    /// whenever the elements are already to hand; it is linear.
+    ///
+    /// The values are copied, so the caller keeps ownership of the block it
+    /// passed in and must still release those values itself. A null pointer or
+    /// a non-positive length yields an empty array rather than an error.
+    ///
+    /// The caller is responsible for freeing the returned array with
+    /// `sr_array_free`.
+    ///
+    /// # Safety
+    ///
+    /// - `values` must be null, or point to at least `len` initialised Values
+    #[export_name = "sr_array_from_values"]
+    pub extern "C" fn array_from_values(values: *const Value, len: c_int) -> *mut Array {
+        if values.is_null() || len <= 0 {
+            return Box::into_raw(Box::new(Array::empty()));
+        }
+        let slice = unsafe { std::slice::from_raw_parts(values, len as usize) };
+        let vec: Vec<Value> = slice.to_vec();
         Box::into_raw(Box::new(vec.into()))
     }
 

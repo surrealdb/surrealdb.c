@@ -1,0 +1,17 @@
+[package]
+name = "surrealdb-c-tests"
+version = "0.1.0"
+edition = "2021"
+description = "Rust driver for the surrealdb.c C test corpus"
+license = "Apache License 2.0"
+publish = false
+
+# This package exists so that `cargo test` can run the C test corpus without the
+# library's own build script having to compile C. Everything here is test
+# scaffolding; nothing ships.
+
+[dependencies]
+surrealdb_c = { path = ".." }
+
+[build-dependencies]
+cc = "1.0"

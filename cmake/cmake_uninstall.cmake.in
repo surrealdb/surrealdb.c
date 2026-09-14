@@ -1,0 +1,26 @@
+# Removes every file recorded by the last `cmake --install`.
+#
+# CMake provides no uninstall target of its own; this is the conventional
+# stand-in, driven by the manifest the install step writes.
+
+set(MANIFEST "@CMAKE_CURRENT_BINARY_DIR@/install_manifest.txt")
+
+if(NOT EXISTS "${MANIFEST}")
+    message(FATAL_ERROR "No install manifest at ${MANIFEST}; nothing was installed from this build tree.")
+endif()
+
+file(STRINGS "${MANIFEST}" _installed_files)
+
+foreach(_file IN LISTS _installed_files)
+    # DESTDIR-aware, so an uninstall matches a staged install.
+    set(_path "$ENV{DESTDIR}${_file}")
+    if(EXISTS "${_path}" OR IS_SYMLINK "${_path}")
+        message(STATUS "Removing ${_path}")
+        file(REMOVE "${_path}")
+        if(EXISTS "${_path}" OR IS_SYMLINK "${_path}")
+            message(WARNING "Could not remove ${_path}")
+        endif()
+    else()
+        message(STATUS "Already gone: ${_path}")
+    endif()
+endforeach()

@@ -18,16 +18,20 @@ TEST(Utility, PrintNotification) {
     // Initialize with test data
     notification.action = SR_ACTION_CREATE;
     
-    // Create a simple value for the notification data
+    /* Shallow-copied from the box on purpose: sr_value_string hands back a
+       boxed Value and there is no way in C to move the value out of its box,
+       so the notification here *aliases* data the box still owns. That makes
+       sr_value_free(val) the single release point -- calling
+       sr_notification_free as well would be a double free, and using
+       notification.data after this point would be a use-after-free.
+       A notification obtained from sr_stream_next owns its data outright and
+       is released with sr_notification_free; see stream_tests.c. */
     sr_value_t *val = sr_value_string("test notification data");
     notification.data = *val;
-    
-    // Test that print doesn't crash
+
     sr_print_notification(&notification);
-    
-    // Clean up
+
     sr_value_free(val);
-    // Test passes if we get here without crashing
 }
 
 TEST(Utility, ValuePrint) {

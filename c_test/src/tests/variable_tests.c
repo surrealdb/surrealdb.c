@@ -32,7 +32,7 @@ TEST(Variable, Set) {
     if (result < 0) {
         char msg[256];
         snprintf(msg, sizeof(msg), "set should succeed: %s", err);
-        sr_free_string(err);
+        sr_string_free(err);
         sr_value_free(value);
         TEST_FAIL_MESSAGE(msg);
     }
@@ -52,7 +52,7 @@ TEST(Variable, Unset) {
     if (result < 0) {
         char msg[256];
         snprintf(msg, sizeof(msg), "unset should succeed: %s", err);
-        sr_free_string(err);
+        sr_string_free(err);
         TEST_FAIL_MESSAGE(msg);
     }
     TEST_ASSERT_GREATER_OR_EQUAL_INT_MESSAGE(0, result, "unset should succeed");

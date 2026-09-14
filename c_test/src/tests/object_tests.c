@@ -22,7 +22,7 @@ TEST(Object, Insert) {
     TEST_ASSERT_EQUAL_INT_MESSAGE(SR_VALUE_NUMBER, retrieved->tag, "Value should be a number");
     
     sr_value_free(val);
-    sr_free_object(obj);
+    sr_object_free(obj);
 }
 
 TEST(Object, InsertStr) {
@@ -33,7 +33,7 @@ TEST(Object, InsertStr) {
     TEST_ASSERT_NOT_NULL_MESSAGE(val, "Retrieved value should not be NULL");
     TEST_ASSERT_EQUAL_INT_MESSAGE(SR_VALUE_STRAND, val->tag, "Value should be a string");
     
-    sr_free_object(obj);
+    sr_object_free(obj);
 }
 
 TEST(Object, InsertInt) {
@@ -44,7 +44,7 @@ TEST(Object, InsertInt) {
     TEST_ASSERT_NOT_NULL_MESSAGE(val, "Retrieved value should not be NULL");
     TEST_ASSERT_EQUAL_INT_MESSAGE(SR_VALUE_NUMBER, val->tag, "Value should be a number");
     
-    sr_free_object(obj);
+    sr_object_free(obj);
 }
 
 TEST(Object, InsertFloat) {
@@ -55,7 +55,7 @@ TEST(Object, InsertFloat) {
     TEST_ASSERT_NOT_NULL_MESSAGE(val, "Retrieved value should not be NULL");
     TEST_ASSERT_EQUAL_INT_MESSAGE(SR_VALUE_NUMBER, val->tag, "Value should be a number");
     
-    sr_free_object(obj);
+    sr_object_free(obj);
 }
 
 TEST(Object, InsertDouble) {
@@ -66,7 +66,7 @@ TEST(Object, InsertDouble) {
     TEST_ASSERT_NOT_NULL_MESSAGE(val, "Retrieved value should not be NULL");
     TEST_ASSERT_EQUAL_INT_MESSAGE(SR_VALUE_NUMBER, val->tag, "Value should be a number");
     
-    sr_free_object(obj);
+    sr_object_free(obj);
 }
 
 TEST_GROUP_RUNNER(Object) {

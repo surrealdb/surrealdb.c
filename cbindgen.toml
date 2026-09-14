@@ -1,8 +1,22 @@
 language = "C"
 pragma_once = true
 
+# The status codes are written out here rather than exported from Rust.
+# export.prefix would otherwise stack "sr_" onto names that already begin with
+# SR_, giving sr_SR_ERROR, while every doc comment in this header refers to
+# SR_ERROR. export.rename does not apply to constants, so exclusion plus an
+# explicit definition is the way to keep the two in agreement.
+after_includes = """
+#define SR_NONE 0
+#define SR_CLOSED -1
+#define SR_ERROR -2
+#define SR_FATAL -3
+#define SR_TIMEOUT -4
+"""
+
 [export]
 prefix = "sr_"
+exclude = ["SR_NONE", "SR_CLOSED", "SR_ERROR", "SR_FATAL", "SR_TIMEOUT"]
 
 
 [export.rename]
@@ -12,6 +26,9 @@ prefix = "sr_"
 "Object" = "object_t"
 "Value" = "value_t"
 "Thing" = "thing_t"
+"File" = "file_t"
+"Range" = "range_t"
+"Bound" = "bound_t"
 "Uuid" = "uuid_t"
 "Bytes" = "bytes_t"
 "string_t" = "string_t"
@@ -27,6 +44,21 @@ prefix = "sr_"
 "ArrayResultArrayResult" = "arr_res_arr_res_t"
 "StringResult" = "string_res_t"
 "SurrealResult" = "surreal_res_t"
-"SR_FATAL" = "SR_FATAL"
-"SR_ERROR" = "SR_ERROR"
+"sr_g_coord" = "g_coord"
+"sr_g_point" = "g_point"
+"sr_g_linestring" = "g_linestring"
+"sr_g_polygon" = "g_polygon"
+"sr_g_multipoint" = "g_multipoint"
+"sr_g_multilinestring" = "g_multilinestring"
+"sr_g_multipolygon" = "g_multipolygon"
+"sr_geometry" = "geometry_t"
+"ArrayGen_sr_g_coord" = "g_coord_arr_t"
+"ArrayGen_sr_g_point" = "g_point_arr_t"
+"ArrayGen_sr_g_linestring" = "g_linestring_arr_t"
+"ArrayGen_sr_g_polygon" = "g_polygon_arr_t"
+"ArrayGen_sr_geometry" = "geometry_arr_t"
 "Options" = "option_t"
+"Toggle" = "toggle_t"
+"TargetMode" = "target_mode_t"
+"TargetSet" = "targets_t"
+"CapabilitySet" = "capabilities_t"

@@ -60,27 +60,47 @@ else()
     # Define paths for Unity
     set(UNITY_SOURCE_DIR "${PROJECT_SOURCE_DIR}/ThirdParty/Unity")
     
-    # Check if Unity is already cloned
+    # Download only; the subdirectory is added below so that EXCLUDE_FROM_ALL
+    # can be applied. FetchContent_MakeAvailable() would add it for us, but
+    # without that flag Unity's own install() rules run as part of ours and a
+    # consumer installing this library also receives libunity.a, Unity's
+    # headers and — worst of it — a unityConfig.cmake that can shadow their own.
     if(EXISTS "${UNITY_SOURCE_DIR}/CMakeLists.txt")
         message(STATUS "Unity source found at: ${UNITY_SOURCE_DIR}")
     else()
         message(STATUS "Cloning Unity v2.6.1 into ThirdParty/Unity...")
-        
-        # Use FetchContent to download Unity
-        FetchContent_Declare(
-            unity
-            GIT_REPOSITORY https://github.com/ThrowTheSwitch/Unity.git
-            GIT_TAG        v2.6.1
-            SOURCE_DIR     "${UNITY_SOURCE_DIR}"
-        )
-        
-        FetchContent_MakeAvailable(unity)
+
+        # EXCLUDE_FROM_ALL on FetchContent_Declare arrived in 3.28. Below that,
+        # populate only and add the subdirectory by hand further down.
+        # FetchContent_Populate is deprecated from 3.30, so prefer the modern
+        # path wherever it exists rather than leaving a warning waiting for
+        # whoever raises cmake_minimum_required.
+        if(CMAKE_VERSION VERSION_GREATER_EQUAL 3.28)
+            FetchContent_Declare(
+                unity
+                GIT_REPOSITORY https://github.com/ThrowTheSwitch/Unity.git
+                GIT_TAG        v2.6.1
+                SOURCE_DIR     "${UNITY_SOURCE_DIR}"
+                EXCLUDE_FROM_ALL
+            )
+            FetchContent_MakeAvailable(unity)
+        else()
+            FetchContent_Declare(
+                unity
+                GIT_REPOSITORY https://github.com/ThrowTheSwitch/Unity.git
+                GIT_TAG        v2.6.1
+                SOURCE_DIR     "${UNITY_SOURCE_DIR}"
+            )
+            FetchContent_Populate(unity)
+        endif()
     endif()
-    
-    # If Unity was already cloned but not fetched via FetchContent
+
     if(NOT TARGET unity)
-        # Add Unity as a subdirectory
-        add_subdirectory("${UNITY_SOURCE_DIR}" "${CMAKE_BINARY_DIR}/ThirdParty/Unity-build")
+        add_subdirectory(
+            "${UNITY_SOURCE_DIR}"
+            "${CMAKE_BINARY_DIR}/ThirdParty/Unity-build"
+            EXCLUDE_FROM_ALL
+        )
     endif()
     
     # Suppress warnings from Unity third-party code on MSVC

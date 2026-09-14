@@ -30,12 +30,12 @@ TEST(IO, Export) {
     // Create some data to export
     sr_object_t content = sr_object_new();
     sr_object_insert_str(&content, "name", "test_export");
-    sr_object_t *result;
-    int res = sr_create(db, &err, &result, "export_test", &content);
-    sr_free_object(content);
+    /* Only the record needs to exist; null discards the result. */
+    int res = sr_create(db, &err, NULL, "export_test", &content);
+    sr_object_free(content);
     
     if (res < 0) {
-        if (err) sr_free_string(err);
+        if (err) sr_string_free(err);
         TEST_FAIL_MESSAGE("Failed to create test data for export");
     }
     
@@ -46,7 +46,7 @@ TEST(IO, Export) {
     if (res < 0) {
         char msg[256];
         snprintf(msg, sizeof(msg), "Export failed: %s", err ? err : "unknown");
-        if (err) sr_free_string(err);
+        if (err) sr_string_free(err);
         TEST_FAIL_MESSAGE(msg);
     }
     
@@ -63,6 +63,8 @@ TEST(IO, Import) {
     if (f == NULL) {
         TEST_FAIL_MESSAGE("Could not create import test file");
     }
+    // SurrealDB 3.x rejects an import whose first statement is not OPTION IMPORT.
+    fprintf(f, "OPTION IMPORT;\n");
     fprintf(f, "CREATE import_test:1 SET name = 'imported';\n");
     fclose(f);
     
@@ -75,7 +77,7 @@ TEST(IO, Import) {
     if (res < 0) {
         char msg[256];
         snprintf(msg, sizeof(msg), "Import failed: %s", err ? err : "unknown");
-        if (err) sr_free_string(err);
+        if (err) sr_string_free(err);
         TEST_FAIL_MESSAGE(msg);
     }
     
@@ -85,7 +87,7 @@ TEST(IO, Import) {
     TEST_ASSERT_GREATER_OR_EQUAL_INT_MESSAGE(0, len, "Select should succeed after import");
     
     if (len > 0) {
-        sr_free_arr(results, len);
+        sr_values_free(results, len);
     }
 }
 
