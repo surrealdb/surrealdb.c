@@ -34,6 +34,51 @@ fn parse_resource(s: &str) -> Resource {
     }
     Resource::from(s)
 }
+/// Parse a string that is exactly one record id literal, such as `person:john` or `person:1`
+///
+/// Unlike `surrealdb_core::syn::record_id`, trailing input is an error, so `person:a; DELETE x`
+/// is rejected rather than read as `person:a`.
+fn parse_exact_record_id(s: &str) -> Result<RecordId, String> {
+    surrealdb_core::syn::parse_with(s.as_bytes(), async |parser, stk| {
+        let record_id = parser.parse_value_record_id(stk).await?;
+        parser.assert_finished()?;
+        Ok(record_id)
+    })
+    .map_err(|e| e.to_string())
+}
+
+/// Parse a create target: a record id literal such as `person:john` or `person:1`, otherwise a
+/// table name. The result is bound as a query parameter, never interpolated into SurrealQL.
+fn parse_target(s: &str) -> sdbValue {
+    match parse_exact_record_id(s) {
+        Ok(record_id) => sdbValue::RecordId(record_id),
+        Err(_) => sdbValue::Table(s.into()),
+    }
+}
+
+/// Parse a record id literal such as `person:john`, rejecting anything else
+fn parse_record_id(s: &str, name: &str) -> Result<RecordId, string_t> {
+    parse_exact_record_id(s)
+        .map_err(|e| string_t::from(format!("{name} is not a valid record id: {e}")))
+}
+
+/// Escape a table name for use as an identifier in SurrealQL
+///
+/// The name is always wrapped in backticks, with backslashes and backticks escaped, so it can
+/// never end the identifier early.
+fn escape_ident(s: &str) -> String {
+    let mut out = String::with_capacity(s.len() + 2);
+    out.push('`');
+    for c in s.chars() {
+        if c == '`' || c == '\\' {
+            out.push('\\');
+        }
+        out.push(c);
+    }
+    out.push('`');
+    out
+}
+
 use tokio::runtime::Runtime;
 use types::result::ArrayResult;
 
@@ -326,8 +371,12 @@ impl Surreal {
             let resource = unsafe { CStr::from_ptr(resource) }.to_str()?;
             let content = sdbObject::from(unsafe { &*content }.clone());
 
-            let query = format!("CREATE {} CONTENT $content", resource);
-            let mut res = surreal.db.query(&query).bind(("content", content)).await
+            let mut res = surreal
+                .db
+                .query("CREATE $target CONTENT $content")
+                .bind(("target", parse_target(resource)))
+                .bind(("content", content))
+                .await
                 .map_err(|e| string_t::from(e.to_string()))?;
             
             let val: sdbValue = res.take(0).map_err(|e| string_t::from(e.to_string()))?;
@@ -742,14 +791,18 @@ impl Surreal {
             let relation = unsafe { CStr::from_ptr(relation) }.to_str()?;
             let to = unsafe { CStr::from_ptr(to) }.to_str()?;
 
+            let from = parse_record_id(from, "from")?;
+            let to = parse_record_id(to, "to")?;
+            let relation = escape_ident(relation);
+
             let query = if content.is_null() {
-                format!("RELATE {from}->{relation}->{to}")
+                format!("RELATE $from->{relation}->$to")
             } else {
-                format!("RELATE {from}->{relation}->{to} CONTENT $content")
+                format!("RELATE $from->{relation}->$to CONTENT $content")
             };
 
-            let mut q = surreal.db.query(&query);
-            
+            let mut q = surreal.db.query(&query).bind(("from", from)).bind(("to", to));
+
             if !content.is_null() {
                 let content_obj = sdbObject::from(unsafe { &*content }.clone());
                 q = q.bind(("content", content_obj));
@@ -818,8 +871,14 @@ impl Surreal {
         check_null!(query_id, err_ptr, "query_id is null");
         with_surreal_async(db, err_ptr, |surreal| async {
             let uuid_str = unsafe { CStr::from_ptr(query_id) }.to_str()?;
-            let query = format!("KILL u'{}'", uuid_str);
-            surreal.db.query(query).await.map_err(|e| string_t::from(e.to_string()))?;
+            let uuid = ::uuid::Uuid::parse_str(uuid_str)
+                .map_err(|e| string_t::from(format!("query_id is not a valid uuid: {e}")))?;
+            surreal
+                .db
+                .query("KILL $id")
+                .bind(("id", sdbValue::Uuid(uuid.into())))
+                .await
+                .map_err(|e| string_t::from(e.to_string()))?;
             Ok(0)
         })
     }

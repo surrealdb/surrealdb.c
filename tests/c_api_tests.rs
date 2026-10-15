@@ -128,6 +128,9 @@ extern "C" {
 
     // Kill Live Query Test
     fn test_sr_kill() -> c_int;
+
+    // SurrealQL Injection Tests
+    fn test_sr_injection() -> c_int;
 }
 
 const TEST_PASS: c_int = 0;
@@ -326,3 +329,9 @@ c_test!(sr_object_keys, test_sr_object_keys);
 // ============================================================================
 
 c_test!(sr_kill, test_sr_kill);
+
+// ============================================================================
+// SurrealQL Injection Tests
+// ============================================================================
+
+c_test!(sr_injection, test_sr_injection);

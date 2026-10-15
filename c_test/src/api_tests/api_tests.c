@@ -1328,3 +1328,77 @@ int test_sr_kill(void) {
     sr_surreal_disconnect(db);
     return TEST_PASS;
 }
+
+/* ============================================================================
+ * SurrealQL Injection Tests
+ * ============================================================================ */
+
+/* Count the records in a table, or -1 on error */
+static int count_records(sr_surreal_t *db, const char *table) {
+    sr_string_t err = NULL;
+    sr_value_t *rows;
+    int len = sr_select(db, &err, &rows, table);
+    if (len < 0) {
+        if (err) sr_free_string(err);
+        return -1;
+    }
+    sr_free_arr(rows, len);
+    return len;
+}
+
+/* Names and ids passed to sr_create, sr_relate and sr_kill are data, never SurrealQL */
+int test_sr_injection(void) {
+    sr_surreal_t *db;
+    if (setup_db(&db) != TEST_PASS) return TEST_FAIL;
+
+    sr_string_t err = NULL;
+    sr_arr_res_t *qres;
+    int qlen = sr_query(db, &err, &qres, "CREATE canary:1; CREATE person:a; CREATE person:b;", NULL);
+    ASSERT_EQ(qlen, 3);
+    sr_free_arr_res_arr(qres, qlen);
+    ASSERT_EQ(count_records(db, "canary"), 1);
+
+    /* sr_create: the resource is a record id or a table name, nothing else */
+    sr_object_t content = sr_object_new();
+    sr_object_insert_str(&content, "name", "x");
+    sr_object_t *created;
+    int res = sr_create(db, &err, &created, "person CONTENT {}; DELETE canary; --", &content);
+    if (res < 0 && err) { sr_free_string(err); err = NULL; }
+    ASSERT_EQ(count_records(db, "canary"), 1);
+
+    /* Valid record ids and table names still work */
+    ASSERT_EQ(sr_create(db, &err, &created, "person:c", &content), 1);
+    ASSERT_EQ(sr_create(db, &err, &created, "person", &content), 1);
+    ASSERT_EQ(sr_create(db, &err, &created, "odd table", &content), 1);
+    ASSERT_EQ(count_records(db, "person"), 4);
+    ASSERT_EQ(count_records(db, "odd table"), 1);
+    sr_free_object(content);
+
+    /* sr_relate: from/to must be record ids and the relation is a table name */
+    sr_value_t *rel;
+    res = sr_relate(db, &err, &rel, "person:a; DELETE canary; --", "knows", "person:b", NULL);
+    ASSERT_EQ(res, sr_SR_ERROR);
+    sr_free_string(err); err = NULL;
+    res = sr_relate(db, &err, &rel, "person:a", "knows->person:b; DELETE canary; --", "person:b", NULL);
+    if (res > 0) sr_free_arr(rel, res);
+    if (res < 0 && err) { sr_free_string(err); err = NULL; }
+    res = sr_relate(db, &err, &rel, "person:a", "kno`ws", "person:b", NULL);
+    if (res > 0) sr_free_arr(rel, res);
+    if (res < 0 && err) { sr_free_string(err); err = NULL; }
+    ASSERT_EQ(count_records(db, "canary"), 1);
+
+    /* Valid relations still work */
+    res = sr_relate(db, &err, &rel, "person:a", "knows", "person:b", NULL);
+    ASSERT_EQ(res, 1);
+    sr_free_arr(rel, res);
+    ASSERT_EQ(count_records(db, "knows"), 1);
+
+    /* sr_kill: the id must be a uuid */
+    res = sr_kill(db, &err, "00000000-0000-0000-0000-000000000000'; DELETE canary; --");
+    ASSERT_EQ(res, sr_SR_ERROR);
+    sr_free_string(err); err = NULL;
+    ASSERT_EQ(count_records(db, "canary"), 1);
+
+    sr_surreal_disconnect(db);
+    return TEST_PASS;
+}

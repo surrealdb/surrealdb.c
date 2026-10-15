@@ -201,6 +201,12 @@ int test_sr_object_keys(void);
 
 int test_sr_kill(void);
 
+/* ============================================================================
+ * SurrealQL Injection Tests
+ * ============================================================================ */
+
+int test_sr_injection(void);
+
 #ifdef __cplusplus
 }
 #endif
