@@ -637,6 +637,111 @@ int test_sr_cancel(void) {
     return TEST_PASS;
 }
 
+/* Writes inside sr_begin/sr_cancel are rolled back; inside sr_begin/sr_commit they persist */
+int test_sr_transaction_isolation(void) {
+    sr_surreal_t *db;
+    if (setup_db(&db) != TEST_PASS) return TEST_FAIL;
+
+    sr_string_t err = NULL;
+    sr_value_t *rows;
+    sr_arr_res_t *qres;
+    sr_object_t content = sr_object_new();
+    sr_object_insert_str(&content, "name", "x");
+    int len;
+
+    /* Selecting from a table that doesn't exist is an error, so define it outside the transaction */
+    len = sr_query(db, &err, &qres, "DEFINE TABLE txn_item", NULL);
+    ASSERT_EQ(len, 1);
+    sr_free_arr_res_arr(qres, len);
+
+    /* Cancelled: nothing is kept */
+    ASSERT_EQ(sr_begin(db, &err), 0);
+    len = sr_insert(db, &err, &rows, "txn_item", &content);
+    ASSERT_EQ(len, 1);
+    sr_free_arr(rows, len);
+    len = sr_query(db, &err, &qres, "CREATE txn_item:q", NULL);
+    ASSERT_EQ(len, 1);
+    ASSERT_EQ(qres[0].err.code, 0);
+    sr_free_arr_res_arr(qres, len);
+    /* Reads inside the transaction see its writes */
+    len = sr_select(db, &err, &rows, "txn_item");
+    ASSERT_EQ(len, 2);
+    sr_free_arr(rows, len);
+    ASSERT_EQ(sr_cancel(db, &err), 0);
+    len = sr_select(db, &err, &rows, "txn_item");
+    ASSERT_EQ(len, 0);
+
+    /* Committed: everything is kept */
+    ASSERT_EQ(sr_begin(db, &err), 0);
+    len = sr_insert(db, &err, &rows, "txn_item", &content);
+    ASSERT_EQ(len, 1);
+    sr_free_arr(rows, len);
+    ASSERT_EQ(sr_commit(db, &err), 0);
+    len = sr_select(db, &err, &rows, "txn_item");
+    ASSERT_EQ(len, 1);
+    sr_free_arr(rows, len);
+
+    /* Misuse is reported */
+    ASSERT_EQ(sr_commit(db, &err), sr_SR_ERROR);
+    sr_free_string(err); err = NULL;
+    ASSERT_EQ(sr_cancel(db, &err), sr_SR_ERROR);
+    sr_free_string(err); err = NULL;
+    ASSERT_EQ(sr_begin(db, &err), 0);
+    ASSERT_EQ(sr_begin(db, &err), sr_SR_ERROR);
+    sr_free_string(err); err = NULL;
+    ASSERT_EQ(sr_cancel(db, &err), 0);
+
+    sr_free_object(content);
+    sr_surreal_disconnect(db);
+    return TEST_PASS;
+}
+
+/* Transaction handles: independent of each other and of sr_begin */
+int test_sr_transaction_handle(void) {
+    sr_surreal_t *db;
+    if (setup_db(&db) != TEST_PASS) return TEST_FAIL;
+
+    sr_string_t err = NULL;
+    sr_arr_res_t *qres;
+    sr_value_t *rows;
+    int len;
+
+    len = sr_query(db, &err, &qres, "DEFINE TABLE handle_item", NULL);
+    ASSERT_EQ(len, 1);
+    sr_free_arr_res_arr(qres, len);
+
+    sr_transaction_t *keep, *drop;
+    ASSERT_EQ(sr_transaction_begin(db, &err, &keep), 0);
+    ASSERT_EQ(sr_transaction_begin(db, &err, &drop), 0);
+
+    len = sr_transaction_query(keep, &err, &qres, "CREATE handle_item:keep", NULL);
+    ASSERT_EQ(len, 1);
+    ASSERT_EQ(qres[0].err.code, 0);
+    sr_free_arr_res_arr(qres, len);
+    len = sr_transaction_query(drop, &err, &qres, "CREATE handle_item:drop; SELECT * FROM handle_item", NULL);
+    ASSERT_EQ(len, 2);
+    /* Each transaction sees only its own writes */
+    ASSERT_EQ(qres[1].ok.len, 1);
+    sr_free_arr_res_arr(qres, len);
+
+    /* Nothing is visible outside before commit */
+    len = sr_select(db, &err, &rows, "handle_item");
+    ASSERT_EQ(len, 0);
+
+    ASSERT_EQ(sr_transaction_cancel(drop, &err), 0);
+    ASSERT_EQ(sr_transaction_commit(keep, &err), 0);
+
+    len = sr_select(db, &err, &rows, "handle_item");
+    ASSERT_EQ(len, 1);
+    sr_free_arr(rows, len);
+
+    ASSERT_EQ(sr_transaction_commit(NULL, NULL), sr_SR_ERROR);
+    ASSERT_EQ(sr_transaction_query(NULL, NULL, &qres, "RETURN 1", NULL), sr_SR_ERROR);
+
+    sr_surreal_disconnect(db);
+    return TEST_PASS;
+}
+
 /* ============================================================================
  * Session Variable Tests
  * ============================================================================ */
