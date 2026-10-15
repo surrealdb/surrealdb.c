@@ -99,3 +99,39 @@ jobs:
             -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address,undefined"
           cmake --build build-asan
           ctest --test-dir build-asan --output-on-failure
+
+  remote:
+    name: Remote server (${{ matrix.image }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # The SDK rejects servers outside its supported version range when it connects.
+        # Add the 4.x image once the crate accepts 4.x servers.
+        image: ["surrealdb/surrealdb:v3", "surrealdb/surrealdb:nightly"]
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # master
+        with:
+          toolchain: stable
+
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+
+      - name: Start the server
+        run: |
+          docker run -d --name surrealdb -p 8000:8000 ${{ matrix.image }} start --unauthenticated memory
+          for i in $(seq 1 30); do
+            curl -sf http://127.0.0.1:8000/health && break
+            sleep 2
+          done
+          curl -s http://127.0.0.1:8000/version
+
+      - name: Remote tests
+        env:
+          SURREALDB_TEST_URL: http://127.0.0.1:8000
+        run: cargo test --test remote_tests -- --nocapture
+
+      - name: Server logs
+        if: failure()
+        run: docker logs surrealdb
