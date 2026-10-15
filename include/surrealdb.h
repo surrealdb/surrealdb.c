@@ -1,3 +1,72 @@
+/*
+ * surrealdb.c - the SurrealDB SDK for C
+ *
+ * MEMORY OWNERSHIP
+ * ================
+ *
+ * General rules
+ * -------------
+ * - Pointers passed INTO a function are borrowed. The library copies anything it keeps
+ *   (strings, values, objects, byte buffers), so the caller still owns its arguments and
+ *   must free them as usual, after the call returns.
+ * - Heap data handed OUT by the library is owned by the caller and must be released with
+ *   the matching function below, exactly once. Never pass it to free(): it was not
+ *   allocated with malloc.
+ * - Data reached through a returned container (an element of an array, a value inside an
+ *   object, the bytes inside a value, the strings inside a record id) belongs to that
+ *   container. Do not free it separately; it is released with the container, and pointers
+ *   to it are invalid after that.
+ * - Every function that takes `sr_string_t *err_ptr` writes a newly allocated message to
+ *   it when it fails (returns a negative code). Free it with sr_free_string. `err_ptr` may
+ *   be NULL, in which case the message is discarded. On success nothing is written.
+ * - A negative length (an error) means nothing was written to the result pointer, so there
+ *   is nothing to free.
+ *
+ * Who frees what
+ * --------------
+ *   Returned by                                   Free with
+ *   --------------------------------------------  -------------------------------------------
+ *   sr_connect (*surreal_ptr)                     sr_surreal_disconnect(db)
+ *   any err_ptr message                           sr_free_string(err)
+ *   sr_signin / sr_signup (*token_ptr)            sr_free_string(token)
+ *   sr_version (*res_ptr)                         sr_free_string(version)
+ *   sr_create (*res_ptr, an sr_object_t *)        sr_object_free(obj)
+ *   sr_select, sr_insert, sr_insert_relation,     sr_free_arr(values, len)
+ *   sr_update, sr_upsert, sr_merge, sr_delete,      (len is the return value)
+ *   sr_patch_add/remove/replace, sr_run,
+ *   sr_relate (*res_ptr, an sr_value_t array)
+ *   sr_query (*res_ptr, an sr_arr_res_t array)    sr_free_arr_res_arr(results, len)
+ *   sr_select_live (*stream_ptr)                  sr_stream_kill(stream)
+ *   sr_stream_next (*notification_ptr)            sr_free_notification(notification)
+ *   sr_surreal_rpc_new (*surreal_ptr)             sr_surreal_rpc_free(rpc)
+ *   sr_surreal_rpc_execute (*res_ptr)             sr_free_byte_arr(bytes, len)
+ *   sr_surreal_rpc_notifications (*stream_ptr)    sr_rpc_stream_free(stream)
+ *   sr_rpc_stream_next (*res_ptr)                 sr_free_byte_arr(bytes, len)
+ *   sr_value_none/null/bool/int/float/string/     sr_value_free(value)
+ *   object/duration/datetime/uuid/array/bytes/
+ *   thing/point/linestring/polygon/multipoint/
+ *   multilinestring/multipolygon/decimal
+ *   sr_object_new (returned by value)             sr_free_object(obj)
+ *   sr_object_keys (*keys_ptr)                    sr_free_string_arr(keys, len)
+ *   sr_array_push (returned pointer)              sr_array_free(arr)
+ *
+ * Borrowed results (do not free)
+ * ------------------------------
+ *   sr_object_get, sr_array_get     point into the object or array passed in; valid until
+ *                                   that container is modified or freed.
+ *
+ * Handles
+ * -------
+ * - sr_surreal_t and sr_surreal_rpc_t may be shared between threads. Free them once, after
+ *   every other call on them has returned. Results already returned stay valid after the
+ *   handle is freed.
+ * - Every stream must be freed with sr_stream_kill (or sr_rpc_stream_free), before or after
+ *   its connection is closed. Closing the connection with sr_surreal_disconnect makes a
+ *   thread blocked in sr_stream_next return SR_NONE; free the stream after that call
+ *   returns. A stream may be moved to another thread but not used from two threads at once.
+ */
+
+
 #pragma once
 
 #include <stdarg.h>
@@ -25,18 +94,14 @@ typedef enum sr_action {
   SR_ACTION_UPDATE,
   SR_ACTION_DELETE,
   SR_ACTION_KILLED,
-  /**
-   * Represents an action type added in a newer version of SurrealDB
-   * that this C API version doesn't yet support
-   */
-  SR_ACTION_UNIMPLEMENTED,
 } sr_action;
 
 typedef struct sr_opaque_object_internal_t sr_opaque_object_internal_t;
 
 /**
- * Stream for receiving RPC notifications
+ * Stream for receiving RPC live query notifications
  *
+ * Wraps a `Receiver<PublicNotification>` from the datastore's notification channel.
  * Uses synchronous blocking receives, so no async drop is required.
  */
 typedef struct sr_RpcStream sr_RpcStream;
@@ -61,13 +126,13 @@ typedef struct sr_stream_t sr_stream_t;
 typedef struct sr_surreal_t sr_surreal_t;
 
 /**
- * The object representing a Surreal connection
+ * The object representing a Surreal RPC connection
  *
  * It is safe to be referenced from multiple threads
  * If any operation, on any thread returns SR_FATAL then the connection is poisoned and must not be used again.
  * (use will cause the program to abort)
  *
- * should be freed with sr_surreal_disconnect
+ * should be freed with sr_surreal_rpc_free
  */
 typedef struct sr_surreal_rpc_t sr_surreal_rpc_t;
 
@@ -1413,7 +1478,7 @@ int sr_surreal_rpc_new(sr_string_t *err_ptr,
                        struct sr_option_t options);
 
 /**
- * Execute an RPC request
+ * Execute an RPC request via raw CBOR bytes
  *
  * # Safety
  *
@@ -1446,10 +1511,6 @@ int sr_surreal_rpc_notifications(const struct sr_surreal_rpc_t *self,
 
 /**
  * Free an RPC context
- *
- * # Safety
- *
- * - `ctx` must be a valid pointer to a SurrealRpc, or null (no-op)
  */
 void sr_surreal_rpc_free(struct sr_surreal_rpc_t *ctx);
 
@@ -1481,6 +1542,11 @@ void sr_array_free(struct sr_array_t *arr);
 void sr_free_bytes(struct sr_bytes_t bytes);
 
 void sr_free_byte_arr(uint8_t *ptr, int len);
+
+/**
+ * Free the data inside a notification written by `sr_stream_next`
+ */
+void sr_free_notification(struct sr_notification_t notification);
 
 void sr_print_notification(const struct sr_notification_t *notification);
 
@@ -1555,8 +1621,17 @@ void sr_object_insert_double(struct sr_object_t *obj, const char *key, double va
 
 /**
  * Free an object
+ *
+ * For objects held by value, such as the result of `sr_object_new`.
  */
 void sr_free_object(struct sr_object_t obj);
+
+/**
+ * Free an object returned by pointer, such as the result of `sr_create`
+ *
+ * Frees the object and its contents. NULL is ignored.
+ */
+void sr_object_free(struct sr_object_t *obj);
 
 /**
  * Get the number of key-value pairs in the object
@@ -1581,8 +1656,22 @@ void sr_free_arr_res_arr(struct sr_arr_res_t *ptr, int len);
 
 /**
  * Blocks until next item is received on stream
- * will return 1 and write notification to notification_ptr is recieved
+ * will return 1 and write notification to notification_ptr if received
  * will return SR_NONE if the stream is closed
+ *
+ * sr_stream_t *stream;
+ * if (sr_select_live(db, &err, &stream, "foo") < 0)
+ * {
+ *     printf("%s", err);
+ *     return 1;
+ * }
+ *
+ * sr_notification_t not ;
+ * if (sr_stream_next(stream, &not ) > 0)
+ * {
+ *     sr_print_notification(&not );
+ * }
+ * sr_stream_kill(stream);
  */
 int sr_stream_next(struct sr_stream_t *self, struct sr_notification_t *notification_ptr);
 
@@ -1596,7 +1685,11 @@ void sr_stream_kill(struct sr_stream_t *stream);
 
 /**
  * Get the next notification from the stream
- * Returns the length of the CBOR-encoded notification, or SR_CLOSED if the stream is closed
+ *
+ * Returns the length of the CBOR-encoded notification, or SR_CLOSED if the
+ * channel is closed. The CBOR-encoded bytes are written to *res_ptr.
+ *
+ * Free the result with sr_free_byte_arr.
  */
 int sr_rpc_stream_next(struct sr_RpcStream *self, uint8_t **res_ptr);
 

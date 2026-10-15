@@ -278,8 +278,10 @@ int test_sr_create(void) {
     int res = sr_create(db, &err, &result, "items", &content);
     ASSERT_GE(res, 0);
     
+    ASSERT_NOT_NULL(result);
+    ASSERT_NOT_NULL(sr_object_get(result, "name"));
+    sr_object_free(result);
     sr_free_object(content);
-    /* Note: result is returned via pointer from Rust - do not free with sr_free_object */
     sr_surreal_disconnect(db);
     return TEST_PASS;
 }
@@ -338,10 +340,10 @@ int test_sr_update(void) {
     /* First create a record */
     sr_object_t create_content = sr_object_new();
     sr_object_insert_str(&create_content, "name", "original");
-    sr_object_t *created;
+    sr_object_t *created = NULL;
     sr_create(db, &err, &created, "items:1", &create_content);
     sr_free_object(create_content);
-    /* Note: created is returned via pointer from Rust - do not free with sr_free_object */
+    sr_object_free(created);
     
     /* Update it */
     sr_object_t update_content = sr_object_new();
@@ -390,10 +392,10 @@ int test_sr_delete(void) {
     /* First create a record */
     sr_object_t content = sr_object_new();
     sr_object_insert_str(&content, "name", "to_delete");
-    sr_object_t *created;
+    sr_object_t *created = NULL;
     sr_create(db, &err, &created, "items:delete1", &content);
     sr_free_object(content);
-    /* Note: created is returned via pointer from Rust - do not free with sr_free_object */
+    sr_object_free(created);
     
     /* Delete it */
     int len = sr_delete(db, &err, &results, "items:delete1");
@@ -418,10 +420,10 @@ int test_sr_merge(void) {
     sr_object_t create_content = sr_object_new();
     sr_object_insert_str(&create_content, "name", "original");
     sr_object_insert_int(&create_content, "count", 1);
-    sr_object_t *created;
+    sr_object_t *created = NULL;
     sr_create(db, &err, &created, "items:merge1", &create_content);
     sr_free_object(create_content);
-    /* Note: created is returned via pointer from Rust - do not free with sr_free_object */
+    sr_object_free(created);
     
     /* Merge new data */
     sr_object_t merge_content = sr_object_new();
@@ -479,14 +481,14 @@ int test_sr_relate(void) {
     sr_object_t *p1_res;
     sr_create(db, &err, &p1_res, "person:john", &p1);
     sr_free_object(p1);
-    /* Note: p1_res is returned via pointer from Rust - do not free with sr_free_object */
+    sr_object_free(p1_res);
     
     sr_object_t p2 = sr_object_new();
     sr_object_insert_str(&p2, "name", "Jane");
     sr_object_t *p2_res;
     sr_create(db, &err, &p2_res, "person:jane", &p2);
     sr_free_object(p2);
-    /* Note: p2_res is returned via pointer from Rust - do not free with sr_free_object */
+    sr_object_free(p2_res);
     
     /* Create relation */
     int len = sr_relate(db, &err, &results, "person:john", "knows", "person:jane", NULL);
@@ -514,10 +516,10 @@ int test_sr_patch_add(void) {
     /* First create a record */
     sr_object_t content = sr_object_new();
     sr_object_insert_str(&content, "name", "test");
-    sr_object_t *created;
+    sr_object_t *created = NULL;
     sr_create(db, &err, &created, "items:patch1", &content);
     sr_free_object(content);
-    /* Note: created is returned via pointer from Rust - do not free with sr_free_object */
+    sr_object_free(created);
     
     /* Patch add */
     sr_value_t *value = sr_value_string("new_value");
@@ -544,10 +546,10 @@ int test_sr_patch_remove(void) {
     sr_object_t content = sr_object_new();
     sr_object_insert_str(&content, "name", "test");
     sr_object_insert_str(&content, "to_remove", "value");
-    sr_object_t *created;
+    sr_object_t *created = NULL;
     sr_create(db, &err, &created, "items:patch2", &content);
     sr_free_object(content);
-    /* Note: created is returned via pointer from Rust - do not free with sr_free_object */
+    sr_object_free(created);
     
     /* Patch remove */
     int len = sr_patch_remove(db, &err, &results, "items:patch2", "/to_remove");
@@ -571,10 +573,10 @@ int test_sr_patch_replace(void) {
     /* First create a record */
     sr_object_t content = sr_object_new();
     sr_object_insert_str(&content, "name", "original");
-    sr_object_t *created;
+    sr_object_t *created = NULL;
     sr_create(db, &err, &created, "items:patch3", &content);
     sr_free_object(content);
-    /* Note: created is returned via pointer from Rust - do not free with sr_free_object */
+    sr_object_free(created);
     
     /* Patch replace */
     sr_value_t *value = sr_value_string("replaced");
@@ -1069,8 +1071,32 @@ int test_sr_surreal_rpc_free(void) {
  * ============================================================================ */
 
 int test_sr_stream_next(void) {
-    /* Tested as part of select_live */
-    return TEST_SKIP;
+    sr_surreal_t *db;
+    if (setup_db(&db) != TEST_PASS) return TEST_FAIL;
+
+    sr_string_t err;
+    sr_arr_res_t *qres;
+    int len = sr_query(db, &err, &qres, "DEFINE TABLE live_items", NULL);
+    ASSERT_EQ(len, 1);
+    sr_free_arr_res_arr(qres, len);
+
+    sr_stream_t *stream;
+    ASSERT_GE(sr_select_live(db, &err, &stream, "live_items"), 0);
+
+    len = sr_query(db, &err, &qres, "CREATE live_items:1 SET name = 'x'", NULL);
+    ASSERT_EQ(len, 1);
+    sr_free_arr_res_arr(qres, len);
+
+    sr_notification_t notification;
+    ASSERT_EQ(sr_stream_next(stream, &notification), 1);
+    ASSERT_EQ(notification.action, SR_ACTION_CREATE);
+    ASSERT_EQ(notification.data.tag, SR_VALUE_OBJECT);
+    ASSERT_NOT_NULL(sr_object_get(&notification.data.sr_value_object, "name"));
+    sr_free_notification(notification);
+
+    sr_stream_kill(stream);
+    sr_surreal_disconnect(db);
+    return TEST_PASS;
 }
 
 int test_sr_stream_kill(void) {
