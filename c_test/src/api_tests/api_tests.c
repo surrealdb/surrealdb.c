@@ -839,6 +839,58 @@ int test_sr_value_bytes(void) {
     return TEST_PASS;
 }
 
+/* Regression test: bytes values used to be cloned shallowly, so sending an
+ * object holding bytes freed the caller's buffer (use-after-free) and sending
+ * it twice freed it again (double free). */
+int test_sr_bytes_ownership(void) {
+    sr_surreal_t *db;
+    if (setup_db(&db) != TEST_PASS) return TEST_FAIL;
+
+    sr_string_t err;
+    uint8_t data[] = {0xde, 0xad, 0xbe, 0xef};
+    sr_value_t *val = sr_value_bytes(data, 4);
+    ASSERT_NOT_NULL(val);
+
+    sr_object_t content = sr_object_new();
+    sr_object_insert(&content, "payload", val);
+
+    /* Each call converts a copy of the object; the caller's copies must survive */
+    for (int i = 0; i < 2; i++) {
+        sr_value_t *results;
+        int len = sr_insert(db, &err, &results, "blobs", &content);
+        ASSERT_EQ(len, 1);
+        sr_free_arr(results, len);
+    }
+
+    /* The caller's value and the object's copy are still intact */
+    ASSERT_EQ(val->sr_value_bytes.len, 4);
+    ASSERT_EQ(memcmp(val->sr_value_bytes.arr, data, 4), 0);
+    const sr_value_t *inner = sr_object_get(&content, "payload");
+    ASSERT_NOT_NULL(inner);
+    ASSERT_EQ(inner->tag, SR_VALUE_BYTES);
+    ASSERT_EQ(memcmp(inner->sr_value_bytes.arr, data, 4), 0);
+    ASSERT_TRUE(inner->sr_value_bytes.arr != val->sr_value_bytes.arr);
+
+    /* And the stored bytes round-trip */
+    sr_value_t *rows;
+    int len = sr_select(db, &err, &rows, "blobs");
+    ASSERT_EQ(len, 2);
+    for (int i = 0; i < len; i++) {
+        ASSERT_EQ(rows[i].tag, SR_VALUE_OBJECT);
+        const sr_value_t *payload = sr_object_get(&rows[i].sr_value_object, "payload");
+        ASSERT_NOT_NULL(payload);
+        ASSERT_EQ(payload->tag, SR_VALUE_BYTES);
+        ASSERT_EQ(payload->sr_value_bytes.len, 4);
+        ASSERT_EQ(memcmp(payload->sr_value_bytes.arr, data, 4), 0);
+    }
+    sr_free_arr(rows, len);
+
+    sr_free_object(content);
+    sr_value_free(val);
+    sr_surreal_disconnect(db);
+    return TEST_PASS;
+}
+
 int test_sr_value_thing(void) {
     sr_value_t *val = sr_value_thing("users", "john123");
     ASSERT_NOT_NULL(val);
