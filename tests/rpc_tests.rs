@@ -48,7 +48,7 @@ impl Rpc {
         assert!(len > 0, "rpc_execute failed ({len}): {err:?}");
         let response = unsafe { std::slice::from_raw_parts(out, len as usize) }.to_vec();
         Bytes::free_byte_arr(out, len);
-        match cbor::decode(&response).expect("response is valid CBOR") {
+        match cbor::decode(&response, 100).expect("response is valid CBOR") {
             Value::Object(obj) => obj,
             other => panic!("expected a response object, got {other:?}"),
         }
@@ -217,7 +217,7 @@ fn notifications_are_tagged() {
     rpc.call("query", vec![s("CREATE person:bob SET name = 'bob'")]);
 
     let bytes = rx.recv_timeout(Duration::from_secs(10)).expect("notification arrives");
-    let Value::Object(mut envelope) = cbor::decode(&bytes).unwrap() else {
+    let Value::Object(mut envelope) = cbor::decode(&bytes, 100).unwrap() else {
         panic!("notification should be an object");
     };
     let Some(Value::Object(notification)) = envelope.remove("result") else {

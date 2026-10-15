@@ -10,9 +10,11 @@ use std::sync::Arc;
 use surrealdb_core::dbs::Session;
 use surrealdb_core::kvs::Datastore;
 use surrealdb_core::rpc::format::cbor;
-use surrealdb_core::rpc::{
-    invalid_request, parse_error, DbResponse, DbResult, Request, RpcProtocol,
-};
+use surrealdb_core::rpc::RpcProtocol;
+use surrealdb_rpc::error::{invalid_request, parse_error};
+use surrealdb_rpc::{DbResponse, DbResult, Request};
+use surrealdb::types::Notification;
+use async_channel::Receiver;
 use surrealdb::types::SurrealValue;
 use surrealdb::types::{Value as sdbValue, HashMap};
 use tokio::{runtime::Runtime, sync::RwLock};
@@ -59,32 +61,37 @@ impl SurrealRpc {
                 return Err("error creating runtime".into());
             };
 
-            let con_fut = Datastore::new(endpoint);
-
-            let mut kvs = match rt.block_on(con_fut.into_future()) {
-                Ok(db) => db,
-                Err(e) => return Err(e.to_string().into()),
-            };
-
-            kvs = kvs.with_notifications();
-
+            let (notify_tx, notifications) = async_channel::bounded(LQ_CHANNEL_SIZE);
+            let mut builder = Datastore::builder().with_notify(notify_tx);
             if options.query_timeout != 0 {
-                kvs =
-                    kvs.with_query_timeout(Some(Duration::from_secs(options.query_timeout as u64)))
+                builder = builder
+                    .with_query_timeout(Some(Duration::from_secs(options.query_timeout as u64)))
             }
             if options.transaction_timeout != 0 {
-                kvs = kvs.with_transaction_timeout(Some(Duration::from_secs(
+                builder = builder.with_transaction_timeout(Some(Duration::from_secs(
                     options.transaction_timeout as u64,
                 )))
             }
 
+            // Built inside the runtime: the datastore starts its background tasks here
+            let kvs = match rt.block_on(builder.build_with_path(endpoint).into_future()) {
+                Ok(db) => db,
+                Err(e) => return Err(e.to_string().into()),
+            };
+
+            // Requests without a `session` field use this connection-level session,
+            // as they do on a server WebSocket connection
+            let default_session = uuid::Uuid::new_v4();
+            let mut session = Session::default().with_rt(true);
+            session.id = Some(default_session);
             let session_map = HashMap::default();
-            let default_session = Arc::new(RwLock::new(Session::default().with_rt(true)));
-            session_map.insert(None, default_session);
+            session_map.insert(default_session, Arc::new(RwLock::new(session)));
 
             let inner = SurrealRpcInner {
                 kvs,
                 session_map,
+                default_session,
+                notifications,
             };
 
             Ok(SurrealRpc {
@@ -197,13 +204,7 @@ impl SurrealRpc {
             return SR_ERROR;
         }
         with_async(self, err_ptr, |ctx| async {
-            let receiver = ctx
-                .inner
-                .read()
-                .await
-                .kvs
-                .notifications()
-                .ok_or(string_t::from("Notifications not enabled"))?;
+            let receiver = ctx.inner.read().await.notifications.clone();
 
             let rpc_stream = RpcStream::new(receiver);
             let stream_boxed = Box::new(rpc_stream);
@@ -257,16 +258,23 @@ where
     }
 }
 
-#[allow(dead_code)]
+/// Maximum nesting depth of a decoded request (the limit core's `encoding::cbor::decode` uses)
+const CBOR_RECURSION_LIMIT: usize = 100;
+
+/// Capacity of the notification channel (the size the 3.0 datastore used)
+const LQ_CHANNEL_SIZE: usize = 15_000;
+
 struct SurrealRpcInner {
-    kvs: Datastore,
-    session_map: HashMap<Option<uuid::Uuid>, Arc<RwLock<Session>>>,
+    kvs: Arc<Datastore>,
+    session_map: HashMap<uuid::Uuid, Arc<RwLock<Session>>>,
+    default_session: uuid::Uuid,
+    notifications: Receiver<Notification>,
 }
 
 impl SurrealRpcInner {
     /// Decode and execute one CBOR request, returning the response the server would send
     async fn handle(&self, bytes: &[u8]) -> DbResponse {
-        let request = match cbor::decode(bytes) {
+        let request = match cbor::decode(bytes, CBOR_RECURSION_LIMIT) {
             Ok(sdbValue::Object(obj)) => Request::from_object(obj),
             Ok(_) => Err(invalid_request()),
             Err(_) => Err(parse_error()),
@@ -276,9 +284,11 @@ impl SurrealRpcInner {
             Err(e) => return DbResponse::failure(None, None, e),
         };
         let txn = request.txn.map(Into::into);
-        let session = request.session_id.map(Into::into);
-        let result = self.execute(txn, session, request.method, request.params).await;
-        DbResponse::new(request.id, session, result)
+        let client_session: Option<uuid::Uuid> = request.session_id.map(Into::into);
+        let session = client_session.unwrap_or(self.default_session);
+        let result =
+            self.execute(txn, session, client_session, request.method, request.params).await;
+        DbResponse::new(request.id, client_session, result)
     }
 }
 
@@ -287,7 +297,11 @@ impl RpcProtocol for SurrealRpcInner {
         &self.kvs
     }
 
-    fn session_map(&self) -> &HashMap<Option<uuid::Uuid>, Arc<RwLock<Session>>> {
+    fn kvs_arc(&self) -> Arc<Datastore> {
+        self.kvs.clone()
+    }
+
+    fn session_map(&self) -> &HashMap<uuid::Uuid, Arc<RwLock<Session>>> {
         &self.session_map
     }
 
@@ -298,11 +312,16 @@ impl RpcProtocol for SurrealRpcInner {
     
     const LQ_SUPPORT: bool = true;
 
-    async fn handle_live(&self, _lqid: &uuid::Uuid, _session_id: Option<uuid::Uuid>) {}
+    async fn handle_live(
+        &self,
+        _lqid: &uuid::Uuid,
+        _session_id: uuid::Uuid,
+        _namespace: Option<String>,
+        _database: Option<String>,
+    ) {
+    }
 
-    async fn handle_kill(&self, _lqid: &uuid::Uuid) {}
-
-    async fn cleanup_lqs(&self, _session_id: Option<&uuid::Uuid>) {}
+    async fn cleanup_lqs(&self, _session_id: &uuid::Uuid) {}
 
     async fn cleanup_all_lqs(&self) {}
 }

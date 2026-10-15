@@ -5,7 +5,7 @@ use futures::StreamExt;
 use surrealdb::method::Stream as sdbStream;
 use surrealdb::types::{Notification as PublicNotification, SurrealValue, Value as sdbValue};
 use surrealdb_core::rpc::format::cbor;
-use surrealdb_core::rpc::{DbResponse, DbResult};
+use surrealdb_rpc::{DbResponse, DbResult};
 use tokio::runtime::Handle;
 
 use crate::SR_ERROR;
