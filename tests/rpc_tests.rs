@@ -233,6 +233,10 @@ fn notifications_are_tagged() {
     let Value::Object(mut envelope) = cbor::decode(&bytes, 100).unwrap() else {
         panic!("notification should be an object");
     };
+    assert!(
+        !matches!(envelope.get("session"), Some(Value::Uuid(_))),
+        "default-session notifications have no session: {envelope:?}"
+    );
     let Some(Value::Object(notification)) = envelope.remove("result") else {
         panic!("notification should be wrapped in result: {envelope:?}");
     };
@@ -304,4 +308,43 @@ fn detaching_a_session_ends_its_live_queries() {
     }
     assert!(seen.contains(&kept), "the default session's live query still notifies: {seen:?}");
     assert!(!seen.contains(&detached), "the detached session's live query ended: {seen:?}");
+}
+
+#[test]
+fn notifications_carry_the_attached_session() {
+    let rpc = Rpc::new();
+    let mut err = string_t::null();
+    let mut stream: *mut RpcStream = ptr::null_mut();
+    let res = SurrealRpc::notifications(unsafe { &*rpc.0 }, &mut err, &mut stream);
+    assert!(res >= 0, "notifications failed: {err:?}");
+
+    let session = Uuid::new_v4();
+    rpc.call_in(Some(session), "attach", vec![]);
+    rpc.call_in(Some(session), "use", vec![s("test"), s("test")]);
+    rpc.call_in(Some(session), "query", vec![s("DEFINE TABLE person; LIVE SELECT * FROM person")]);
+
+    let stream_addr = stream as usize;
+    let (tx, rx) = mpsc::channel();
+    std::thread::spawn(move || {
+        let mut out: *mut u8 = ptr::null_mut();
+        let len = RpcStream::next(unsafe { &mut *(stream_addr as *mut RpcStream) }, &mut out);
+        let bytes = if len > 0 {
+            let bytes = unsafe { std::slice::from_raw_parts(out, len as usize) }.to_vec();
+            Bytes::free_byte_arr(out, len);
+            bytes
+        } else {
+            Vec::new()
+        };
+        tx.send(bytes).ok();
+    });
+
+    rpc.call_in(Some(session), "query", vec![s("CREATE person:bob")]);
+
+    let bytes = rx.recv_timeout(Duration::from_secs(10)).expect("notification arrives");
+    let Value::Object(envelope) = cbor::decode(&bytes, 100).unwrap() else {
+        panic!("notification should be an object");
+    };
+    assert_eq!(envelope.get("session"), Some(&Value::Uuid(session)), "{envelope:?}");
+
+    RpcStream::free(stream);
 }

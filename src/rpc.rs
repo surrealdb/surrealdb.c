@@ -88,18 +88,27 @@ impl SurrealRpc {
             let session_map = HashMap::default();
             session_map.insert(default_session, Arc::new(RwLock::new(session)));
 
-            // Forward notifications to sr_surreal_rpc_notifications streams, forgetting each
-            // live query once it ends (by KILL, or when its table is removed)
+            // Forward notifications to sr_surreal_rpc_notifications streams with the session
+            // that started the live query (none for the default session), forgetting each live
+            // query once it ends (by KILL, or when its table is removed)
             let live_queries = LiveQueries::default();
             let (forward_tx, notifications) = async_channel::bounded(LQ_CHANNEL_SIZE);
-            let ended = live_queries.clone();
+            let lqs = live_queries.clone();
             rt.spawn(async move {
                 while let Ok(notification) = datastore_notifications.recv().await {
-                    if notification.action == Action::Killed {
+                    let session = {
+                        let mut lqs = lqs.lock().unwrap_or_else(|e| e.into_inner());
                         let id = uuid::Uuid::from(notification.id);
-                        ended.lock().unwrap_or_else(|e| e.into_inner()).remove(&id);
-                    }
-                    if forward_tx.send(notification).await.is_err() {
+                        if notification.action == Action::Killed {
+                            lqs.remove(&id)
+                        } else {
+                            lqs.get(&id).copied()
+                        }
+                    };
+                    let session = session
+                        .or(notification.session.map(Into::into))
+                        .filter(|s| *s != default_session);
+                    if forward_tx.send((notification, session)).await.is_err() {
                         break;
                     }
                 }
@@ -294,7 +303,7 @@ struct SurrealRpcInner {
     kvs: Arc<Datastore>,
     session_map: HashMap<uuid::Uuid, Arc<RwLock<Session>>>,
     default_session: uuid::Uuid,
-    notifications: Receiver<Notification>,
+    notifications: Receiver<(Notification, Option<uuid::Uuid>)>,
     /// The session each running live query was started from, so detaching or resetting a
     /// session (or freeing the context) can end its live queries
     live_queries: LiveQueries,

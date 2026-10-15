@@ -77,15 +77,16 @@ impl Stream {
 
 /// Stream for receiving RPC live query notifications
 ///
-/// Wraps a `Receiver<PublicNotification>` from the datastore's notification channel.
-/// Uses synchronous blocking receives, so no async drop is required.
+/// Wraps a receiver of notifications, each with the session that started its live query
+/// (`None` for the default session). Uses synchronous blocking receives, so no async drop
+/// is required.
 pub struct RpcStream {
-    rx: Receiver<PublicNotification>,
+    rx: Receiver<(PublicNotification, Option<::uuid::Uuid>)>,
 }
 
 impl RpcStream {
     /// Create a new RpcStream from a notification receiver
-    pub fn new(rx: Receiver<PublicNotification>) -> Self {
+    pub fn new(rx: Receiver<(PublicNotification, Option<::uuid::Uuid>)>) -> Self {
         RpcStream { rx }
     }
 
@@ -94,18 +95,19 @@ impl RpcStream {
     /// Blocks until a notification arrives. Returns the length of the CBOR-encoded
     /// notification, or SR_CLOSED if the channel is closed. The bytes are written to
     /// *res_ptr in the format the server sends notifications in:
-    /// `{ result: { id, action, record, result, session } }`, with SurrealDB's CBOR tags.
+    /// `{ result: { id, action, record, result, session } }`, with SurrealDB's CBOR tags, plus
+    /// a top-level `session` when the live query was started in an attached session.
     ///
     /// Free the result with sr_free_byte_arr.
     #[export_name = "sr_rpc_stream_next"]
     pub extern "C" fn next(&mut self, res_ptr: *mut *mut u8) -> c_int {
-        let notification = match self.rx.recv_blocking() {
+        let (notification, session) = match self.rx.recv_blocking() {
             Ok(n) => n,
             Err(_) => return SR_CLOSED,
         };
 
         // Notifications use the server's format: { result: { id, action, record, result, session } }
-        let response = DbResponse::success(None, None, DbResult::Live(notification));
+        let response = DbResponse::success(None, session, DbResult::Live(notification));
         let res = match cbor::encode(response.into_value()) {
             Ok(res) => res,
             Err(_) => return SR_ERROR,
