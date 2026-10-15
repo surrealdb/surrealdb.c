@@ -6,7 +6,8 @@ use std::{
     sync::atomic::{AtomicBool, Ordering},
     time::Duration,
 };
-use std::sync::Arc;
+use std::collections::HashMap as StdHashMap;
+use std::sync::{Arc, Mutex};
 use surrealdb_core::dbs::Session;
 use surrealdb_core::kvs::Datastore;
 use surrealdb_core::rpc::format::cbor;
@@ -92,6 +93,7 @@ impl SurrealRpc {
                 session_map,
                 default_session,
                 notifications,
+                live_queries: Mutex::default(),
             };
 
             Ok(SurrealRpc {
@@ -221,6 +223,10 @@ impl SurrealRpc {
             return;
         }
         let boxed = unsafe { Box::from_raw(ctx) };
+        // End this context's live queries, so a persistent datastore doesn't keep them
+        let _ = catch_unwind(AssertUnwindSafe(|| {
+            boxed.rt.block_on(async { boxed.inner.read().await.cleanup_all_lqs().await })
+        }));
         drop(boxed)
     }
 }
@@ -269,9 +275,26 @@ struct SurrealRpcInner {
     session_map: HashMap<uuid::Uuid, Arc<RwLock<Session>>>,
     default_session: uuid::Uuid,
     notifications: Receiver<Notification>,
+    /// The session each live query was started from, so detaching or resetting a session
+    /// (or freeing the context) can end its live queries
+    live_queries: Mutex<StdHashMap<uuid::Uuid, uuid::Uuid>>,
 }
 
 impl SurrealRpcInner {
+    /// Remove the matching live queries from the datastore
+    async fn kill_lqs(&self, matches: impl Fn(&uuid::Uuid) -> bool) {
+        let ids: Vec<uuid::Uuid> = {
+            let mut lqs = self.live_queries.lock().unwrap_or_else(|e| e.into_inner());
+            let ids = lqs.iter().filter(|(_, s)| matches(s)).map(|(lq, _)| *lq).collect();
+            lqs.retain(|_, s| !matches(s));
+            ids
+        };
+        // A query already ended by KILL is skipped by delete_queries
+        if !ids.is_empty() {
+            let _ = self.kvs.delete_queries(ids).await;
+        }
+    }
+
     /// Decode and execute one CBOR request, returning the response the server would send
     async fn handle(&self, bytes: &[u8]) -> DbResponse {
         let request = match cbor::decode(bytes, CBOR_RECURSION_LIMIT) {
@@ -314,14 +337,19 @@ impl RpcProtocol for SurrealRpcInner {
 
     async fn handle_live(
         &self,
-        _lqid: &uuid::Uuid,
-        _session_id: uuid::Uuid,
+        lqid: &uuid::Uuid,
+        session_id: uuid::Uuid,
         _namespace: Option<String>,
         _database: Option<String>,
     ) {
+        self.live_queries.lock().unwrap_or_else(|e| e.into_inner()).insert(*lqid, session_id);
     }
 
-    async fn cleanup_lqs(&self, _session_id: &uuid::Uuid) {}
+    async fn cleanup_lqs(&self, session_id: &uuid::Uuid) {
+        self.kill_lqs(|s| s == session_id).await
+    }
 
-    async fn cleanup_all_lqs(&self) {}
+    async fn cleanup_all_lqs(&self) {
+        self.kill_lqs(|_| true).await
+    }
 }

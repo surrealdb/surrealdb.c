@@ -9,7 +9,7 @@ use std::ptr;
 use std::sync::mpsc;
 use std::time::Duration;
 
-use surrealdb::types::{Array, Datetime, Object, RecordId, RecordIdKey, Value};
+use surrealdb::types::{Array, Datetime, Object, RecordId, RecordIdKey, Uuid, Value};
 use surrealdb_c::opts::Options;
 use surrealdb_c::rpc::SurrealRpc;
 use surrealdb_c::stream::RpcStream;
@@ -55,7 +55,15 @@ impl Rpc {
     }
 
     fn send(&self, id: i64, method: &str, params: Vec<Value>) -> Object {
+        self.send_in(None, id, method, params)
+    }
+
+    /// Send a request, in the given session if there is one
+    fn send_in(&self, session: Option<Uuid>, id: i64, method: &str, params: Vec<Value>) -> Object {
         let mut req = Object::new();
+        if let Some(session) = session {
+            req.insert("session".to_string(), Value::Uuid(session));
+        }
         req.insert("id".to_string(), Value::from_t(id));
         req.insert("method".to_string(), Value::String(method.to_string()));
         req.insert("params".to_string(), Value::Array(Array::from(params)));
@@ -67,7 +75,12 @@ impl Rpc {
 
     /// Send a request and return its result, failing on an error response
     fn call(&self, method: &str, params: Vec<Value>) -> Value {
-        let mut response = self.send(7, method, params);
+        self.call_in(None, method, params)
+    }
+
+    /// `call`, in the given session if there is one
+    fn call_in(&self, session: Option<Uuid>, method: &str, params: Vec<Value>) -> Value {
+        let mut response = self.send_in(session, 7, method, params);
         if let Some(err) = response.get("error") {
             panic!("{method} returned an error: {err:?}");
         }
@@ -231,4 +244,64 @@ fn notifications_are_tagged() {
     );
 
     RpcStream::free(stream);
+}
+
+#[test]
+fn detaching_a_session_ends_its_live_queries() {
+    let rpc = Rpc::new();
+    use_test_db(&rpc);
+
+    let mut err = string_t::null();
+    let mut stream: *mut RpcStream = ptr::null_mut();
+    let res = SurrealRpc::notifications(unsafe { &*rpc.0 }, &mut err, &mut stream);
+    assert!(res >= 0, "notifications failed: {err:?}");
+
+    let live_id = |result: &Value| match statement_result(result, 0) {
+        Value::Uuid(id) => *id,
+        other => panic!("LIVE SELECT should return a uuid, got {other:?}"),
+    };
+    rpc.call("query", vec![s("DEFINE TABLE person")]);
+
+    // One live query in an attached session, which is then detached
+    let session = Uuid::new_v4();
+    rpc.call_in(Some(session), "attach", vec![]);
+    rpc.call_in(Some(session), "use", vec![s("test"), s("test")]);
+    let detached = live_id(&rpc.call_in(Some(session), "query", vec![s("LIVE SELECT * FROM person")]));
+    rpc.call_in(Some(session), "detach", vec![]);
+
+    // And one in the default session, which stays
+    let kept = live_id(&rpc.call("query", vec![s("LIVE SELECT * FROM person")]));
+
+    // Forward every notification's live query id until the stream closes when the context is freed
+    let stream_addr = stream as usize;
+    let (tx, rx) = mpsc::channel();
+    std::thread::spawn(move || {
+        let stream = stream_addr as *mut RpcStream;
+        loop {
+            let mut out: *mut u8 = ptr::null_mut();
+            let len = RpcStream::next(unsafe { &mut *stream }, &mut out);
+            if len <= 0 {
+                break;
+            }
+            let bytes = unsafe { std::slice::from_raw_parts(out, len as usize) }.to_vec();
+            Bytes::free_byte_arr(out, len);
+            let Ok(Value::Object(mut envelope)) = cbor::decode(&bytes, 100) else { continue };
+            if let Some(Value::Object(notification)) = envelope.remove("result") {
+                if let Some(Value::Uuid(id)) = notification.get("id") {
+                    tx.send(*id).ok();
+                }
+            }
+        }
+        RpcStream::free(stream);
+    });
+
+    rpc.call("query", vec![s("CREATE person:bob SET name = 'bob'")]);
+
+    let first = rx.recv_timeout(Duration::from_secs(10)).expect("a notification arrives");
+    let mut seen = vec![first];
+    while let Ok(id) = rx.recv_timeout(Duration::from_secs(1)) {
+        seen.push(id);
+    }
+    assert!(seen.contains(&kept), "the default session's live query still notifies: {seen:?}");
+    assert!(!seen.contains(&detached), "the detached session's live query ended: {seen:?}");
 }
