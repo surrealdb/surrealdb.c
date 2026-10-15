@@ -13,9 +13,11 @@ use std::{
 };
 use stream::Stream;
 use string::string_t;
+use std::borrow::Cow;
 use surrealdb::{
     engine::any::{self, Any},
-    opt::Resource,
+    method::{Delete, Insert, Query, Select, Transaction, Update, Upsert},
+    opt::{IntoResource, Resource},
     opt::auth,
     opt::PatchOp,
     Surreal as sdbSurreal,
@@ -92,6 +94,59 @@ pub struct Surreal {
     db: sdbSurreal<Any>,
     rt: Runtime,
     ps: AtomicBool,
+    /// The transaction started by `sr_begin`, if one is open
+    txn: tokio::sync::Mutex<Option<Transaction<Any>>>,
+}
+
+/// Where an operation runs: inside the open transaction if there is one, otherwise directly
+/// on the connection
+struct Target<'a> {
+    db: &'a sdbSurreal<Any>,
+    txn: Option<&'a Transaction<Any>>,
+}
+
+impl<'a> Target<'a> {
+    fn query(&self, query: impl Into<Cow<'a, str>>) -> Query<'a, Any> {
+        match self.txn {
+            Some(txn) => txn.query(query),
+            None => self.db.query(query),
+        }
+    }
+
+    fn select<O>(&self, resource: impl IntoResource<O>) -> Select<'a, Any, O> {
+        match self.txn {
+            Some(txn) => txn.select(resource),
+            None => self.db.select(resource),
+        }
+    }
+
+    fn insert<O>(&self, resource: impl IntoResource<O>) -> Insert<'a, Any, O> {
+        match self.txn {
+            Some(txn) => txn.insert(resource),
+            None => self.db.insert(resource),
+        }
+    }
+
+    fn update<O>(&self, resource: impl IntoResource<O>) -> Update<'a, Any, O> {
+        match self.txn {
+            Some(txn) => txn.update(resource),
+            None => self.db.update(resource),
+        }
+    }
+
+    fn upsert<O>(&self, resource: impl IntoResource<O>) -> Upsert<'a, Any, O> {
+        match self.txn {
+            Some(txn) => txn.upsert(resource),
+            None => self.db.upsert(resource),
+        }
+    }
+
+    fn delete<O>(&self, resource: impl IntoResource<O>) -> Delete<'a, Any, O> {
+        match self.txn {
+            Some(txn) => txn.delete(resource),
+            None => self.db.delete(resource),
+        }
+    }
 }
 
 impl Surreal {
@@ -161,6 +216,7 @@ impl Surreal {
                 db,
                 rt,
                 ps: AtomicBool::new(false),
+                txn: tokio::sync::Mutex::new(None),
             })
         }));
 
@@ -244,7 +300,13 @@ impl Surreal {
 
     /// Begin a new transaction
     ///
-    /// Starts a new database transaction.
+    /// Opens an interactive transaction on this connection. Until `sr_commit` or `sr_cancel`
+    /// is called, `sr_query`, `sr_select`, `sr_create`, `sr_insert`, `sr_insert_relation`,
+    /// `sr_update`, `sr_upsert`, `sr_merge`, `sr_patch_*`, `sr_relate` and `sr_delete` on this
+    /// connection run inside the transaction, from every thread. Other functions (such as
+    /// `sr_run`, `sr_select_live`, `sr_set` and authentication) run outside it.
+    ///
+    /// Only one transaction can be open per connection; beginning a second one is an error.
     ///
     /// # Examples
     ///
@@ -259,14 +321,19 @@ impl Surreal {
     #[export_name = "sr_begin"]
     pub extern "C" fn begin(db: *const Surreal, err_ptr: *mut string_t) -> c_int {
         with_surreal_async(db, err_ptr, |surreal| async {
-            surreal.db.query("BEGIN TRANSACTION").await.map_err(|e| string_t::from(e.to_string()))?;
+            let mut txn = surreal.txn.lock().await;
+            if txn.is_some() {
+                return Err("a transaction is already open on this connection".into());
+            }
+            let started = surreal.db.clone().begin().await.map_err(|e| string_t::from(e.to_string()))?;
+            *txn = Some(started);
             Ok(0)
         })
     }
 
     /// Cancel the current transaction
     ///
-    /// Cancels and rolls back the current database transaction.
+    /// Rolls back the transaction opened by `sr_begin`. Returns an error if none is open.
     ///
     /// # Examples
     ///
@@ -281,14 +348,17 @@ impl Surreal {
     #[export_name = "sr_cancel"]
     pub extern "C" fn cancel(db: *const Surreal, err_ptr: *mut string_t) -> c_int {
         with_surreal_async(db, err_ptr, |surreal| async {
-            surreal.db.query("CANCEL TRANSACTION").await.map_err(|e| string_t::from(e.to_string()))?;
+            let txn = surreal.txn.lock().await.take();
+            let txn = txn.ok_or_else(|| string_t::from("no transaction is open on this connection"))?;
+            txn.cancel().await.map_err(|e| string_t::from(e.to_string()))?;
             Ok(0)
         })
     }
 
     /// Commit the current transaction
     ///
-    /// Commits and finalizes the current database transaction.
+    /// Commits the transaction opened by `sr_begin`. Returns an error if none is open or the
+    /// commit fails; the transaction is closed either way.
     ///
     /// # Examples
     ///
@@ -303,7 +373,9 @@ impl Surreal {
     #[export_name = "sr_commit"]
     pub extern "C" fn commit(db: *const Surreal, err_ptr: *mut string_t) -> c_int {
         with_surreal_async(db, err_ptr, |surreal| async {
-            surreal.db.query("COMMIT TRANSACTION").await.map_err(|e| string_t::from(e.to_string()))?;
+            let txn = surreal.txn.lock().await.take();
+            let txn = txn.ok_or_else(|| string_t::from("no transaction is open on this connection"))?;
+            txn.commit().await.map_err(|e| string_t::from(e.to_string()))?;
             Ok(0)
         })
     }
@@ -332,11 +404,13 @@ impl Surreal {
         check_null!(resource, err_ptr, "resource is null");
         check_null!(content, err_ptr, "content is null");
         with_surreal_async(db, err_ptr, |surreal| async {
+            let txn = surreal.txn.lock().await;
+            let target = Target { db: &surreal.db, txn: txn.as_ref() };
             let resource = unsafe { CStr::from_ptr(resource) }.to_str()?;
             let content = sdbObject::from(unsafe { &*content }.clone());
 
             let query = format!("CREATE {} CONTENT $content", resource);
-            let mut res = surreal.db.query(&query).bind(("content", content)).await
+            let mut res = target.query(&query).bind(("content", content)).await
                 .map_err(|e| string_t::from(e.to_string()))?;
             
             let val: sdbValue = res.take(0).map_err(|e| string_t::from(e.to_string()))?;
@@ -404,10 +478,11 @@ impl Surreal {
         check_null!(res_ptr, err_ptr, "res_ptr is null");
         check_null!(resource, err_ptr, "resource is null");
         with_surreal_async(db, err_ptr, |surreal| async {
+            let txn = surreal.txn.lock().await;
+            let target = Target { db: &surreal.db, txn: txn.as_ref() };
             let resource = unsafe { CStr::from_ptr(resource) }.to_str()?;
 
-            let val: sdbValue = surreal
-                .db
+            let val: sdbValue = target
                 .delete(parse_resource(resource))
                 .await
                 .map_err(|e| string_t::from(e.to_string()))?;
@@ -552,11 +627,12 @@ impl Surreal {
         check_null!(resource, err_ptr, "resource is null");
         check_null!(content, err_ptr, "content is null");
         with_surreal_async(db, err_ptr, |surreal| async {
+            let txn = surreal.txn.lock().await;
+            let target = Target { db: &surreal.db, txn: txn.as_ref() };
             let resource = unsafe { CStr::from_ptr(resource) }.to_str()?;
             let content = sdbObject::from(unsafe { &*content }.clone());
 
-            let val: sdbValue = surreal
-                .db
+            let val: sdbValue = target
                 .insert(parse_resource(resource))
                 .content(content)
                 .await
@@ -618,11 +694,12 @@ impl Surreal {
         check_null!(table, err_ptr, "table is null");
         check_null!(content, err_ptr, "content is null");
         with_surreal_async(db, err_ptr, |surreal| async {
+            let txn = surreal.txn.lock().await;
+            let target = Target { db: &surreal.db, txn: txn.as_ref() };
             let table = unsafe { CStr::from_ptr(table) }.to_str()?;
             let content = sdbObject::from(unsafe { &*content }.clone());
 
-            let val: sdbValue = surreal
-                .db
+            let val: sdbValue = target
                 .insert(Resource::from(table))
                 .relation(content)
                 .await
@@ -747,6 +824,8 @@ impl Surreal {
         check_null!(relation, err_ptr, "relation is null");
         check_null!(to, err_ptr, "to is null");
         with_surreal_async(db, err_ptr, |surreal| async {
+            let txn = surreal.txn.lock().await;
+            let target = Target { db: &surreal.db, txn: txn.as_ref() };
             let from = unsafe { CStr::from_ptr(from) }.to_str()?;
             let relation = unsafe { CStr::from_ptr(relation) }.to_str()?;
             let to = unsafe { CStr::from_ptr(to) }.to_str()?;
@@ -757,7 +836,7 @@ impl Surreal {
                 format!("RELATE {from}->{relation}->{to} CONTENT $content")
             };
 
-            let mut q = surreal.db.query(&query);
+            let mut q = target.query(&query);
             
             if !content.is_null() {
                 let content_obj = sdbObject::from(unsafe { &*content }.clone());
@@ -924,11 +1003,12 @@ impl Surreal {
         check_null!(resource, err_ptr, "resource is null");
         check_null!(content, err_ptr, "content is null");
         with_surreal_async(db, err_ptr, |surreal| async {
+            let txn = surreal.txn.lock().await;
+            let target = Target { db: &surreal.db, txn: txn.as_ref() };
             let resource = unsafe { CStr::from_ptr(resource) }.to_str()?;
             let content = sdbObject::from(unsafe { &*content }.clone());
 
-            let val: sdbValue = surreal
-                .db
+            let val: sdbValue = target
                 .update(parse_resource(resource))
                 .merge(content)
                 .await
@@ -987,12 +1067,13 @@ impl Surreal {
         check_null!(path, err_ptr, "path is null");
         check_null!(value, err_ptr, "value is null");
         with_surreal_async(db, err_ptr, |surreal| async {
+            let txn = surreal.txn.lock().await;
+            let target = Target { db: &surreal.db, txn: txn.as_ref() };
             let resource = unsafe { CStr::from_ptr(resource) }.to_str()?;
             let path = unsafe { CStr::from_ptr(path) }.to_str()?;
             let value: sdbValue = unsafe { &*value }.clone().into();
 
-            let val: sdbValue = surreal
-                .db
+            let val: sdbValue = target
                 .update(parse_resource(resource))
                 .patch(PatchOp::add(path, value))
                 .await
@@ -1045,11 +1126,12 @@ impl Surreal {
         check_null!(resource, err_ptr, "resource is null");
         check_null!(path, err_ptr, "path is null");
         with_surreal_async(db, err_ptr, |surreal| async {
+            let txn = surreal.txn.lock().await;
+            let target = Target { db: &surreal.db, txn: txn.as_ref() };
             let resource = unsafe { CStr::from_ptr(resource) }.to_str()?;
             let path = unsafe { CStr::from_ptr(path) }.to_str()?;
 
-            let val: sdbValue = surreal
-                .db
+            let val: sdbValue = target
                 .update(parse_resource(resource))
                 .patch(PatchOp::remove(path))
                 .await
@@ -1106,12 +1188,13 @@ impl Surreal {
         check_null!(path, err_ptr, "path is null");
         check_null!(value, err_ptr, "value is null");
         with_surreal_async(db, err_ptr, |surreal| async {
+            let txn = surreal.txn.lock().await;
+            let target = Target { db: &surreal.db, txn: txn.as_ref() };
             let resource = unsafe { CStr::from_ptr(resource) }.to_str()?;
             let path = unsafe { CStr::from_ptr(path) }.to_str()?;
             let value: sdbValue = unsafe { &*value }.clone().into();
 
-            let val: sdbValue = surreal
-                .db
+            let val: sdbValue = target
                 .update(parse_resource(resource))
                 .patch(PatchOp::replace(path, value))
                 .await
@@ -1149,34 +1232,18 @@ impl Surreal {
         check_null!(res_ptr, err_ptr, "res_ptr is null");
         check_null!(query, err_ptr, "query is null");
         with_surreal_async(db, err_ptr, |surreal| async {
+            let txn = surreal.txn.lock().await;
+            let target = Target { db: &surreal.db, txn: txn.as_ref() };
             let query = unsafe { CStr::from_ptr(query) }.to_str()?;
             let vars: sdbObject = match vars.is_null() {
                 true => sdbObject::default(),
                 false => unsafe { &*vars }.clone().into(),
             };
 
-            let mut res = surreal.db.query(query).bind(vars).await
+            let res = target.query(query).bind(vars).await
                 .map_err(|e| string_t::from(e.to_string()))?;
-            let res_len = res.num_statements();
 
-            let mut acc = Vec::with_capacity(res_len);
-            for index in 0..res_len {
-                let api_res: Result<sdbValue, _> = res.take(index);
-                let arr_res = match api_res {
-                    Ok(sdbValue::Array(arr)) => {
-                        let a = arr.into();
-                        ArrayResult::ok(a)
-                    }
-                    Ok(val) => {
-                        let arr: Array = vec![Value::from(val)].into();
-                        ArrayResult::ok(arr)
-                    }
-                    Err(e) => ArrayResult::err(e.to_string()),
-                };
-                acc.push(arr_res);
-            }
-
-            let ArrayGen { ptr, len } = acc.make_array();
+            let ArrayGen { ptr, len } = query_results(res).make_array();
             unsafe { res_ptr.write(ptr) }
 
             Ok(len)
@@ -1225,10 +1292,11 @@ impl Surreal {
         check_null!(res_ptr, err_ptr, "res_ptr is null");
         check_null!(resource, err_ptr, "resource is null");
         with_surreal_async(db, err_ptr, |surreal| async {
+            let txn = surreal.txn.lock().await;
+            let target = Target { db: &surreal.db, txn: txn.as_ref() };
             let resource = unsafe { CStr::from_ptr(resource) }.to_str()?;
 
-            let val: sdbValue = surreal
-                .db
+            let val: sdbValue = target
                 .select(parse_resource(resource))
                 .await
                 .map_err(|e| string_t::from(e.to_string()))?;
@@ -1689,11 +1757,12 @@ impl Surreal {
         check_null!(resource, err_ptr, "resource is null");
         check_null!(content, err_ptr, "content is null");
         with_surreal_async(db, err_ptr, |surreal| async {
+            let txn = surreal.txn.lock().await;
+            let target = Target { db: &surreal.db, txn: txn.as_ref() };
             let resource = unsafe { CStr::from_ptr(resource) }.to_str()?;
             let content = sdbObject::from(unsafe { &*content }.clone());
 
-            let val: sdbValue = surreal
-                .db
+            let val: sdbValue = target
                 .update(parse_resource(resource))
                 .content(content)
                 .await
@@ -1749,11 +1818,12 @@ impl Surreal {
         check_null!(resource, err_ptr, "resource is null");
         check_null!(content, err_ptr, "content is null");
         with_surreal_async(db, err_ptr, |surreal| async {
+            let txn = surreal.txn.lock().await;
+            let target = Target { db: &surreal.db, txn: txn.as_ref() };
             let resource = unsafe { CStr::from_ptr(resource) }.to_str()?;
             let content = sdbObject::from(unsafe { &*content }.clone());
 
-            let val: sdbValue = surreal
-                .db
+            let val: sdbValue = target
                 .upsert(parse_resource(resource))
                 .content(content)
                 .await
@@ -1879,6 +1949,161 @@ impl Surreal {
 
             Ok(len as c_int)
         })
+    }
+}
+
+/// Convert a query response into one result per statement
+fn query_results(mut res: surrealdb::IndexedResults) -> Vec<ArrayResult> {
+    let res_len = res.num_statements();
+    let mut acc = Vec::with_capacity(res_len);
+    for index in 0..res_len {
+        let api_res: Result<sdbValue, _> = res.take(index);
+        let arr_res = match api_res {
+            Ok(sdbValue::Array(arr)) => ArrayResult::ok(arr.into()),
+            Ok(val) => {
+                let arr: Array = vec![Value::from(val)].into();
+                ArrayResult::ok(arr)
+            }
+            Err(e) => ArrayResult::err(e.to_string()),
+        };
+        acc.push(arr_res);
+    }
+    acc
+}
+
+/// An interactive transaction with its own handle
+///
+/// Created by `sr_transaction_begin` and consumed by `sr_transaction_commit` or
+/// `sr_transaction_cancel`. Unlike the transaction opened by `sr_begin`, several of these can be
+/// open on one connection at once. A handle may be moved between threads but must not be used
+/// from two threads at once, and must be committed or cancelled before its connection is
+/// disconnected.
+pub struct SurrealTransaction {
+    txn: Transaction<Any>,
+    rt: tokio::runtime::Handle,
+}
+
+impl SurrealTransaction {
+    /// Begin a transaction with its own handle
+    ///
+    /// On success writes a new transaction to `*txn_ptr`. Run statements in it with
+    /// `sr_transaction_query`, then finish it with `sr_transaction_commit` or
+    /// `sr_transaction_cancel`, which also free the handle.
+    ///
+    /// # Examples
+    ///
+    /// ```c
+    /// sr_transaction_t *txn;
+    /// if (sr_transaction_begin(db, &err, &txn) < 0) {
+    ///     printf("%s", err);
+    ///     return 1;
+    /// }
+    /// sr_arr_res_t *res;
+    /// int len = sr_transaction_query(txn, &err, &res, "CREATE foo:1", NULL);
+    /// if (len >= 0) sr_free_arr_res_arr(res, len);
+    /// if (sr_transaction_commit(txn, &err) < 0) {
+    ///     printf("%s", err);
+    /// }
+    /// ```
+    #[export_name = "sr_transaction_begin"]
+    pub extern "C" fn begin(
+        db: *const Surreal,
+        err_ptr: *mut string_t,
+        txn_ptr: *mut *mut SurrealTransaction,
+    ) -> c_int {
+        check_null!(txn_ptr, err_ptr, "txn_ptr is null");
+        with_surreal_async(db, err_ptr, |surreal| async {
+            let txn = surreal.db.clone().begin().await.map_err(|e| string_t::from(e.to_string()))?;
+            let handle = Box::new(SurrealTransaction {
+                txn,
+                rt: surreal.rt.handle().clone(),
+            });
+            unsafe { txn_ptr.write(Box::into_raw(handle)) };
+            Ok(0)
+        })
+    }
+
+    /// Execute a SurrealQL query inside a transaction
+    ///
+    /// Behaves like `sr_query`: writes one result per statement to `*res_ptr` and returns the
+    /// number of statements. Free the results with `sr_free_arr_res_arr`.
+    #[export_name = "sr_transaction_query"]
+    pub extern "C" fn query(
+        txn: *const SurrealTransaction,
+        err_ptr: *mut string_t,
+        res_ptr: *mut *mut ArrayResult,
+        query: *const c_char,
+        vars: *const Object,
+    ) -> c_int {
+        check_null!(res_ptr, err_ptr, "res_ptr is null");
+        check_null!(query, err_ptr, "query is null");
+        let Some(txn) = (unsafe { txn.as_ref() }) else {
+            write_error(err_ptr, "txn is null");
+            return SR_ERROR;
+        };
+        run_blocking(&txn.rt, err_ptr, async {
+            let query = unsafe { CStr::from_ptr(query) }.to_str()?;
+            let vars: sdbObject = match vars.is_null() {
+                true => sdbObject::default(),
+                false => unsafe { &*vars }.clone().into(),
+            };
+            let res = txn.txn.query(query).bind(vars).await
+                .map_err(|e| string_t::from(e.to_string()))?;
+            let ArrayGen { ptr, len } = query_results(res).make_array();
+            unsafe { res_ptr.write(ptr) }
+            Ok(len)
+        })
+    }
+
+    /// Commit a transaction and free its handle
+    ///
+    /// The handle is freed whether or not the commit succeeds, and must not be used again.
+    #[export_name = "sr_transaction_commit"]
+    pub extern "C" fn commit(txn: *mut SurrealTransaction, err_ptr: *mut string_t) -> c_int {
+        if txn.is_null() {
+            write_error(err_ptr, "txn is null");
+            return SR_ERROR;
+        }
+        let SurrealTransaction { txn, rt } = *unsafe { Box::from_raw(txn) };
+        run_blocking(&rt, err_ptr, async {
+            txn.commit().await.map_err(|e| string_t::from(e.to_string()))?;
+            Ok(0)
+        })
+    }
+
+    /// Cancel a transaction and free its handle
+    ///
+    /// The handle is freed whether or not the cancel succeeds, and must not be used again.
+    #[export_name = "sr_transaction_cancel"]
+    pub extern "C" fn cancel(txn: *mut SurrealTransaction, err_ptr: *mut string_t) -> c_int {
+        if txn.is_null() {
+            write_error(err_ptr, "txn is null");
+            return SR_ERROR;
+        }
+        let SurrealTransaction { txn, rt } = *unsafe { Box::from_raw(txn) };
+        run_blocking(&rt, err_ptr, async {
+            txn.cancel().await.map_err(|e| string_t::from(e.to_string()))?;
+            Ok(0)
+        })
+    }
+}
+
+/// Run a future on a runtime, catching panics and writing errors to `err_ptr`
+fn run_blocking<F>(rt: &tokio::runtime::Handle, err_ptr: *mut string_t, fut: F) -> c_int
+where
+    F: std::future::Future<Output = Result<c_int, string_t>>,
+{
+    let _guard = rt.enter();
+    match catch_unwind(AssertUnwindSafe(|| rt.block_on(fut))) {
+        Ok(Ok(n)) => n,
+        Ok(Err(e)) => {
+            write_error(err_ptr, e);
+            SR_ERROR
+        }
+        Err(e) => {
+            write_error(err_ptr, panic_message(e));
+            SR_FATAL
+        }
     }
 }
 
