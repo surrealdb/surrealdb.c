@@ -14,7 +14,7 @@ use surrealdb_core::rpc::format::cbor;
 use surrealdb_core::rpc::RpcProtocol;
 use surrealdb_rpc::error::{invalid_request, parse_error};
 use surrealdb_rpc::{DbResponse, DbResult, Request};
-use surrealdb::types::Notification;
+use surrealdb::types::{Action, Notification};
 use async_channel::Receiver;
 use surrealdb::types::SurrealValue;
 use surrealdb::types::{Value as sdbValue, HashMap};
@@ -62,7 +62,7 @@ impl SurrealRpc {
                 return Err("error creating runtime".into());
             };
 
-            let (notify_tx, notifications) = async_channel::bounded(LQ_CHANNEL_SIZE);
+            let (notify_tx, datastore_notifications) = async_channel::bounded(LQ_CHANNEL_SIZE);
             let mut builder = Datastore::builder().with_notify(notify_tx);
             if options.query_timeout != 0 {
                 builder = builder
@@ -88,12 +88,29 @@ impl SurrealRpc {
             let session_map = HashMap::default();
             session_map.insert(default_session, Arc::new(RwLock::new(session)));
 
+            // Forward notifications to sr_surreal_rpc_notifications streams, forgetting each
+            // live query once it ends (by KILL, or when its table is removed)
+            let live_queries = LiveQueries::default();
+            let (forward_tx, notifications) = async_channel::bounded(LQ_CHANNEL_SIZE);
+            let ended = live_queries.clone();
+            rt.spawn(async move {
+                while let Ok(notification) = datastore_notifications.recv().await {
+                    if notification.action == Action::Killed {
+                        let id = uuid::Uuid::from(notification.id);
+                        ended.lock().unwrap_or_else(|e| e.into_inner()).remove(&id);
+                    }
+                    if forward_tx.send(notification).await.is_err() {
+                        break;
+                    }
+                }
+            });
+
             let inner = SurrealRpcInner {
                 kvs,
                 session_map,
                 default_session,
                 notifications,
-                live_queries: Mutex::default(),
+                live_queries,
             };
 
             Ok(SurrealRpc {
@@ -270,14 +287,17 @@ const CBOR_RECURSION_LIMIT: usize = 100;
 /// Capacity of the notification channel (the size the 3.0 datastore used)
 const LQ_CHANNEL_SIZE: usize = 15_000;
 
+/// The session each running live query was started from
+type LiveQueries = Arc<Mutex<StdHashMap<uuid::Uuid, uuid::Uuid>>>;
+
 struct SurrealRpcInner {
     kvs: Arc<Datastore>,
     session_map: HashMap<uuid::Uuid, Arc<RwLock<Session>>>,
     default_session: uuid::Uuid,
     notifications: Receiver<Notification>,
-    /// The session each live query was started from, so detaching or resetting a session
-    /// (or freeing the context) can end its live queries
-    live_queries: Mutex<StdHashMap<uuid::Uuid, uuid::Uuid>>,
+    /// The session each running live query was started from, so detaching or resetting a
+    /// session (or freeing the context) can end its live queries
+    live_queries: LiveQueries,
 }
 
 impl SurrealRpcInner {
@@ -351,5 +371,60 @@ impl RpcProtocol for SurrealRpcInner {
 
     async fn cleanup_all_lqs(&self) {
         self.kill_lqs(|_| true).await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::ffi::CString;
+
+    use surrealdb::types::{Array, Object};
+
+    use super::*;
+
+    fn new_ctx() -> Box<SurrealRpc> {
+        let mut err = string_t::null();
+        let mut ctx: *mut SurrealRpc = std::ptr::null_mut();
+        let endpoint = CString::new("memory").unwrap();
+        let opts = Options { strict: false, query_timeout: 0, transaction_timeout: 0 };
+        assert!(SurrealRpc::new(&mut err, &mut ctx, endpoint.as_ptr(), opts) > 0);
+        unsafe { Box::from_raw(ctx) }
+    }
+
+    /// Run one request and return its result
+    fn call(ctx: &SurrealRpc, method: &str, params: Vec<sdbValue>) -> sdbValue {
+        let mut req = Object::new();
+        req.insert("method".to_string(), sdbValue::String(method.to_string()));
+        req.insert("params".to_string(), sdbValue::Array(Array::from(params)));
+        let bytes = cbor::encode(sdbValue::Object(req)).unwrap();
+        let response = ctx.rt.block_on(async { ctx.inner.read().await.handle(&bytes).await });
+        let sdbValue::Object(mut response) = response.into_value() else { panic!("not an object") };
+        response.remove("result").unwrap_or_else(|| panic!("{method} failed: {response:?}"))
+    }
+
+    fn tracked(ctx: &SurrealRpc) -> usize {
+        ctx.rt.block_on(async { ctx.inner.read().await.live_queries.lock().unwrap().len() })
+    }
+
+    #[test]
+    fn killed_live_queries_are_forgotten() {
+        let ctx = new_ctx();
+        let s = |v: &str| sdbValue::String(v.to_string());
+        call(&ctx, "use", vec![s("test"), s("test")]);
+        call(&ctx, "query", vec![s("DEFINE TABLE person")]);
+
+        let id = call(&ctx, "live", vec![s("person")]);
+        assert!(matches!(id, sdbValue::Uuid(_)), "live returns a uuid: {id:?}");
+        assert_eq!(tracked(&ctx), 1);
+
+        call(&ctx, "kill", vec![id]);
+        // The KILLED notification is forwarded asynchronously
+        for _ in 0..100 {
+            if tracked(&ctx) == 0 {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(50));
+        }
+        assert_eq!(tracked(&ctx), 0, "the killed live query is still tracked");
     }
 }
