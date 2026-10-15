@@ -60,6 +60,12 @@ jobs:
           toolchain: nightly
           components: rust-src
 
+      # The CMake step builds with stable: nightly cargo no longer writes the library to
+      # target/<profile>/deps, where CMakeLists.txt (and the integration tests) look for it
+      - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # master
+        with:
+          toolchain: stable
+
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           key: asan
@@ -68,6 +74,7 @@ jobs:
       # built with ASan + UBSan. Leak detection is off until every allocation has an owner.
       - name: Cargo tests under ASan
         env:
+          RUSTUP_TOOLCHAIN: nightly
           RUSTFLAGS: -Zsanitizer=address
           RUSTDOCFLAGS: -Zsanitizer=address
           CC: clang
@@ -82,6 +89,7 @@ jobs:
       # misuse of returned memory (and double frees anywhere) is caught
       - name: CTest under ASan + UBSan
         env:
+          RUSTUP_TOOLCHAIN: stable
           CC: clang
           ASAN_OPTIONS: detect_leaks=0:abort_on_error=1
           UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
