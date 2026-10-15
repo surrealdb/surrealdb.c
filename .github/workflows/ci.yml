@@ -1,0 +1,101 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  test:
+    name: Test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # master
+        with:
+          toolchain: stable
+
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+
+      # Runs the Rust unit tests and the C API tests (c_test/src/api_tests, linked by build.rs)
+      - name: Cargo tests
+        run: cargo test --all-targets
+
+      # build.rs regenerates include/surrealdb.h; the committed header must match the source
+      - name: Check generated header is up to date
+        shell: bash
+        run: git diff --exit-code -- include/surrealdb.h
+
+      # Builds the library, the Unity test runner and the examples through CMake
+      - name: CMake build
+        shell: bash
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
+          cmake --build build --config Debug
+
+      - name: CTest
+        run: ctest --test-dir build --output-on-failure -C Debug
+
+  sanitizers:
+    name: Sanitizers (ASan + UBSan)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # master
+        with:
+          toolchain: nightly
+          components: rust-src
+
+      # The CMake step builds with stable: nightly cargo no longer writes the library to
+      # target/<profile>/deps, where CMakeLists.txt (and the integration tests) look for it
+      - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # master
+        with:
+          toolchain: stable
+
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          key: asan
+
+      # Rust built with AddressSanitizer (std included via -Zbuild-std) and the C API tests
+      # built with ASan + UBSan. Leak detection is off until every allocation has an owner.
+      - name: Cargo tests under ASan
+        env:
+          RUSTUP_TOOLCHAIN: nightly
+          RUSTFLAGS: -Zsanitizer=address
+          RUSTDOCFLAGS: -Zsanitizer=address
+          CC: clang
+          CFLAGS: -fsanitize=address,undefined -fno-sanitize-recover=undefined -fno-omit-frame-pointer
+          ASAN_OPTIONS: detect_leaks=0:abort_on_error=1
+          UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
+        run: >
+          cargo test -Zbuild-std --target x86_64-unknown-linux-gnu
+          --lib --test c_api_tests
+
+      # The Unity suite built with ASan + UBSan against the regular release library, so C-side
+      # misuse of returned memory (and double frees anywhere) is caught
+      - name: CTest under ASan + UBSan
+        env:
+          RUSTUP_TOOLCHAIN: stable
+          CC: clang
+          ASAN_OPTIONS: detect_leaks=0:abort_on_error=1
+          UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
+        run: |
+          cmake -S . -B build-asan -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_C_FLAGS="-fsanitize=address,undefined -fno-sanitize-recover=undefined -fno-omit-frame-pointer -g" \
+            -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address,undefined"
+          cmake --build build-asan
+          ctest --test-dir build-asan --output-on-failure

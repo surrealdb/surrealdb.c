@@ -43,6 +43,22 @@ static int setup_db(sr_surreal_t **db) {
     return TEST_PASS;
 }
 
+/* Selecting from a table that doesn't exist is an error in SurrealDB 3, so define it first */
+static int define_table(sr_surreal_t *db, const char *table) {
+    char query[128];
+    snprintf(query, sizeof(query), "DEFINE TABLE %s", table);
+    sr_string_t err = NULL;
+    sr_arr_res_t *res;
+    int len = sr_query(db, &err, &res, query, NULL);
+    if (len < 0) {
+        fprintf(stderr, "Failed to define table: %s\n", err);
+        sr_free_string(err);
+        return TEST_FAIL;
+    }
+    sr_free_arr_res_arr(res, len);
+    return TEST_PASS;
+}
+
 /* ============================================================================
  * Connection Tests
  * ============================================================================ */
@@ -290,6 +306,7 @@ int test_sr_select(void) {
     
     sr_string_t err;
     sr_value_t *results;
+    if (define_table(db, "items") != TEST_PASS) return TEST_FAIL;
     
     int len = sr_select(db, &err, &results, "items");
     ASSERT_GE(len, 0);
@@ -682,6 +699,7 @@ int test_sr_select_live(void) {
     
     sr_string_t err;
     sr_stream_t *stream;
+    if (define_table(db, "items") != TEST_PASS) return TEST_FAIL;
     
     int res = sr_select_live(db, &err, &stream, "items");
     ASSERT_GE(res, 0);
@@ -1014,8 +1032,9 @@ int test_sr_free_arr(void) {
     
     sr_string_t err;
     sr_value_t *results;
+    if (define_table(db, "empty_table") != TEST_PASS) return TEST_FAIL;
     
-    int len = sr_select(db, &err, &results, "nonexistent_table");
+    int len = sr_select(db, &err, &results, "empty_table");
     ASSERT_GE(len, 0);
     
     if (len > 0) {
