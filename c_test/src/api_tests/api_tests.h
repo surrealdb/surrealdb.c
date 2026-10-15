@@ -120,6 +120,7 @@ int test_sr_value_datetime(void);
 int test_sr_value_uuid(void);
 int test_sr_value_array(void);
 int test_sr_value_bytes(void);
+int test_sr_bytes_ownership(void);
 int test_sr_value_thing(void);
 int test_sr_value_point(void);
 int test_sr_value_linestring(void);

@@ -75,6 +75,7 @@ extern "C" {
     fn test_sr_value_uuid() -> c_int;
     fn test_sr_value_array() -> c_int;
     fn test_sr_value_bytes() -> c_int;
+    fn test_sr_bytes_ownership() -> c_int;
     fn test_sr_value_thing() -> c_int;
     fn test_sr_value_point() -> c_int;
     fn test_sr_value_linestring() -> c_int;
@@ -246,6 +247,7 @@ c_test!(sr_value_datetime, test_sr_value_datetime);
 c_test!(sr_value_uuid, test_sr_value_uuid);
 c_test!(sr_value_array, test_sr_value_array);
 c_test!(sr_value_bytes, test_sr_value_bytes);
+c_test!(sr_bytes_ownership, test_sr_bytes_ownership);
 c_test!(sr_value_thing, test_sr_value_thing);
 c_test!(sr_value_point, test_sr_value_point);
 c_test!(sr_value_linestring, test_sr_value_linestring);
