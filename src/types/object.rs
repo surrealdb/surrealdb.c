@@ -116,9 +116,21 @@ impl Object {
     }
 
     /// Free an object
+    ///
+    /// For objects held by value, such as the result of `sr_object_new`.
     #[export_name = "sr_free_object"]
     pub extern "C" fn free_object(obj: Object) {
         drop(obj)
+    }
+
+    /// Free an object returned by pointer, such as the result of `sr_create`
+    ///
+    /// Frees the object and its contents. NULL is ignored.
+    #[export_name = "sr_object_free"]
+    pub extern "C" fn object_free(obj: *mut Object) {
+        if !obj.is_null() {
+            drop(unsafe { Box::from_raw(obj) });
+        }
     }
 
     /// Get the number of key-value pairs in the object

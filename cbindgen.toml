@@ -1,5 +1,75 @@
 language = "C"
 pragma_once = true
+header = """
+/*
+ * surrealdb.c - the SurrealDB SDK for C
+ *
+ * MEMORY OWNERSHIP
+ * ================
+ *
+ * General rules
+ * -------------
+ * - Pointers passed INTO a function are borrowed. The library copies anything it keeps
+ *   (strings, values, objects, byte buffers), so the caller still owns its arguments and
+ *   must free them as usual, after the call returns.
+ * - Heap data handed OUT by the library is owned by the caller and must be released with
+ *   the matching function below, exactly once. Never pass it to free(): it was not
+ *   allocated with malloc.
+ * - Data reached through a returned container (an element of an array, a value inside an
+ *   object, the bytes inside a value, the strings inside a record id) belongs to that
+ *   container. Do not free it separately; it is released with the container, and pointers
+ *   to it are invalid after that.
+ * - Every function that takes `sr_string_t *err_ptr` writes a newly allocated message to
+ *   it when it fails (returns a negative code). Free it with sr_free_string. `err_ptr` may
+ *   be NULL, in which case the message is discarded. On success nothing is written.
+ * - A negative length (an error) means nothing was written to the result pointer, so there
+ *   is nothing to free.
+ *
+ * Who frees what
+ * --------------
+ *   Returned by                                   Free with
+ *   --------------------------------------------  -------------------------------------------
+ *   sr_connect (*surreal_ptr)                     sr_surreal_disconnect(db)
+ *   any err_ptr message                           sr_free_string(err)
+ *   sr_signin / sr_signup (*token_ptr)            sr_free_string(token)
+ *   sr_version (*res_ptr)                         sr_free_string(version)
+ *   sr_create (*res_ptr, an sr_object_t *)        sr_object_free(obj)
+ *   sr_select, sr_insert, sr_insert_relation,     sr_free_arr(values, len)
+ *   sr_update, sr_upsert, sr_merge, sr_delete,      (len is the return value)
+ *   sr_patch_add/remove/replace, sr_run,
+ *   sr_relate (*res_ptr, an sr_value_t array)
+ *   sr_query (*res_ptr, an sr_arr_res_t array)    sr_free_arr_res_arr(results, len)
+ *   sr_select_live (*stream_ptr)                  sr_stream_kill(stream)
+ *   sr_stream_next (*notification_ptr)            sr_free_notification(notification)
+ *   sr_surreal_rpc_new (*surreal_ptr)             sr_surreal_rpc_free(rpc)
+ *   sr_surreal_rpc_execute (*res_ptr)             sr_free_byte_arr(bytes, len)
+ *   sr_surreal_rpc_notifications (*stream_ptr)    sr_rpc_stream_free(stream)
+ *   sr_rpc_stream_next (*res_ptr)                 sr_free_byte_arr(bytes, len)
+ *   sr_value_none/null/bool/int/float/string/     sr_value_free(value)
+ *   object/duration/datetime/uuid/array/bytes/
+ *   thing/point/linestring/polygon/multipoint/
+ *   multilinestring/multipolygon/decimal
+ *   sr_object_new (returned by value)             sr_free_object(obj)
+ *   sr_object_keys (*keys_ptr)                    sr_free_string_arr(keys, len)
+ *   sr_array_push (returned pointer)              sr_array_free(arr)
+ *
+ * Borrowed results (do not free)
+ * ------------------------------
+ *   sr_object_get, sr_array_get     point into the object or array passed in; valid until
+ *                                   that container is modified or freed.
+ *
+ * Handles
+ * -------
+ * - sr_surreal_t and sr_surreal_rpc_t may be shared between threads. Free them once, after
+ *   every other call on them has returned. Results already returned stay valid after the
+ *   handle is freed.
+ * - Every stream must be freed with sr_stream_kill (or sr_rpc_stream_free), before or after
+ *   its connection is closed. Closing the connection with sr_surreal_disconnect makes a
+ *   thread blocked in sr_stream_next return SR_NONE; free the stream after that call
+ *   returns. A stream may be moved to another thread but not used from two threads at once.
+ */
+"""
+
 
 [export]
 prefix = "sr_"

@@ -22,6 +22,12 @@ impl From<sdbNotification> for Notification {
 }
 
 impl Notification {
+    /// Free the data inside a notification written by `sr_stream_next`
+    #[export_name = "sr_free_notification"]
+    pub extern "C" fn free_notification(notification: Notification) {
+        drop(notification)
+    }
+
     #[export_name = "sr_print_notification"]
     pub extern "C" fn print_notification(notification: &Notification) {
         println!("{notification:?}");
