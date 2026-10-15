@@ -9,7 +9,11 @@ use std::{
 use std::sync::Arc;
 use surrealdb_core::dbs::Session;
 use surrealdb_core::kvs::Datastore;
-use surrealdb_core::rpc::{Method, RpcProtocol, DbResult};
+use surrealdb_core::rpc::format::cbor;
+use surrealdb_core::rpc::{
+    invalid_request, parse_error, DbResponse, DbResult, Request, RpcProtocol,
+};
+use surrealdb::types::SurrealValue;
 use surrealdb::types::{Value as sdbValue, HashMap};
 use tokio::{runtime::Runtime, sync::RwLock};
 
@@ -118,14 +122,26 @@ impl SurrealRpc {
 
     /// Execute an RPC request via raw CBOR bytes
     ///
+    /// `ptr`/`len` hold one CBOR-encoded request in the same format the server's WebSocket
+    /// endpoint accepts: a map with `method`, optional `params`, and optional `id`, `session`
+    /// and `txn`. Values use SurrealDB's CBOR tags (record ids, datetimes, uuids, ...).
+    ///
+    /// On success, `*res_ptr` receives one CBOR-encoded response in the server's format:
+    /// `{ id, result }`, or `{ id, error }` if the method failed. The return value is the
+    /// length of that buffer. A request that cannot be decoded also produces an `error`
+    /// response, as it would from the server.
+    ///
+    /// Returns a negative code, and writes no response, only for invalid arguments (null
+    /// pointers, negative length) or a fatal error.
+    ///
     /// # Safety
     ///
+    /// - `ctx` must be a pointer returned by `sr_surreal_rpc_new`
     /// - `err_ptr` must be a valid pointer or null
     /// - `res_ptr` must be a valid pointer to receive the result
-    /// - `ptr` must be a valid pointer to CBOR-encoded request data
-    /// - `len` must be the length of the data at ptr
+    /// - `ptr` must be a valid pointer to `len` bytes of CBOR-encoded request data
     ///
-    /// Free result with sr_free_byte_arr
+    /// The response buffer is owned by the caller; free it with `sr_free_byte_arr(*res_ptr, len)`.
     #[export_name = "sr_surreal_rpc_execute"]
     pub extern "C" fn execute(
         &self,
@@ -140,45 +156,23 @@ impl SurrealRpc {
             }
             return SR_ERROR;
         }
-        if ptr.is_null() {
+        if ptr.is_null() || len < 0 {
             if !err_ptr.is_null() {
-                unsafe { err_ptr.write("ptr is null".into()) };
+                unsafe { err_ptr.write("ptr is null or len is negative".into()) };
             }
             return SR_ERROR;
         }
         with_async(self, err_ptr, |ctx| async {
-            let in_bytes = slice_from_raw_parts(ptr, len as usize);
-            let in_bytes = unsafe { &*in_bytes };
+            let in_bytes = unsafe { &*slice_from_raw_parts(ptr, len as usize) };
 
-            let in_value: ciborium::Value = ciborium::from_reader(in_bytes.as_ref())
-                .map_err(|e| string_t::from(format!("CBOR decode error: {e}")))?;
+            let inner = ctx.inner.read().await;
+            let response = inner.handle(in_bytes).await;
 
-            let (method_str, params) = parse_cbor_request(&in_value)?;
-            let method = Method::parse_case_insensitive(&method_str);
-
-            let inner = &ctx.inner.read().await;
-            let res = <SurrealRpcInner as RpcProtocol>::execute(
-                &*inner,
-                None,
-                None,
-                method,
-                params,
-            ).await.map_err(|e| string_t::from(e.to_string()))?;
-            
-            match res {
-                DbResult::Other(v) => {
-                    let cbor_val = value_to_cbor(&v);
-                    let mut out_bytes = Vec::new();
-                    ciborium::into_writer(&cbor_val, &mut out_bytes)
-                        .map_err(|e| string_t::from(format!("CBOR encode error: {e}")))?;
-                    let out = out_bytes.make_array();
-                    unsafe { res_ptr.write(out.ptr) }
-                    Ok(out.len)
-                }
-                _ => {
-                    Err(string_t::from("C SDK: RPC::execute had unimplemented response."))
-                }
-            }
+            let out_bytes = cbor::encode(response.into_value())
+                .map_err(|e| string_t::from(format!("CBOR encode error: {e}")))?;
+            let out = out_bytes.make_array();
+            unsafe { res_ptr.write(out.ptr) }
+            Ok(out.len)
         })
     }
 
@@ -230,85 +224,6 @@ impl SurrealRpc {
     }
 }
 
-fn parse_cbor_request(value: &ciborium::Value) -> Result<(String, surrealdb::types::Array), string_t> {
-    let map = value.as_map().ok_or(string_t::from("Expected CBOR map for RPC request"))?;
-    
-    let mut method = String::new();
-    let mut params = surrealdb::types::Array::new();
-    
-    for (k, v) in map {
-        if let Some(key) = k.as_text() {
-            match key {
-                "method" => {
-                    method = v.as_text().unwrap_or("").to_string();
-                }
-                "params" => {
-                    if let Some(arr) = v.as_array() {
-                        for item in arr {
-                            params.push(cbor_to_value(item));
-                        }
-                    }
-                }
-                _ => {}
-            }
-        }
-    }
-    
-    Ok((method, params))
-}
-
-fn cbor_to_value(v: &ciborium::Value) -> sdbValue {
-    match v {
-        ciborium::Value::Null => sdbValue::Null,
-        ciborium::Value::Bool(b) => sdbValue::Bool(*b),
-        ciborium::Value::Integer(i) => {
-            let n: i128 = (*i).into();
-            sdbValue::Number(surrealdb::types::Number::Int(n as i64))
-        }
-        ciborium::Value::Float(f) => sdbValue::Number(surrealdb::types::Number::Float(*f)),
-        ciborium::Value::Text(s) => sdbValue::String(s.clone()),
-        ciborium::Value::Bytes(b) => sdbValue::Bytes(surrealdb::types::Bytes::from(b.clone())),
-        ciborium::Value::Array(arr) => {
-            let vals: Vec<sdbValue> = arr.iter().map(cbor_to_value).collect();
-            sdbValue::Array(surrealdb::types::Array::from(vals))
-        }
-        ciborium::Value::Map(map) => {
-            let mut obj = surrealdb::types::Object::new();
-            for (k, v) in map {
-                if let Some(key) = k.as_text() {
-                    obj.insert(key.to_string(), cbor_to_value(v));
-                }
-            }
-            sdbValue::Object(obj)
-        }
-        _ => sdbValue::None,
-    }
-}
-
-pub(crate) fn value_to_cbor(v: &sdbValue) -> ciborium::Value {
-    match v {
-        sdbValue::None => ciborium::Value::Null,
-        sdbValue::Null => ciborium::Value::Null,
-        sdbValue::Bool(b) => ciborium::Value::Bool(*b),
-        sdbValue::Number(n) => match n {
-            surrealdb::types::Number::Int(i) => ciborium::Value::Integer((*i).into()),
-            surrealdb::types::Number::Float(f) => ciborium::Value::Float(*f),
-            surrealdb::types::Number::Decimal(d) => ciborium::Value::Text(d.to_string()),
-        },
-        sdbValue::String(s) => ciborium::Value::Text(s.clone()),
-        sdbValue::Array(arr) => {
-            ciborium::Value::Array(arr.iter().map(value_to_cbor).collect())
-        }
-        sdbValue::Object(obj) => {
-            let entries: Vec<(ciborium::Value, ciborium::Value)> = obj.iter()
-                .map(|(k, v)| (ciborium::Value::Text(k.clone()), value_to_cbor(v)))
-                .collect();
-            ciborium::Value::Map(entries)
-        }
-        _ => ciborium::Value::Text(format!("{v:?}")),
-    }
-}
-
 fn with_async<'a, 'b, C, F>(ctx: &'a SurrealRpc, err_ptr: *mut string_t, fun: C) -> c_int
 where
     'a: 'b,
@@ -346,6 +261,25 @@ where
 struct SurrealRpcInner {
     kvs: Datastore,
     session_map: HashMap<Option<uuid::Uuid>, Arc<RwLock<Session>>>,
+}
+
+impl SurrealRpcInner {
+    /// Decode and execute one CBOR request, returning the response the server would send
+    async fn handle(&self, bytes: &[u8]) -> DbResponse {
+        let request = match cbor::decode(bytes) {
+            Ok(sdbValue::Object(obj)) => Request::from_object(obj),
+            Ok(_) => Err(invalid_request()),
+            Err(_) => Err(parse_error()),
+        };
+        let request = match request {
+            Ok(request) => request,
+            Err(e) => return DbResponse::failure(None, None, e),
+        };
+        let txn = request.txn.map(Into::into);
+        let session = request.session_id.map(Into::into);
+        let result = self.execute(txn, session, request.method, request.params).await;
+        DbResponse::new(request.id, session, result)
+    }
 }
 
 impl RpcProtocol for SurrealRpcInner {

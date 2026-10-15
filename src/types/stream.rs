@@ -3,7 +3,9 @@ use std::ffi::c_int;
 use async_channel::Receiver;
 use futures::StreamExt;
 use surrealdb::method::Stream as sdbStream;
-use surrealdb::types::{Value as sdbValue, Notification as PublicNotification};
+use surrealdb::types::{Notification as PublicNotification, SurrealValue, Value as sdbValue};
+use surrealdb_core::rpc::format::cbor;
+use surrealdb_core::rpc::{DbResponse, DbResult};
 use tokio::runtime::Handle;
 
 use crate::SR_ERROR;
@@ -89,8 +91,10 @@ impl RpcStream {
 
     /// Get the next notification from the stream
     ///
-    /// Returns the length of the CBOR-encoded notification, or SR_CLOSED if the
-    /// channel is closed. The CBOR-encoded bytes are written to *res_ptr.
+    /// Blocks until a notification arrives. Returns the length of the CBOR-encoded
+    /// notification, or SR_CLOSED if the channel is closed. The bytes are written to
+    /// *res_ptr in the format the server sends notifications in:
+    /// `{ result: { id, action, record, result, session } }`, with SurrealDB's CBOR tags.
     ///
     /// Free the result with sr_free_byte_arr.
     #[export_name = "sr_rpc_stream_next"]
@@ -100,22 +104,12 @@ impl RpcStream {
             Err(_) => return SR_CLOSED,
         };
 
-        let mut obj = surrealdb::types::Object::new();
-        obj.insert(
-            "id".to_string(),
-            sdbValue::Uuid(notification.id),
-        );
-        obj.insert(
-            "action".to_string(),
-            sdbValue::String(format!("{}", notification.action)),
-        );
-        obj.insert("result".to_string(), notification.result);
-
-        let cbor_val = crate::rpc::value_to_cbor(&sdbValue::Object(obj));
-        let mut res = Vec::new();
-        if ciborium::into_writer(&cbor_val, &mut res).is_err() {
-            return SR_ERROR;
-        }
+        // Notifications use the server's format: { result: { id, action, record, result, session } }
+        let response = DbResponse::success(None, None, DbResult::Live(notification));
+        let res = match cbor::encode(response.into_value()) {
+            Ok(res) => res,
+            Err(_) => return SR_ERROR,
+        };
         let out = res.make_array();
 
         unsafe { res_ptr.write(out.ptr) }

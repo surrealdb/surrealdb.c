@@ -25,18 +25,14 @@ typedef enum sr_action {
   SR_ACTION_UPDATE,
   SR_ACTION_DELETE,
   SR_ACTION_KILLED,
-  /**
-   * Represents an action type added in a newer version of SurrealDB
-   * that this C API version doesn't yet support
-   */
-  SR_ACTION_UNIMPLEMENTED,
 } sr_action;
 
 typedef struct sr_opaque_object_internal_t sr_opaque_object_internal_t;
 
 /**
- * Stream for receiving RPC notifications
+ * Stream for receiving RPC live query notifications
  *
+ * Wraps a `Receiver<PublicNotification>` from the datastore's notification channel.
  * Uses synchronous blocking receives, so no async drop is required.
  */
 typedef struct sr_RpcStream sr_RpcStream;
@@ -61,13 +57,13 @@ typedef struct sr_stream_t sr_stream_t;
 typedef struct sr_surreal_t sr_surreal_t;
 
 /**
- * The object representing a Surreal connection
+ * The object representing a Surreal RPC connection
  *
  * It is safe to be referenced from multiple threads
  * If any operation, on any thread returns SR_FATAL then the connection is poisoned and must not be used again.
  * (use will cause the program to abort)
  *
- * should be freed with sr_surreal_disconnect
+ * should be freed with sr_surreal_rpc_free
  */
 typedef struct sr_surreal_rpc_t sr_surreal_rpc_t;
 
@@ -1413,16 +1409,28 @@ int sr_surreal_rpc_new(sr_string_t *err_ptr,
                        struct sr_option_t options);
 
 /**
- * Execute an RPC request
+ * Execute an RPC request via raw CBOR bytes
+ *
+ * `ptr`/`len` hold one CBOR-encoded request in the same format the server's WebSocket
+ * endpoint accepts: a map with `method`, optional `params`, and optional `id`, `session`
+ * and `txn`. Values use SurrealDB's CBOR tags (record ids, datetimes, uuids, ...).
+ *
+ * On success, `*res_ptr` receives one CBOR-encoded response in the server's format:
+ * `{ id, result }`, or `{ id, error }` if the method failed. The return value is the
+ * length of that buffer. A request that cannot be decoded also produces an `error`
+ * response, as it would from the server.
+ *
+ * Returns a negative code, and writes no response, only for invalid arguments (null
+ * pointers, negative length) or a fatal error.
  *
  * # Safety
  *
+ * - `ctx` must be a pointer returned by `sr_surreal_rpc_new`
  * - `err_ptr` must be a valid pointer or null
  * - `res_ptr` must be a valid pointer to receive the result
- * - `ptr` must be a valid pointer to CBOR-encoded request data
- * - `len` must be the length of the data at ptr
+ * - `ptr` must be a valid pointer to `len` bytes of CBOR-encoded request data
  *
- * Free result with sr_free_byte_arr
+ * The response buffer is owned by the caller; free it with `sr_free_byte_arr(*res_ptr, len)`.
  */
 int sr_surreal_rpc_execute(const struct sr_surreal_rpc_t *self,
                            sr_string_t *err_ptr,
@@ -1446,10 +1454,6 @@ int sr_surreal_rpc_notifications(const struct sr_surreal_rpc_t *self,
 
 /**
  * Free an RPC context
- *
- * # Safety
- *
- * - `ctx` must be a valid pointer to a SurrealRpc, or null (no-op)
  */
 void sr_surreal_rpc_free(struct sr_surreal_rpc_t *ctx);
 
@@ -1581,8 +1585,22 @@ void sr_free_arr_res_arr(struct sr_arr_res_t *ptr, int len);
 
 /**
  * Blocks until next item is received on stream
- * will return 1 and write notification to notification_ptr is recieved
+ * will return 1 and write notification to notification_ptr if received
  * will return SR_NONE if the stream is closed
+ *
+ * sr_stream_t *stream;
+ * if (sr_select_live(db, &err, &stream, "foo") < 0)
+ * {
+ *     printf("%s", err);
+ *     return 1;
+ * }
+ *
+ * sr_notification_t not ;
+ * if (sr_stream_next(stream, &not ) > 0)
+ * {
+ *     sr_print_notification(&not );
+ * }
+ * sr_stream_kill(stream);
  */
 int sr_stream_next(struct sr_stream_t *self, struct sr_notification_t *notification_ptr);
 
@@ -1596,7 +1614,13 @@ void sr_stream_kill(struct sr_stream_t *stream);
 
 /**
  * Get the next notification from the stream
- * Returns the length of the CBOR-encoded notification, or SR_CLOSED if the stream is closed
+ *
+ * Blocks until a notification arrives. Returns the length of the CBOR-encoded
+ * notification, or SR_CLOSED if the channel is closed. The bytes are written to
+ * *res_ptr in the format the server sends notifications in:
+ * `{ result: { id, action, record, result, session } }`, with SurrealDB's CBOR tags.
+ *
+ * Free the result with sr_free_byte_arr.
  */
 int sr_rpc_stream_next(struct sr_RpcStream *self, uint8_t **res_ptr);
 

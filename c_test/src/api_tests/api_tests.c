@@ -1044,8 +1044,24 @@ int test_sr_surreal_rpc_new(void) {
 }
 
 int test_sr_surreal_rpc_execute(void) {
-    /* Skip: requires CBOR encoding setup */
-    return TEST_SKIP;
+    sr_surreal_rpc_t *rpc;
+    sr_string_t err;
+    sr_option_t opts = {0};
+    ASSERT_GE(sr_surreal_rpc_new(&err, &rpc, "memory", opts), 0);
+
+    /* {"id": 1, "method": "ping"} */
+    uint8_t request[] = {0xa2, 0x62, 'i', 'd', 0x01,
+                         0x66, 'm', 'e', 't', 'h', 'o', 'd', 0x64, 'p', 'i', 'n', 'g'};
+    uint8_t *response = NULL;
+    int len = sr_surreal_rpc_execute(rpc, &err, &response, request, sizeof(request));
+    ASSERT_TRUE(len > 0);
+    ASSERT_NOT_NULL(response);
+    /* {"result": NONE, "id": 1}: a two-entry map */
+    ASSERT_EQ(response[0], 0xa2);
+    sr_free_byte_arr(response, len);
+
+    sr_surreal_rpc_free(rpc);
+    return TEST_PASS;
 }
 
 int test_sr_surreal_rpc_notifications(void) {
