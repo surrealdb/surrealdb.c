@@ -128,6 +128,9 @@ extern "C" {
 
     // Kill Live Query Test
     fn test_sr_kill() -> c_int;
+
+    // Null Pointer Tests
+    fn test_sr_null_err_ptr() -> c_int;
 }
 
 const TEST_PASS: c_int = 0;
@@ -326,3 +329,9 @@ c_test!(sr_object_keys, test_sr_object_keys);
 // ============================================================================
 
 c_test!(sr_kill, test_sr_kill);
+
+// ============================================================================
+// Null Pointer Tests
+// ============================================================================
+
+c_test!(sr_null_err_ptr, test_sr_null_err_ptr);

@@ -1328,3 +1328,65 @@ int test_sr_kill(void) {
     sr_surreal_disconnect(db);
     return TEST_PASS;
 }
+
+/* ============================================================================
+ * Null Pointer Tests
+ * ============================================================================ */
+
+/* Every function accepts a NULL err_ptr (the message is discarded) and
+ * reports NULL handles as errors instead of crashing. */
+int test_sr_null_err_ptr(void) {
+    sr_surreal_t *db = NULL;
+
+    /* Connection errors */
+    ASSERT_TRUE(sr_connect(NULL, &db, "bogus://nowhere") < 0);
+    ASSERT_TRUE(sr_connect(NULL, NULL, "mem://") < 0);
+    ASSERT_TRUE(sr_connect(NULL, &db, NULL) < 0);
+
+    /* Errors from inside the async wrapper */
+    ASSERT_TRUE(sr_connect(NULL, &db, "mem://") >= 0);
+    sr_credentials_scope scope = ROOT;
+    sr_credentials creds = { .username = "nobody", .password = "wrong" };
+    ASSERT_EQ(sr_signin(db, NULL, NULL, &scope, &creds, NULL, NULL), sr_SR_ERROR);
+    ASSERT_EQ(sr_signin(db, NULL, NULL, NULL, &creds, NULL, NULL), sr_SR_ERROR);
+    sr_value_t *res = NULL;
+    ASSERT_EQ(sr_select(db, NULL, &res, NULL), sr_SR_ERROR);
+    ASSERT_EQ(sr_kill(db, NULL, "not-a-uuid"), sr_SR_ERROR);
+
+    /* NULL connection handles */
+    ASSERT_EQ(sr_use_ns(NULL, NULL, "test"), sr_SR_ERROR);
+    ASSERT_EQ(sr_select(NULL, NULL, &res, "foo"), sr_SR_ERROR);
+    sr_string_t err = NULL;
+    ASSERT_EQ(sr_health(NULL, &err), sr_SR_ERROR);
+    ASSERT_NOT_NULL(err);
+    sr_free_string(err);
+    sr_surreal_disconnect(NULL);
+    sr_surreal_disconnect(db);
+
+    /* Streams */
+    sr_stream_kill(NULL);
+    sr_notification_t notification;
+    ASSERT_EQ(sr_stream_next(NULL, &notification), sr_SR_ERROR);
+    uint8_t *bytes = NULL;
+    ASSERT_EQ(sr_rpc_stream_next(NULL, &bytes), sr_SR_ERROR);
+    sr_rpc_stream_free(NULL);
+
+    /* RPC */
+    sr_surreal_rpc_t *rpc = NULL;
+    sr_option_t opts = {0};
+    ASSERT_TRUE(sr_surreal_rpc_new(NULL, &rpc, "bogus://nowhere", opts) < 0);
+    ASSERT_TRUE(sr_surreal_rpc_new(NULL, &rpc, NULL, opts) < 0);
+    ASSERT_TRUE(sr_surreal_rpc_new(NULL, &rpc, "memory", opts) >= 0);
+    uint8_t invalid_cbor[] = {0xff};
+    ASSERT_TRUE(sr_surreal_rpc_execute(rpc, NULL, &bytes, invalid_cbor, 1) < 0);
+    ASSERT_EQ(sr_surreal_rpc_execute(NULL, NULL, &bytes, invalid_cbor, 1), sr_SR_ERROR);
+    sr_surreal_rpc_free(rpc);
+    sr_surreal_rpc_free(NULL);
+
+    /* Value constructors */
+    ASSERT_TRUE(sr_value_string(NULL) == NULL);
+    ASSERT_TRUE(sr_value_thing("t", NULL) == NULL);
+    sr_value_free(NULL);
+
+    return TEST_PASS;
+}

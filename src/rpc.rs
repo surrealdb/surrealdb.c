@@ -13,7 +13,10 @@ use surrealdb_core::rpc::{Method, RpcProtocol, DbResult};
 use surrealdb::types::{Value as sdbValue, HashMap};
 use tokio::{runtime::Runtime, sync::RwLock};
 
-use crate::{array::MakeArray, opts::Options, stream::RpcStream, string::string_t, SR_ERROR, SR_FATAL};
+use crate::{
+    array::MakeArray, opts::Options, panic_message, stream::RpcStream, string::string_t, write_error,
+    SR_ERROR, SR_FATAL,
+};
 
 /// The object representing a Surreal RPC connection
 ///
@@ -46,6 +49,14 @@ impl SurrealRpc {
         endpoint: *const c_char,
         options: Options,
     ) -> c_int {
+        if surreal_ptr.is_null() {
+            write_error(err_ptr, "surreal_ptr is null");
+            return SR_ERROR;
+        }
+        if endpoint.is_null() {
+            write_error(err_ptr, "endpoint is null");
+            return SR_ERROR;
+        }
         let res: Result<Result<SurrealRpc, string_t>, _> = catch_unwind(AssertUnwindSafe(|| {
             let Ok(endpoint) = (unsafe { CStr::from_ptr(endpoint).to_str() }) else {
                 return Err("Invalid UTF-8".into());
@@ -93,12 +104,7 @@ impl SurrealRpc {
         let res: Result<SurrealRpc, string_t> = match res {
             Ok(r) => r,
             Err(e) => {
-                if let Some(e_str) = e.downcast_ref::<&str>() {
-                    let e_string: string_t = format!("Panicked with: {e_str}").into();
-                    unsafe { err_ptr.write(e_string) }
-                } else {
-                    unsafe { err_ptr.write("Panicked".into()) }
-                }
+                write_error(err_ptr, panic_message(e));
                 return SR_FATAL;
             }
         };
@@ -110,7 +116,7 @@ impl SurrealRpc {
                 1
             }
             Err(e) => {
-                unsafe { err_ptr.write(e) }
+                write_error(err_ptr, e);
                 SR_ERROR
             }
         }
@@ -128,25 +134,21 @@ impl SurrealRpc {
     /// Free result with sr_free_byte_arr
     #[export_name = "sr_surreal_rpc_execute"]
     pub extern "C" fn execute(
-        &self,
+        ctx: *const SurrealRpc,
         err_ptr: *mut string_t,
         res_ptr: *mut *mut u8,
         ptr: *const u8,
         len: c_int,
     ) -> c_int {
         if res_ptr.is_null() {
-            if !err_ptr.is_null() {
-                unsafe { err_ptr.write("res_ptr is null".into()) };
-            }
+            write_error(err_ptr, "res_ptr is null");
             return SR_ERROR;
         }
         if ptr.is_null() {
-            if !err_ptr.is_null() {
-                unsafe { err_ptr.write("ptr is null".into()) };
-            }
+            write_error(err_ptr, "ptr is null");
             return SR_ERROR;
         }
-        with_async(self, err_ptr, |ctx| async {
+        with_async(ctx, err_ptr, |ctx| async {
             let in_bytes = slice_from_raw_parts(ptr, len as usize);
             let in_bytes = unsafe { &*in_bytes };
 
@@ -192,17 +194,15 @@ impl SurrealRpc {
     /// Returns a stream that can be polled for notifications using sr_rpc_stream_next
     #[export_name = "sr_surreal_rpc_notifications"]
     pub extern "C" fn notifications(
-        &self,
+        ctx: *const SurrealRpc,
         err_ptr: *mut string_t,
         stream_ptr: *mut *mut RpcStream,
     ) -> c_int {
         if stream_ptr.is_null() {
-            if !err_ptr.is_null() {
-                unsafe { err_ptr.write("stream_ptr is null".into()) };
-            }
+            write_error(err_ptr, "stream_ptr is null");
             return SR_ERROR;
         }
-        with_async(self, err_ptr, |ctx| async {
+        with_async(ctx, err_ptr, |ctx| async {
             let receiver = ctx
                 .inner
                 .read()
@@ -309,26 +309,24 @@ pub(crate) fn value_to_cbor(v: &sdbValue) -> ciborium::Value {
     }
 }
 
-fn with_async<'a, 'b, C, F>(ctx: &'a SurrealRpc, err_ptr: *mut string_t, fun: C) -> c_int
+fn with_async<'a, C, F>(ctx: *const SurrealRpc, err_ptr: *mut string_t, fun: C) -> c_int
 where
-    'a: 'b,
-    C: FnOnce(&'a SurrealRpc) -> F + 'b,
+    C: FnOnce(&'a SurrealRpc) -> F,
     F: std::future::Future<Output = Result<c_int, string_t>>,
 {
+    let Some(ctx): Option<&'a SurrealRpc> = (unsafe { ctx.as_ref() }) else {
+        write_error(err_ptr, "ctx is null");
+        return SR_ERROR;
+    };
     if ctx.ps.load(Ordering::Acquire) {
         std::process::abort()
     }
     let _guard = ctx.rt.enter();
 
-    let res = match catch_unwind(AssertUnwindSafe(|| ctx.rt.block_on(fun(&ctx)))) {
+    let res = match catch_unwind(AssertUnwindSafe(|| ctx.rt.block_on(fun(ctx)))) {
         Ok(r) => r,
         Err(e) => {
-            if let Some(e_str) = e.downcast_ref::<&str>() {
-                let e_string: string_t = format!("Panicked with: {e_str}").into();
-                unsafe { err_ptr.write(e_string) }
-            } else {
-                unsafe { err_ptr.write("Panicked".into()) }
-            }
+            write_error(err_ptr, panic_message(e));
             return SR_FATAL;
         }
     };
@@ -336,7 +334,7 @@ where
     match res {
         Ok(n) => n,
         Err(e) => {
-            unsafe { err_ptr.write(e) }
+            write_error(err_ptr, e);
             SR_ERROR
         }
     }

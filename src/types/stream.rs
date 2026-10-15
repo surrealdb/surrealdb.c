@@ -45,8 +45,14 @@ impl Stream {
     /// }
     /// sr_stream_kill(stream);
     #[export_name = "sr_stream_next"]
-    pub extern "C" fn next(&mut self, notification_ptr: *mut Notification) -> c_int {
-        match self.rt.block_on(self.inner.next()) {
+    pub extern "C" fn next(stream: *mut Stream, notification_ptr: *mut Notification) -> c_int {
+        let Some(stream) = (unsafe { stream.as_mut() }) else {
+            return SR_ERROR;
+        };
+        if notification_ptr.is_null() {
+            return SR_ERROR;
+        }
+        match stream.rt.block_on(stream.inner.next()) {
             Some(Ok(n)) => {
                 let notif = Notification {
                     query_id: crate::uuid::Uuid::from(n.query_id),
@@ -67,6 +73,9 @@ impl Stream {
     /// The stream must not be used after calling this function.
     #[export_name = "sr_stream_kill"]
     pub extern "C" fn kill(stream: *mut Stream) {
+        if stream.is_null() {
+            return;
+        }
         let boxed = unsafe { Box::from_raw(stream) };
         let handle = boxed.rt.clone();
         handle.block_on(async { drop(boxed) });
@@ -94,8 +103,14 @@ impl RpcStream {
     ///
     /// Free the result with sr_free_byte_arr.
     #[export_name = "sr_rpc_stream_next"]
-    pub extern "C" fn next(&mut self, res_ptr: *mut *mut u8) -> c_int {
-        let notification = match self.rx.recv_blocking() {
+    pub extern "C" fn next(stream: *mut RpcStream, res_ptr: *mut *mut u8) -> c_int {
+        let Some(stream) = (unsafe { stream.as_mut() }) else {
+            return SR_ERROR;
+        };
+        if res_ptr.is_null() {
+            return SR_ERROR;
+        }
+        let notification = match stream.rx.recv_blocking() {
             Ok(n) => n,
             Err(_) => return SR_CLOSED,
         };
