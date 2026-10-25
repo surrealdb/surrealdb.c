@@ -57,9 +57,8 @@ impl From<sdbValue> for Value {
                 sdbNumber::Int(i) => Value::SR_VALUE_NUMBER(Number::SR_NUMBER_INT(i)),
                 sdbNumber::Float(f) => Value::SR_VALUE_NUMBER(Number::SR_NUMBER_FLOAT(f)),
                 sdbNumber::Decimal(d) => Value::SR_VALUE_NUMBER(Number::from(d)),
-                _ => {
-                    Value::SR_VALUE_NUMBER(Number::SR_NUMBER_FLOAT(0.0))
-                }
+                // No catch-all: a number kind added to the SDK must fail to compile here,
+                // not be returned as some other number
             },
             sdbValue::String(s) => Value::SR_VALUE_STRAND(s.to_string_t()),
             sdbValue::Duration(d) => Value::SR_VALUE_DURATION(Duration::from(std::time::Duration::from(d))),
