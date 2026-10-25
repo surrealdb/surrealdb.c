@@ -25,18 +25,14 @@ typedef enum sr_action {
   SR_ACTION_UPDATE,
   SR_ACTION_DELETE,
   SR_ACTION_KILLED,
-  /**
-   * Represents an action type added in a newer version of SurrealDB
-   * that this C API version doesn't yet support
-   */
-  SR_ACTION_UNIMPLEMENTED,
 } sr_action;
 
 typedef struct sr_opaque_object_internal_t sr_opaque_object_internal_t;
 
 /**
- * Stream for receiving RPC notifications
+ * Stream for receiving RPC live query notifications
  *
+ * Wraps a `Receiver<PublicNotification>` from the datastore's notification channel.
  * Uses synchronous blocking receives, so no async drop is required.
  */
 typedef struct sr_RpcStream sr_RpcStream;
@@ -61,13 +57,13 @@ typedef struct sr_stream_t sr_stream_t;
 typedef struct sr_surreal_t sr_surreal_t;
 
 /**
- * The object representing a Surreal connection
+ * The object representing a Surreal RPC connection
  *
  * It is safe to be referenced from multiple threads
  * If any operation, on any thread returns SR_FATAL then the connection is poisoned and must not be used again.
  * (use will cause the program to abort)
  *
- * should be freed with sr_surreal_disconnect
+ * should be freed with sr_surreal_rpc_free
  */
 typedef struct sr_surreal_rpc_t sr_surreal_rpc_t;
 
@@ -1413,7 +1409,7 @@ int sr_surreal_rpc_new(sr_string_t *err_ptr,
                        struct sr_option_t options);
 
 /**
- * Execute an RPC request
+ * Execute an RPC request via raw CBOR bytes
  *
  * # Safety
  *
@@ -1446,10 +1442,6 @@ int sr_surreal_rpc_notifications(const struct sr_surreal_rpc_t *self,
 
 /**
  * Free an RPC context
- *
- * # Safety
- *
- * - `ctx` must be a valid pointer to a SurrealRpc, or null (no-op)
  */
 void sr_surreal_rpc_free(struct sr_surreal_rpc_t *ctx);
 
@@ -1581,8 +1573,22 @@ void sr_free_arr_res_arr(struct sr_arr_res_t *ptr, int len);
 
 /**
  * Blocks until next item is received on stream
- * will return 1 and write notification to notification_ptr is recieved
+ * will return 1 and write notification to notification_ptr if received
  * will return SR_NONE if the stream is closed
+ *
+ * sr_stream_t *stream;
+ * if (sr_select_live(db, &err, &stream, "foo") < 0)
+ * {
+ *     printf("%s", err);
+ *     return 1;
+ * }
+ *
+ * sr_notification_t not ;
+ * if (sr_stream_next(stream, &not ) > 0)
+ * {
+ *     sr_print_notification(&not );
+ * }
+ * sr_stream_kill(stream);
  */
 int sr_stream_next(struct sr_stream_t *self, struct sr_notification_t *notification_ptr);
 
@@ -1596,7 +1602,11 @@ void sr_stream_kill(struct sr_stream_t *stream);
 
 /**
  * Get the next notification from the stream
- * Returns the length of the CBOR-encoded notification, or SR_CLOSED if the stream is closed
+ *
+ * Returns the length of the CBOR-encoded notification, or SR_CLOSED if the
+ * channel is closed. The CBOR-encoded bytes are written to *res_ptr.
+ *
+ * Free the result with sr_free_byte_arr.
  */
 int sr_rpc_stream_next(struct sr_RpcStream *self, uint8_t **res_ptr);
 
