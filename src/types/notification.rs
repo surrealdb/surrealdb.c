@@ -23,7 +23,11 @@ impl From<sdbNotification> for Notification {
 
 impl Notification {
     #[export_name = "sr_print_notification"]
-    pub extern "C" fn print_notification(notification: &Notification) {
+    pub extern "C" fn print_notification(notification: *const Notification) {
+        let Some(notification) = (unsafe { notification.as_ref() }) else {
+            println!("(null)");
+            return;
+        };
         println!("{notification:?}");
     }
 }

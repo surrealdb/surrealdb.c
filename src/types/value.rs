@@ -118,7 +118,11 @@ impl Value {
     ///
     /// Outputs the debug representation of the value to standard output.
     #[export_name = "sr_value_print"]
-    pub extern "C" fn print_value(val: &Value) {
+    pub extern "C" fn print_value(val: *const Value) {
+        let Some(val) = (unsafe { val.as_ref() }) else {
+            println!("(null)");
+            return;
+        };
         println!("{val:?}");
     }
 
@@ -126,8 +130,12 @@ impl Value {
     ///
     /// Returns true if both values are equal, false otherwise.
     #[export_name = "sr_value_eq"]
-    pub extern "C" fn value_eq(lhs: &Value, rhs: &Value) -> bool {
-        lhs == rhs
+    pub extern "C" fn value_eq(lhs: *const Value, rhs: *const Value) -> bool {
+        match unsafe { (lhs.as_ref(), rhs.as_ref()) } {
+            (Some(lhs), Some(rhs)) => lhs == rhs,
+            (None, None) => true,
+            _ => false,
+        }
     }
 
     /// Create a None value
