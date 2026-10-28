@@ -1,4 +1,3 @@
-use std::ffi::CStr;
 
 use chrono::DateTime;
 use surrealdb::types::{
@@ -94,8 +93,7 @@ impl From<Value> for sdbValue {
                 sdbValue::Duration(std_dur.into())
             }
             Value::SR_VALUE_DATETIME(d) => {
-                let cstr = unsafe { CStr::from_ptr(d.0) };
-                let parsed = DateTime::parse_from_rfc3339(cstr.to_string_lossy().as_ref())
+                let parsed = DateTime::parse_from_rfc3339(d.to_str_lossy().as_ref())
                     .unwrap_or_default()
                     .to_utc();
                 sdbValue::Datetime(parsed.into())

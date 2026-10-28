@@ -1,4 +1,4 @@
-use std::ffi::{c_double, c_float, c_int, CStr};
+use std::ffi::{c_double, c_float, c_int};
 
 use surrealdb::types::Number as sdbNumber;
 use rust_decimal::Decimal;
@@ -45,8 +45,7 @@ impl From<Number> for sdbNumber {
             Number::SR_NUMBER_INT(i) => sdbNumber::Int(i),
             Number::SR_NUMBER_FLOAT(f) => sdbNumber::Float(f),
             Number::SR_NUMBER_DECIMAL(s) => {
-                let cstr = unsafe { CStr::from_ptr(s.0) };
-                let decimal_str = cstr.to_string_lossy();
+                let decimal_str = s.to_str_lossy();
                 match decimal_str.parse::<Decimal>() {
                     Ok(d) => sdbNumber::Decimal(d),
                     // Fallback to float if parsing fails
