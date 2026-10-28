@@ -1538,7 +1538,7 @@ impl Surreal {
             };
             
             if !token_ptr.is_null() {
-                unsafe { *token_ptr = token.to_string_t(); }
+                unsafe { token_ptr.write(token.to_string_t()) }
             }
             
             Ok(0)
@@ -1678,7 +1678,7 @@ impl Surreal {
             };
             
             if !token_ptr.is_null() {
-                unsafe { *token_ptr = token.to_string_t(); }
+                unsafe { token_ptr.write(token.to_string_t()) }
             }
             
             Ok(0)
