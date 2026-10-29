@@ -52,9 +52,20 @@ pub const SR_FATAL: c_int = -3;
 /// 
 /// If `err_ptr` is null, the error is silently ignored.
 #[inline]
-fn write_error(err_ptr: *mut string_t, msg: impl Into<string_t>) {
+pub(crate) fn write_error(err_ptr: *mut string_t, msg: impl Into<string_t>) {
     if !err_ptr.is_null() {
         unsafe { err_ptr.write(msg.into()) };
+    }
+}
+
+/// Build an error message from a caught panic payload
+pub(crate) fn panic_message(payload: Box<dyn std::any::Any + Send>) -> string_t {
+    if let Some(msg) = payload.downcast_ref::<&str>() {
+        format!("Panicked with: {msg}").into()
+    } else if let Some(msg) = payload.downcast_ref::<String>() {
+        format!("Panicked with: {msg}").into()
+    } else {
+        "Panicked".into()
     }
 }
 
@@ -156,12 +167,7 @@ impl Surreal {
         let res: Result<Surreal, string_t> = match res {
             Ok(r) => r,
             Err(e) => {
-                if let Some(e_str) = e.downcast_ref::<&str>() {
-                    let e_string: string_t = format!("Panicked with: {e_str}").into();
-                    unsafe { err_ptr.write(e_string) }
-                } else {
-                    unsafe { err_ptr.write("Panicked".into()) }
-                }
+                write_error(err_ptr, panic_message(e));
                 return SR_FATAL;
             }
         };
@@ -173,7 +179,7 @@ impl Surreal {
                 1
             }
             Err(e) => {
-                unsafe { err_ptr.write(e) }
+                write_error(err_ptr, e);
                 SR_ERROR
             }
         }
@@ -195,6 +201,9 @@ impl Surreal {
     /// ```
     #[export_name = "sr_surreal_disconnect"]
     pub extern "C" fn disconnect(db: *mut Surreal) {
+        if db.is_null() {
+            return;
+        }
         catch_unwind(AssertUnwindSafe(|| drop(unsafe { Box::from_raw(db) }))).ok();
     }
 
@@ -221,7 +230,7 @@ impl Surreal {
     /// ```
     #[export_name = "sr_authenticate"]
     pub extern "C" fn authenticate(
-        db: &Surreal,
+        db: *const Surreal,
         err_ptr: *mut string_t,
         token: *const c_char,
     ) -> c_int {
@@ -248,7 +257,7 @@ impl Surreal {
     /// }
     /// ```
     #[export_name = "sr_begin"]
-    pub extern "C" fn begin(db: &Surreal, err_ptr: *mut string_t) -> c_int {
+    pub extern "C" fn begin(db: *const Surreal, err_ptr: *mut string_t) -> c_int {
         with_surreal_async(db, err_ptr, |surreal| async {
             surreal.db.query("BEGIN TRANSACTION").await.map_err(|e| string_t::from(e.to_string()))?;
             Ok(0)
@@ -270,7 +279,7 @@ impl Surreal {
     /// }
     /// ```
     #[export_name = "sr_cancel"]
-    pub extern "C" fn cancel(db: &Surreal, err_ptr: *mut string_t) -> c_int {
+    pub extern "C" fn cancel(db: *const Surreal, err_ptr: *mut string_t) -> c_int {
         with_surreal_async(db, err_ptr, |surreal| async {
             surreal.db.query("CANCEL TRANSACTION").await.map_err(|e| string_t::from(e.to_string()))?;
             Ok(0)
@@ -292,7 +301,7 @@ impl Surreal {
     /// }
     /// ```
     #[export_name = "sr_commit"]
-    pub extern "C" fn commit(db: &Surreal, err_ptr: *mut string_t) -> c_int {
+    pub extern "C" fn commit(db: *const Surreal, err_ptr: *mut string_t) -> c_int {
         with_surreal_async(db, err_ptr, |surreal| async {
             surreal.db.query("COMMIT TRANSACTION").await.map_err(|e| string_t::from(e.to_string()))?;
             Ok(0)
@@ -314,7 +323,7 @@ impl Surreal {
     /// - `content` must be a valid pointer to an Object
     #[export_name = "sr_create"]
     pub extern "C" fn create(
-        db: &Surreal,
+        db: *const Surreal,
         err_ptr: *mut string_t,
         res_ptr: *mut &mut Object,
         resource: *const c_char,
@@ -387,7 +396,7 @@ impl Surreal {
     /// ```
     #[export_name = "sr_delete"]
     pub extern "C" fn delete(
-        db: &Surreal,
+        db: *const Surreal,
         err_ptr: *mut string_t,
         res_ptr: *mut *mut Value,
         resource: *const c_char,
@@ -437,7 +446,7 @@ impl Surreal {
     /// ```
     #[export_name = "sr_export"]
     pub extern "C" fn export(
-        db: &Surreal,
+        db: *const Surreal,
         err_ptr: *mut string_t,
         file_path: *const c_char,
     ) -> c_int {
@@ -464,7 +473,7 @@ impl Surreal {
     /// }
     /// ```
     #[export_name = "sr_health"]
-    pub extern "C" fn health(db: &Surreal, err_ptr: *mut string_t) -> c_int {
+    pub extern "C" fn health(db: *const Surreal, err_ptr: *mut string_t) -> c_int {
         with_surreal_async(db, err_ptr, |surreal| async {
             surreal.db.health().await.map_err(|e| string_t::from(e.to_string()))?;
             Ok(0)
@@ -493,7 +502,7 @@ impl Surreal {
     /// ```
     #[export_name = "sr_import"]
     pub extern "C" fn import(
-        db: &Surreal,
+        db: *const Surreal,
         err_ptr: *mut string_t,
         file_path: *const c_char,
     ) -> c_int {
@@ -533,7 +542,7 @@ impl Surreal {
     /// ```
     #[export_name = "sr_insert"]
     pub extern "C" fn insert(
-        db: &Surreal,
+        db: *const Surreal,
         err_ptr: *mut string_t,
         res_ptr: *mut *mut Value,
         resource: *const c_char,
@@ -599,7 +608,7 @@ impl Surreal {
     /// ```
     #[export_name = "sr_insert_relation"]
     pub extern "C" fn insert_relation(
-        db: &Surreal,
+        db: *const Surreal,
         err_ptr: *mut string_t,
         res_ptr: *mut *mut Value,
         table: *const c_char,
@@ -658,7 +667,7 @@ impl Surreal {
     /// ```
     #[export_name = "sr_run"]
     pub extern "C" fn run(
-        db: &Surreal,
+        db: *const Surreal,
         err_ptr: *mut string_t,
         res_ptr: *mut *mut Value,
         function_name: *const c_char,
@@ -725,7 +734,7 @@ impl Surreal {
     /// ```
     #[export_name = "sr_relate"]
     pub extern "C" fn relate(
-        db: &Surreal,
+        db: *const Surreal,
         err_ptr: *mut string_t,
         res_ptr: *mut *mut Value,
         from: *const c_char,
@@ -785,7 +794,7 @@ impl Surreal {
     /// }
     /// ```
     #[export_name = "sr_invalidate"]
-    pub extern "C" fn invalidate(db: &Surreal, err_ptr: *mut string_t) -> c_int {
+    pub extern "C" fn invalidate(db: *const Surreal, err_ptr: *mut string_t) -> c_int {
         with_surreal_async(db, err_ptr, |surreal| async {
             surreal.db.invalidate().await.map_err(|e| string_t::from(e.to_string()))?;
             Ok(0)
@@ -814,7 +823,7 @@ impl Surreal {
     /// }
     /// ```
     #[export_name = "sr_kill"]
-    pub extern "C" fn kill(db: &Surreal, err_ptr: *mut string_t, query_id: *const c_char) -> c_int {
+    pub extern "C" fn kill(db: *const Surreal, err_ptr: *mut string_t, query_id: *const c_char) -> c_int {
         check_null!(query_id, err_ptr, "query_id is null");
         with_surreal_async(db, err_ptr, |surreal| async {
             let uuid_str = unsafe { CStr::from_ptr(query_id) }.to_str()?;
@@ -854,7 +863,7 @@ impl Surreal {
     /// sr_stream_kill(stream);
     #[export_name = "sr_select_live"]
     pub extern "C" fn select_live(
-        db: &Surreal,
+        db: *const Surreal,
         err_ptr: *mut string_t,
         stream_ptr: *mut &mut Stream,
         resource: *const c_char,
@@ -905,7 +914,7 @@ impl Surreal {
     /// ```
     #[export_name = "sr_merge"]
     pub extern "C" fn merge(
-        db: &Surreal,
+        db: *const Surreal,
         err_ptr: *mut string_t,
         res_ptr: *mut *mut Value,
         resource: *const c_char,
@@ -966,7 +975,7 @@ impl Surreal {
     /// ```
     #[export_name = "sr_patch_add"]
     pub extern "C" fn patch_add(
-        db: &Surreal,
+        db: *const Surreal,
         err_ptr: *mut string_t,
         res_ptr: *mut *mut Value,
         resource: *const c_char,
@@ -1026,7 +1035,7 @@ impl Surreal {
     /// ```
     #[export_name = "sr_patch_remove"]
     pub extern "C" fn patch_remove(
-        db: &Surreal,
+        db: *const Surreal,
         err_ptr: *mut string_t,
         res_ptr: *mut *mut Value,
         resource: *const c_char,
@@ -1085,7 +1094,7 @@ impl Surreal {
     /// ```
     #[export_name = "sr_patch_replace"]
     pub extern "C" fn patch_replace(
-        db: &Surreal,
+        db: *const Surreal,
         err_ptr: *mut string_t,
         res_ptr: *mut *mut Value,
         resource: *const c_char,
@@ -1131,7 +1140,7 @@ impl Surreal {
     /// - `vars` may be null (no variables bound)
     #[export_name = "sr_query"]
     pub extern "C" fn query(
-        db: &Surreal,
+        db: *const Surreal,
         err_ptr: *mut string_t,
         res_ptr: *mut *mut ArrayResult,
         query: *const c_char,
@@ -1208,7 +1217,7 @@ impl Surreal {
     /// sr_free_arr(foos, len);
     #[export_name = "sr_select"]
     pub extern "C" fn select(
-        db: &Surreal,
+        db: *const Surreal,
         err_ptr: *mut string_t,
         res_ptr: *mut *mut Value,
         resource: *const c_char,
@@ -1260,7 +1269,7 @@ impl Surreal {
     /// ```
     #[export_name = "sr_set"]
     pub extern "C" fn set(
-        db: &Surreal,
+        db: *const Surreal,
         err_ptr: *mut string_t,
         key: *const c_char,
         value: *const Value,
@@ -1343,14 +1352,16 @@ impl Surreal {
     /// ```
     #[export_name = "sr_signin"]
     pub extern "C" fn signin(
-        db: &Surreal,
+        db: *const Surreal,
         err_ptr: *mut string_t,
         token_ptr: *mut string_t,
-        scope: &credentials_scope,
+        scope: *const credentials_scope,
         creds: *const credentials::credentials,
         details: *const credentials_access,
         params: *const Object,
     ) -> c_int {
+        check_null!(scope, err_ptr, "scope is null");
+        let scope = unsafe { &*scope };
         with_surreal_async(db, err_ptr, |surreal| async {
             let mut user = "";
             let mut pass = "";
@@ -1459,7 +1470,7 @@ impl Surreal {
             };
             
             if !token_ptr.is_null() {
-                unsafe { *token_ptr = token.to_string_t(); }
+                unsafe { token_ptr.write(token.to_string_t()) }
             }
             
             Ok(0)
@@ -1512,14 +1523,16 @@ impl Surreal {
     /// ```
     #[export_name = "sr_signup"]
     pub extern "C" fn signup(
-        db: &Surreal,
+        db: *const Surreal,
         err_ptr: *mut string_t,
         token_ptr: *mut string_t,
-        scope: &credentials_scope,
+        scope: *const credentials_scope,
         creds: *const credentials::credentials,
         details: *const credentials_access,
         params: *const Object,
     ) -> c_int {
+        check_null!(scope, err_ptr, "scope is null");
+        let scope = unsafe { &*scope };
         with_surreal_async(db, err_ptr, |surreal| async {
             let mut user = "";
             let mut pass = "";
@@ -1597,7 +1610,7 @@ impl Surreal {
             };
             
             if !token_ptr.is_null() {
-                unsafe { *token_ptr = token.to_string_t(); }
+                unsafe { token_ptr.write(token.to_string_t()) }
             }
             
             Ok(0)
@@ -1626,7 +1639,7 @@ impl Surreal {
     /// ```
     #[export_name = "sr_unset"]
     pub extern "C" fn unset(
-        db: &Surreal,
+        db: *const Surreal,
         err_ptr: *mut string_t,
         key: *const c_char,
     ) -> c_int {
@@ -1666,7 +1679,7 @@ impl Surreal {
     /// ```
     #[export_name = "sr_update"]
     pub extern "C" fn update(
-        db: &Surreal,
+        db: *const Surreal,
         err_ptr: *mut string_t,
         res_ptr: *mut *mut Value,
         resource: *const c_char,
@@ -1726,7 +1739,7 @@ impl Surreal {
     /// ```
     #[export_name = "sr_upsert"]
     pub extern "C" fn upsert(
-        db: &Surreal,
+        db: *const Surreal,
         err_ptr: *mut string_t,
         res_ptr: *mut *mut Value,
         resource: *const c_char,
@@ -1780,7 +1793,7 @@ impl Surreal {
     /// }
     /// ```
     #[export_name = "sr_use_db"]
-    pub extern "C" fn use_db(db: &Surreal, err_ptr: *mut string_t, db_name: *const c_char) -> c_int {
+    pub extern "C" fn use_db(db: *const Surreal, err_ptr: *mut string_t, db_name: *const c_char) -> c_int {
         check_null!(db_name, err_ptr, "db_name is null");
         with_surreal_async(db, err_ptr, |surreal| async {
             let db_name = unsafe { CStr::from_ptr(db_name) }.to_str()?;
@@ -1813,7 +1826,7 @@ impl Surreal {
     /// }
     /// ```
     #[export_name = "sr_use_ns"]
-    pub extern "C" fn use_ns(db: &Surreal, err_ptr: *mut string_t, ns_name: *const c_char) -> c_int {
+    pub extern "C" fn use_ns(db: *const Surreal, err_ptr: *mut string_t, ns_name: *const c_char) -> c_int {
         check_null!(ns_name, err_ptr, "ns_name is null");
         with_surreal_async(db, err_ptr, |surreal| async {
             let ns_name = unsafe { CStr::from_ptr(ns_name) }.to_str()?;
@@ -1851,7 +1864,7 @@ impl Surreal {
     /// ```
     #[export_name = "sr_version"]
     pub extern "C" fn version(
-        db: &Surreal,
+        db: *const Surreal,
         err_ptr: *mut string_t,
         res_ptr: *mut string_t,
     ) -> c_int {
@@ -1870,26 +1883,26 @@ impl Surreal {
 }
 
 /// Execute a given closure in an async context, which returns a result then catches panics and writes errors appropriately
-fn with_surreal_async<'a, 'b, C, F>(db: &'a Surreal, err_ptr: *mut string_t, fun: C) -> c_int
+///
+/// A null `db` is reported as an error; a null `err_ptr` discards the error message.
+fn with_surreal_async<'a, C, F>(db: *const Surreal, err_ptr: *mut string_t, fun: C) -> c_int
 where
-    'a: 'b,
-    C: FnOnce(&'a Surreal) -> F + 'b,
+    C: FnOnce(&'a Surreal) -> F,
     F: std::future::Future<Output = Result<c_int, string_t>>,
 {
+    let Some(db): Option<&'a Surreal> = (unsafe { db.as_ref() }) else {
+        write_error(err_ptr, "db is null");
+        return SR_ERROR;
+    };
     if db.ps.load(Ordering::Acquire) {
         std::process::abort()
     }
     let _guard = db.rt.enter();
 
-    let res = match catch_unwind(AssertUnwindSafe(|| db.rt.block_on(fun(&db)))) {
+    let res = match catch_unwind(AssertUnwindSafe(|| db.rt.block_on(fun(db)))) {
         Ok(r) => r,
         Err(e) => {
-            if let Some(e_str) = e.downcast_ref::<&str>() {
-                let e_string: string_t = format!("Panicked with: {e_str}").into();
-                unsafe { err_ptr.write(e_string) }
-            } else {
-                unsafe { err_ptr.write("Panicked".into()) }
-            }
+            write_error(err_ptr, panic_message(e));
             return SR_FATAL;
         }
     };
@@ -1897,7 +1910,7 @@ where
     match res {
         Ok(n) => n,
         Err(e) => {
-            unsafe { err_ptr.write(e) }
+            write_error(err_ptr, e);
             SR_ERROR
         }
     }

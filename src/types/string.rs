@@ -24,17 +24,26 @@ impl string_t {
     }
 }
 
+impl string_t {
+    /// The contents as text, with invalid UTF-8 replaced. A null string reads as empty, so a
+    /// caller-built value with a NULL string does not cause undefined behaviour.
+    pub fn to_str_lossy(&self) -> std::borrow::Cow<'_, str> {
+        if self.0.is_null() {
+            return std::borrow::Cow::Borrowed("");
+        }
+        unsafe { CStr::from_ptr(self.0) }.to_string_lossy()
+    }
+}
+
 impl Debug for string_t {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let cstr = unsafe { CStr::from_ptr(self.0) };
-        write!(f, "{}", cstr.to_string_lossy())
+        write!(f, "{}", self.to_str_lossy())
     }
 }
 
 impl From<string_t> for String {
     fn from(value: string_t) -> Self {
-        let cstr = unsafe { CStr::from_ptr(value.0) };
-        cstr.to_string_lossy().into()
+        value.to_str_lossy().into_owned()
     }
 }
 
@@ -74,10 +83,15 @@ impl Default for string_t {
 
 impl PartialEq for string_t {
     fn eq(&self, other: &Self) -> bool {
-        // self.0 == other.0
-        let self_cstr = unsafe { CStr::from_ptr(self.0) };
-        let other_cstr = unsafe { CStr::from_ptr(other.0) };
-        self_cstr == other_cstr
+        match (self.0.is_null(), other.0.is_null()) {
+            (true, true) => true,
+            (false, false) => {
+                let this = unsafe { CStr::from_ptr(self.0) };
+                let that = unsafe { CStr::from_ptr(other.0) };
+                this == that
+            }
+            _ => false,
+        }
     }
 }
 
@@ -88,4 +102,19 @@ impl PartialEq for string_t {
 #[export_name = "sr_free_string"]
 pub extern "C" fn free_string(string: string_t) {
     drop(string)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn null_string_reads_as_empty() {
+        let null = string_t::null();
+        assert_eq!(null.to_str_lossy(), "");
+        assert_eq!(format!("{null:?}"), "");
+        assert_eq!(null, string_t::null());
+        assert_ne!(null, string_t::from("x"));
+        assert_eq!(String::from(null), "");
+    }
 }

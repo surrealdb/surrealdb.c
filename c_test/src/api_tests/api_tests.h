@@ -201,6 +201,12 @@ int test_sr_object_keys(void);
 
 int test_sr_kill(void);
 
+/* ============================================================================
+ * Null Pointer Tests
+ * ============================================================================ */
+
+int test_sr_null_err_ptr(void);
+
 #ifdef __cplusplus
 }
 #endif

@@ -24,10 +24,11 @@ impl Object {
     /// - `obj` must be a valid reference to an Object
     /// - `key` must be a valid null-terminated UTF-8 string
     #[export_name = "sr_object_get"]
-    pub extern "C" fn get(obj: &Object, key: *const c_char) -> Option<&Value> {
-        if key.is_null() {
+    pub extern "C" fn get<'a>(obj: *const Object, key: *const c_char) -> Option<&'a Value> {
+        if obj.is_null() || key.is_null() {
             return None;
         }
+        let obj = unsafe { &*obj };
         let key = unsafe { CStr::from_ptr(key) }.to_string_lossy();
         obj.0.get(key.as_ref())
     }
@@ -49,11 +50,12 @@ impl Object {
     ///
     /// If any pointer is null, the function returns without modification.
     #[export_name = "sr_object_insert"]
-    pub extern "C" fn insert(obj: *mut Object, key: *const c_char, value: &Value) {
-        if obj.is_null() || key.is_null() {
+    pub extern "C" fn insert(obj: *mut Object, key: *const c_char, value: *const Value) {
+        if obj.is_null() || key.is_null() || value.is_null() {
             return;
         }
         let obj = unsafe { &mut *obj };
+        let value = unsafe { &*value };
         let key = unsafe { CStr::from_ptr(key) }.to_string_lossy().to_string();
         obj.0.insert(key, value.clone());
     }

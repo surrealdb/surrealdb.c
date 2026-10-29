@@ -1,4 +1,3 @@
-use std::ffi::CStr;
 
 use chrono::DateTime;
 use surrealdb::types::{
@@ -94,8 +93,7 @@ impl From<Value> for sdbValue {
                 sdbValue::Duration(std_dur.into())
             }
             Value::SR_VALUE_DATETIME(d) => {
-                let cstr = unsafe { CStr::from_ptr(d.0) };
-                let parsed = DateTime::parse_from_rfc3339(cstr.to_string_lossy().as_ref())
+                let parsed = DateTime::parse_from_rfc3339(d.to_str_lossy().as_ref())
                     .unwrap_or_default()
                     .to_utc();
                 sdbValue::Datetime(parsed.into())
@@ -118,7 +116,11 @@ impl Value {
     ///
     /// Outputs the debug representation of the value to standard output.
     #[export_name = "sr_value_print"]
-    pub extern "C" fn print_value(val: &Value) {
+    pub extern "C" fn print_value(val: *const Value) {
+        let Some(val) = (unsafe { val.as_ref() }) else {
+            println!("(null)");
+            return;
+        };
         println!("{val:?}");
     }
 
@@ -126,8 +128,12 @@ impl Value {
     ///
     /// Returns true if both values are equal, false otherwise.
     #[export_name = "sr_value_eq"]
-    pub extern "C" fn value_eq(lhs: &Value, rhs: &Value) -> bool {
-        lhs == rhs
+    pub extern "C" fn value_eq(lhs: *const Value, rhs: *const Value) -> bool {
+        match unsafe { (lhs.as_ref(), rhs.as_ref()) } {
+            (Some(lhs), Some(rhs)) => lhs == rhs,
+            (None, None) => true,
+            _ => false,
+        }
     }
 
     /// Create a None value
@@ -161,8 +167,13 @@ impl Value {
     }
 
     /// Create a String value
+    ///
+    /// Returns NULL if `val` is NULL.
     #[export_name = "sr_value_string"]
     pub extern "C" fn value_string(val: *const std::ffi::c_char) -> *mut Value {
+        if val.is_null() {
+            return std::ptr::null_mut();
+        }
         let s = unsafe { std::ffi::CStr::from_ptr(val) }
             .to_string_lossy()
             .to_string()
@@ -173,6 +184,9 @@ impl Value {
     /// Create an Object value from an existing object
     #[export_name = "sr_value_object"]
     pub extern "C" fn value_object(obj: *const Object) -> *mut Value {
+        if obj.is_null() {
+            return std::ptr::null_mut();
+        }
         let obj = unsafe { &*obj }.clone();
         Box::into_raw(Box::new(Value::SR_VALUE_OBJECT(obj)))
     }
@@ -186,6 +200,9 @@ impl Value {
     /// Create a Datetime value from RFC3339 string (e.g. "2024-01-15T10:30:00Z")
     #[export_name = "sr_value_datetime"]
     pub extern "C" fn value_datetime(val: *const std::ffi::c_char) -> *mut Value {
+        if val.is_null() {
+            return std::ptr::null_mut();
+        }
         let s = unsafe { std::ffi::CStr::from_ptr(val) }
             .to_string_lossy()
             .to_string()
@@ -196,6 +213,9 @@ impl Value {
     /// Create a UUID value from 16 bytes
     #[export_name = "sr_value_uuid"]
     pub extern "C" fn value_uuid(bytes: *const u8) -> *mut Value {
+        if bytes.is_null() {
+            return std::ptr::null_mut();
+        }
         let bytes_slice = unsafe { std::slice::from_raw_parts(bytes, 16) };
         let mut arr = [0u8; 16];
         arr.copy_from_slice(bytes_slice);
@@ -232,6 +252,9 @@ impl Value {
     /// Create a Thing value (record ID) from table name and string ID
     #[export_name = "sr_value_thing"]
     pub extern "C" fn value_thing(table: *const std::ffi::c_char, id: *const std::ffi::c_char) -> *mut Value {
+        if table.is_null() || id.is_null() {
+            return std::ptr::null_mut();
+        }
         let table_str = unsafe { std::ffi::CStr::from_ptr(table) }
             .to_string_lossy()
             .to_string()
@@ -404,6 +427,9 @@ impl Value {
     /// Create a Decimal value from string representation
     #[export_name = "sr_value_decimal"]
     pub extern "C" fn value_decimal(val: *const std::ffi::c_char) -> *mut Value {
+        if val.is_null() {
+            return std::ptr::null_mut();
+        }
         let s = unsafe { std::ffi::CStr::from_ptr(val) }
             .to_string_lossy()
             .to_string()
