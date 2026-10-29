@@ -86,7 +86,9 @@ impl PartialEq for string_t {
         match (self.0.is_null(), other.0.is_null()) {
             (true, true) => true,
             (false, false) => {
-                unsafe { CStr::from_ptr(self.0) } == unsafe { CStr::from_ptr(other.0) }
+                let this = unsafe { CStr::from_ptr(self.0) };
+                let that = unsafe { CStr::from_ptr(other.0) };
+                this == that
             }
             _ => false,
         }
