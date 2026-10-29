@@ -68,6 +68,17 @@ typedef struct sr_surreal_t sr_surreal_t;
 typedef struct sr_surreal_rpc_t sr_surreal_rpc_t;
 
 /**
+ * An interactive transaction with its own handle
+ *
+ * Created by `sr_transaction_begin` and consumed by `sr_transaction_commit` or
+ * `sr_transaction_cancel`. Unlike the transaction opened by `sr_begin`, several of these can be
+ * open on one connection at once. A handle may be moved between threads but must not be used
+ * from two threads at once, and must be committed or cancelled before its connection is
+ * disconnected.
+ */
+typedef struct sr_transaction_t sr_transaction_t;
+
+/**
  * A null-terminated C string type
  *
  * This is a wrapper around a raw C string pointer that handles memory management.
@@ -491,7 +502,13 @@ int sr_authenticate(const struct sr_surreal_t *db, sr_string_t *err_ptr, const c
 /**
  * Begin a new transaction
  *
- * Starts a new database transaction.
+ * Opens an interactive transaction on this connection. Until `sr_commit` or `sr_cancel`
+ * is called, `sr_query`, `sr_select`, `sr_create`, `sr_insert`, `sr_insert_relation`,
+ * `sr_update`, `sr_upsert`, `sr_merge`, `sr_patch_*`, `sr_relate` and `sr_delete` on this
+ * connection run inside the transaction, from every thread. Other functions (such as
+ * `sr_run`, `sr_select_live`, `sr_set` and authentication) run outside it.
+ *
+ * Only one transaction can be open per connection; beginning a second one is an error.
  *
  * # Examples
  *
@@ -509,7 +526,7 @@ int sr_begin(const struct sr_surreal_t *db, sr_string_t *err_ptr);
 /**
  * Cancel the current transaction
  *
- * Cancels and rolls back the current database transaction.
+ * Rolls back the transaction opened by `sr_begin`. Returns an error if none is open.
  *
  * # Examples
  *
@@ -527,7 +544,8 @@ int sr_cancel(const struct sr_surreal_t *db, sr_string_t *err_ptr);
 /**
  * Commit the current transaction
  *
- * Commits and finalizes the current database transaction.
+ * Commits the transaction opened by `sr_begin`. Returns an error if none is open or the
+ * commit fails; the transaction is closed either way.
  *
  * # Examples
  *
@@ -1402,6 +1420,59 @@ int sr_use_ns(const struct sr_surreal_t *db, sr_string_t *err_ptr, const char *n
  * ```
  */
 int sr_version(const struct sr_surreal_t *db, sr_string_t *err_ptr, sr_string_t *res_ptr);
+
+/**
+ * Begin a transaction with its own handle
+ *
+ * On success writes a new transaction to `*txn_ptr`. Run statements in it with
+ * `sr_transaction_query`, then finish it with `sr_transaction_commit` or
+ * `sr_transaction_cancel`, which also free the handle.
+ *
+ * # Examples
+ *
+ * ```c
+ * sr_transaction_t *txn;
+ * if (sr_transaction_begin(db, &err, &txn) < 0) {
+ *     printf("%s", err);
+ *     return 1;
+ * }
+ * sr_arr_res_t *res;
+ * int len = sr_transaction_query(txn, &err, &res, "CREATE foo:1", NULL);
+ * if (len >= 0) sr_free_arr_res_arr(res, len);
+ * if (sr_transaction_commit(txn, &err) < 0) {
+ *     printf("%s", err);
+ * }
+ * ```
+ */
+int sr_transaction_begin(const struct sr_surreal_t *db,
+                         sr_string_t *err_ptr,
+                         struct sr_transaction_t **txn_ptr);
+
+/**
+ * Execute a SurrealQL query inside a transaction
+ *
+ * Behaves like `sr_query`: writes one result per statement to `*res_ptr` and returns the
+ * number of statements. Free the results with `sr_free_arr_res_arr`.
+ */
+int sr_transaction_query(const struct sr_transaction_t *txn,
+                         sr_string_t *err_ptr,
+                         struct sr_arr_res_t **res_ptr,
+                         const char *query,
+                         const struct sr_object_t *vars);
+
+/**
+ * Commit a transaction and free its handle
+ *
+ * The handle is freed whether or not the commit succeeds, and must not be used again.
+ */
+int sr_transaction_commit(struct sr_transaction_t *txn, sr_string_t *err_ptr);
+
+/**
+ * Cancel a transaction and free its handle
+ *
+ * The handle is freed whether or not the cancel succeeds, and must not be used again.
+ */
+int sr_transaction_cancel(struct sr_transaction_t *txn, sr_string_t *err_ptr);
 
 int sr_surreal_rpc_new(sr_string_t *err_ptr,
                        struct sr_surreal_rpc_t **surreal_ptr,

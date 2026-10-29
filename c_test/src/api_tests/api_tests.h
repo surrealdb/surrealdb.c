@@ -82,6 +82,8 @@ int test_sr_patch_replace(void);
 int test_sr_begin(void);
 int test_sr_commit(void);
 int test_sr_cancel(void);
+int test_sr_transaction_isolation(void);
+int test_sr_transaction_handle(void);
 
 /* ============================================================================
  * Session Variable Tests

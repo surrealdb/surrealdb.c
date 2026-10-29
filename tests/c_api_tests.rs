@@ -49,6 +49,8 @@ extern "C" {
     fn test_sr_begin() -> c_int;
     fn test_sr_commit() -> c_int;
     fn test_sr_cancel() -> c_int;
+    fn test_sr_transaction_isolation() -> c_int;
+    fn test_sr_transaction_handle() -> c_int;
 
     // Session Variable Tests
     fn test_sr_set() -> c_int;
@@ -211,6 +213,8 @@ c_test!(sr_patch_replace, test_sr_patch_replace);
 c_test!(sr_begin, test_sr_begin);
 c_test!(sr_commit, test_sr_commit);
 c_test!(sr_cancel, test_sr_cancel);
+c_test!(sr_transaction_isolation, test_sr_transaction_isolation);
+c_test!(sr_transaction_handle, test_sr_transaction_handle);
 
 // ============================================================================
 // Session Variable Tests
